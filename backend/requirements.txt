@@ -1,0 +1,16 @@
+# backend/requirements.txt
+
+# Веб-фреймворк для создания API
+fastapi
+
+# ASGI сервер для запуска FastAPI
+uvicorn[standard]
+
+# ORM для взаимодействия с PostgreSQL
+sqlalchemy
+
+# Драйвер для подключения к PostgreSQL из Python
+psycopg2-binary
+
+# Для работы с .env файлом
+python-dotenv
