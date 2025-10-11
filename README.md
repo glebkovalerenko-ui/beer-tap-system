@@ -108,9 +108,9 @@ graph TD
 
 2.  **Настройка сервера:** Создайте в корне проекта файл `.env` на основе ` .env.example` (если он есть) или используйте следующий шаблон, указав надежный пароль:
     ```.env
-    POSTGRES_USER=beer_user
-    POSTGRES_PASSWORD=your_super_secret_password
-    POSTGRES_DB=beer_db
+    POSTGRES_USER=user
+    POSTGRES_PASSWORD=password
+    POSTGRES_DB=db
     DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     ```
 
