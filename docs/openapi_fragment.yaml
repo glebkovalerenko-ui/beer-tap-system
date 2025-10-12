@@ -1,0 +1,518 @@
+openapi: 3.0.0
+info:
+  title: Beer Tap System (fragment)
+  version: "0.1.0"
+servers:
+  - url: http://localhost/api
+paths:
+  /guests:
+    get:
+      summary: Search / list guests
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Search term (name, phone, card uid)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: List of guests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestsListResponse'
+    post:
+      summary: Create guest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestCreate'
+      responses:
+        '201':
+          description: Guest created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+  /guests/{guest_id}:
+    get:
+      summary: Get guest by id
+      parameters:
+        - in: path
+          name: guest_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Guest object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+    put:
+      summary: Update guest
+      parameters:
+        - in: path
+          name: guest_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GuestUpdate'
+      responses:
+        '200':
+          description: Updated guest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Guest'
+  /guests/{guest_id}/topup:
+    post:
+      summary: Top up guest balance
+      parameters:
+        - in: path
+          name: guest_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopUpRequest'
+      responses:
+        '200':
+          description: Topup success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopUpResponse'
+  /cards/bind:
+    post:
+      summary: Bind a card to a guest (or wait for tap)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardBindRequest'
+      responses:
+        '200':
+          description: Bind success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardBindResponse'
+  /cards/unbind:
+    post:
+      summary: Unbind card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardUnbindRequest'
+      responses:
+        '200':
+          description: Unbind success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+  /sync/pours:
+    post:
+      summary: Controller sync endpoint (batch pours)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pours:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Pour'
+      responses:
+        '200':
+          description: Sync result with per-tx statuses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PourResult'
+  /pours:
+    get:
+      summary: Query pours by status / controller / tap
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, confirmed, failed]
+        - in: query
+          name: controller_id
+          schema:
+            type: string
+        - in: query
+          name: tap_id
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List pours
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pour'
+  /system/emergency:
+    post:
+      summary: Set emergency flag (stop pours)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyRequest'
+      responses:
+        '200':
+          description: Emergency acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+  /kegs:
+    post:
+      summary: Create keg
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KegCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Keg'
+    get:
+      summary: List kegs
+      responses:
+        '200':
+          description: Keg list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Keg'
+  /kegs/{keg_id}:
+    put:
+      summary: Update keg
+      parameters:
+        - in: path
+          name: keg_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KegUpdate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Keg'
+    delete:
+      summary: Delete keg
+      parameters:
+        - in: path
+          name: keg_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+  /taps/{tap_id}/assign-keg:
+    put:
+      summary: Assign keg to tap
+      parameters:
+        - in: path
+          name: tap_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keg_id:
+                  type: integer
+      responses:
+        '200':
+          description: Assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericResponse'
+  /controllers/register:
+    post:
+      summary: Controller registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ControllerRegister'
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Controller'
+components:
+  schemas:
+    GenericResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    Guest:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        balance:
+          type: number
+          format: float
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/Card'
+    GuestsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Guest'
+        total:
+          type: integer
+    GuestCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+    GuestUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+    TopUpRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+          format: float
+        method:
+          type: string
+        note:
+          type: string
+    TopUpResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        balance:
+          type: number
+    Card:
+      type: object
+      properties:
+        id:
+          type: integer
+        uid:
+          type: string
+        active:
+          type: boolean
+        guest_id:
+          type: integer
+    CardBindRequest:
+      type: object
+      properties:
+        guest_id:
+          type: integer
+        uid:
+          type: string
+          description: If omitted or null, server will accept next tap from controller in bind-wait mode.
+    CardBindResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        card:
+          $ref: '#/components/schemas/Card'
+    CardUnbindRequest:
+      type: object
+      properties:
+        uid:
+          type: string
+        card_id:
+          type: integer
+    Pour:
+      type: object
+      properties:
+        client_tx_id:
+          type: string
+        controller_id:
+          type: string
+        tap_id:
+          type: integer
+        guest_card_uid:
+          type: string
+        volume_ml:
+          type: number
+        price:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+    PourResult:
+      type: object
+      properties:
+        client_tx_id:
+          type: string
+        status:
+          type: string
+          enum: [confirmed, duplicate, failed]
+        message:
+          type: string
+    EmergencyRequest:
+      type: object
+      required:
+        - actor_user_id
+      properties:
+        actor_user_id:
+          type: integer
+        reason:
+          type: string
+    KegCreate:
+      type: object
+      required:
+        - name
+        - volume_ml
+      properties:
+        name:
+          type: string
+        volume_ml:
+          type: number
+        remaining_ml:
+          type: number
+        cost_price:
+          type: number
+        sell_price:
+          type: number
+    Keg:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        volume_ml:
+          type: number
+        remaining_ml:
+          type: number
+        sell_price:
+          type: number
+    KegUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        remaining_ml:
+          type: number
+        sell_price:
+          type: number
+    ControllerRegister:
+      type: object
+      required:
+        - controller_id
+      properties:
+        controller_id:
+          type: string
+        firmware_version:
+          type: string
+        ip:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+    Controller:
+      type: object
+      properties:
+        controller_id:
+          type: string
+        firmware_version:
+          type: string
+        last_seen:
+          type: string
+          format: date-time
+        backlog_count:
+          type: integer
