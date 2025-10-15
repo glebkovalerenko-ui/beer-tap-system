@@ -1,19 +1,23 @@
 # backend/crud/audit_crud.py
 from sqlalchemy.orm import Session
 import models
-import json # Импортируем для работы с JSON
+import json
+from typing import Optional
 
 def create_audit_log(
     db: Session,
+    *,
     actor_id: str,
     action: str,
-    target_entity: str = None,
-    target_id: str = None,
-    details: dict = None # Принимаем словарь для удобства
+    target_entity: Optional[str] = None,
+    target_id: Optional[str] = None,
+    details: Optional[dict] = None
 ):
-    """Создает новую запись в журнале аудита."""
+    """
+    Создает новую запись в журнале аудита.
+    ВАЖНО: Эта функция НЕ делает commit. Commit должен управляться вызывающей функцией.
+    """
     
-    # Конвертируем словарь деталей в строку JSON, если он предоставлен
     details_str = json.dumps(details, ensure_ascii=False) if details else None
 
     db_log = models.AuditLog(
@@ -24,6 +28,5 @@ def create_audit_log(
         details=details_str
     )
     db.add(db_log)
-    db.commit()
-    # db.refresh не нужен, мы не возвращаем объект
+    # db.flush() # Можно использовать, если нужно получить ID лога сразу, но здесь не требуется
     return

@@ -1,8 +1,8 @@
 # backend/database.py
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+# --- ИЗМЕНЕНИЕ: Импортируем declarative_base из современного расположения ---
+from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения из .env файла
@@ -20,6 +20,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Базовый класс для всех наших будущих моделей SQLAlchemy
+# --- ИЗМЕНЕНИЕ: Используется declarative_base из нового импорта ---
 Base = declarative_base()
 
 # Функция-зависимость (Dependency) для FastAPI.

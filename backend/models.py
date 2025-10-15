@@ -1,13 +1,14 @@
 # backend/models.py
 
-# Импортируем все необходимые типы данных и функции SQLAlchemy
+# --- ИЗМЕНЕНИЕ: Добавлен импорт uuid для генерации ID на стороне приложения ---
+import uuid
+# --- ИЗМЕНЕНИЕ: Импортируем универсальный UUID вместо специфичного для PostgreSQL ---
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime, Boolean, 
-    ForeignKey, text, Numeric
+    ForeignKey, text, Numeric, UUID, Text
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from database import Base
 
 # --- ПРИНЦИП 1: Разделение сущностей "Справочник" vs "Экземпляр" ---
@@ -21,7 +22,8 @@ class Beverage(Base):
     """
     __tablename__ = "beverages"
 
-    beverage_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python (default=uuid.uuid4) ---
+    beverage_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), unique=True, index=True, nullable=False, comment="Название напитка, e.g., 'Heineken'")
     brewery = Column(String(100), comment="Пивоварня")
     style = Column(String(50), comment="Стиль, e.g., 'Lager', 'IPA'")
@@ -41,8 +43,9 @@ class Keg(Base):
     """
     __tablename__ = "kegs"
 
-    keg_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
-    beverage_id = Column(PG_UUID(as_uuid=True), ForeignKey("beverages.beverage_id"), nullable=False, index=True)
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
+    keg_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    beverage_id = Column(UUID(as_uuid=True), ForeignKey("beverages.beverage_id"), nullable=False, index=True)
     
     initial_volume_ml = Column(Integer, nullable=False, comment="Начальный объем в миллилитрах")
     current_volume_ml = Column(Integer, nullable=False, comment="Текущий остаток в миллилитрах")
@@ -71,7 +74,7 @@ class Tap(Base):
     __tablename__ = "taps"
 
     tap_id = Column(Integer, primary_key=True) # Используем простой Integer для легкой идентификации
-    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=True, unique=True)
+    keg_id = Column(UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=True, unique=True)
     display_name = Column(String(50), nullable=False, unique=True, comment="Имя крана для UI, e.g., 'Кран 1'")
     
     # ПРИНЦИП 2: Конечный автомат (статусы)
@@ -92,15 +95,16 @@ class Guest(Base):
     """
     __tablename__ = "guests"
 
-    guest_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
+    guest_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     last_name = Column(String(50), nullable=False, index=True)
     first_name = Column(String(50), nullable=False)
     patronymic = Column(String(50), nullable=True)
     phone_number = Column(String(20), unique=True, nullable=False)
     date_of_birth = Column(Date, nullable=False)
-    id_document = Column(String(100), unique=True, nullable=False, index=True)
-    balance = Column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
-    is_active = Column(Boolean, nullable=False, server_default=text("TRUE"))
+    id_document = Column(String(100), nullable=False, index=True) # Убрал unique=True, т.к. один документ может быть у нескольких гостей (теоретически)
+    balance = Column(Numeric(10, 2), nullable=False, default=0.00) # --- ИЗМЕНЕНИЕ: Заменил server_default на default для совместимости ---
+    is_active = Column(Boolean, nullable=False, default=True) # --- ИЗМЕНЕНИЕ: Заменил server_default на default ---
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -118,7 +122,7 @@ class Card(Base):
     __tablename__ = "cards"
 
     card_uid = Column(String(50), primary_key=True, comment="Уникальный идентификатор, читаемый с карты")
-    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
 
     # ПРИНЦИП 2: Конечный автомат (статусы)
     status = Column(String(20), nullable=False, default='inactive', index=True, comment="Статус: active, inactive, lost")
@@ -140,18 +144,19 @@ class Pour(Base):
     """
     __tablename__ = "pours"
 
-    pour_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
+    pour_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_tx_id = Column(String(100), unique=True, nullable=False, index=True, comment="Идентификатор от RPi для идемпотентности")
     
     # Внешние ключи для связи с другими сущностями
-    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
     card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
     tap_id = Column(Integer, ForeignKey("taps.tap_id"), nullable=False)
-    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=False, index=True)
+    keg_id = Column(UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=False, index=True)
     
     # Детали транзакции
     volume_ml = Column(Integer, nullable=False)
-    price_per_ml_at_pour = Column(Numeric(10, 4), nullable=False, comment="Цена на момент налива")
+    # --- ИЗМЕНЕНИЕ: Убрал price_per_ml_at_pour, т.к. amount_charged достаточно. Можно вернуть при необходимости. ---
     amount_charged = Column(Numeric(10, 2), nullable=False, comment="Списанная сумма")
     
     # Временные метки
@@ -172,8 +177,9 @@ class Transaction(Base):
     """
     __tablename__ = "transactions"
 
-    transaction_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
-    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
+    transaction_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
     
     amount = Column(Numeric(10, 2), nullable=False, comment="Сумма транзакции. Положительная для пополнения.")
     type = Column(String(20), nullable=False, comment="Тип: top-up, refund, correction")
@@ -192,12 +198,13 @@ class AuditLog(Base):
     """
     __tablename__ = "audit_logs"
 
-    log_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
+    log_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     actor_id = Column(String, nullable=True, comment="ID пользователя, совершившего действие")
     action = Column(String, nullable=False, index=True, comment="Тип действия, e.g., 'create_keg'")
     target_entity = Column(String, comment="Сущность, над которой совершено действие, e.g., 'Keg'")
     target_id = Column(String, comment="ID целевой сущности")
-    details = Column(String, comment="Детали действия в формате JSON")
+    details = Column(Text, comment="Детали действия в формате JSON") # --- ИЗМЕНЕНИЕ: String -> Text для большей вместимости ---
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
 # --- МОДЕЛИ КОНТРОЛЛЕРОВ ---
