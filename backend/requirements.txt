@@ -1,5 +1,16 @@
 # backend/requirements.txt
 
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+
+# Зависимости для аутентификации
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+alembic
+
 # Веб-фреймворк для создания API
 fastapi
 

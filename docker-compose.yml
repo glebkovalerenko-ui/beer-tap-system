@@ -1,5 +1,5 @@
 # docker-compose.yml
-version: '3.8'
+#version: '3.8'
 
 services:
   postgres:
@@ -23,7 +23,7 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  beer_backend_api:
     build: ./backend
     container_name: beer_backend_api
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -34,18 +34,8 @@ services:
     env_file:
       ./.env
     depends_on:
-      - postgres
-    restart: always
-
-  admin-ui:
-    build:
-      context: . # Контекст сборки - корень проекта
-      dockerfile: admin-ui/Dockerfile # Путь к нашему новому Dockerfile
-    container_name: beer_admin_ui_nginx
-    ports:
-      - "80:80" # Публикуем веб-интерфейс на главный 80-й порт!
-    depends_on:
-      - backend # Запускаем только после бэкенда
+      postgres:
+        condition: service_healthy
     restart: always
 
 volumes:

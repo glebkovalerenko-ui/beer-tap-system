@@ -1,16 +1,95 @@
 # backend/models.py
-# Импортируем все необходимые типы данных
+
+# Импортируем все необходимые типы данных и функции SQLAlchemy
 from sqlalchemy import (
-    Column, Integer, String, Date, DateTime, 
-    Boolean, ForeignKey, text
+    Column, Integer, String, Date, DateTime, Boolean, 
+    ForeignKey, text, Numeric
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.types import DECIMAL 
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID # Импортируем UUID и переименовываем
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from database import Base
 
-# --- МОДЕЛЬ GUEST (Уже исправлена и соответствует схеме) ---
+# --- ПРИНЦИП 1: Разделение сущностей "Справочник" vs "Экземпляр" ---
+# Мы отделяем описание напитка от конкретной кеги.
+# Это позволяет нам легко управлять ассортиментом и анализировать продажи по напиткам.
+
+class Beverage(Base):
+    """
+    СПРАВОЧНИК НАПИТКОВ.
+    Хранит уникальные характеристики каждого напитка, который мы продаем.
+    """
+    __tablename__ = "beverages"
+
+    beverage_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    name = Column(String(100), unique=True, index=True, nullable=False, comment="Название напитка, e.g., 'Heineken'")
+    brewery = Column(String(100), comment="Пивоварня")
+    style = Column(String(50), comment="Стиль, e.g., 'Lager', 'IPA'")
+    abv = Column(Numeric(4, 2), comment="Крепость (Alcohol By Volume)")
+    sell_price_per_liter = Column(Numeric(10, 2), nullable=False, comment="Розничная цена за литр")
+
+    # Связь "один ко многим": один напиток может быть во многих кегах
+    kegs = relationship("Keg", back_populates="beverage")
+
+
+# --- ОСНОВНЫЕ ОПЕРАЦИОННЫЕ МОДЕЛИ ---
+
+class Keg(Base):
+    """
+    ЭКЗЕМПЛЯР КЕГИ.
+    Представляет физическую кегу с конкретным напитком.
+    """
+    __tablename__ = "kegs"
+
+    keg_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    beverage_id = Column(PG_UUID(as_uuid=True), ForeignKey("beverages.beverage_id"), nullable=False, index=True)
+    
+    initial_volume_ml = Column(Integer, nullable=False, comment="Начальный объем в миллилитрах")
+    current_volume_ml = Column(Integer, nullable=False, comment="Текущий остаток в миллилитрах")
+    purchase_price = Column(Numeric(10, 2), nullable=False, comment="Закупочная стоимость всей кеги")
+
+    # ПРИНЦИП 2: Конечный автомат (статусы)
+    status = Column(String(20), nullable=False, default='full', index=True, comment="Статус: full, in_use, empty")
+
+    tapped_at = Column(DateTime(timezone=True), comment="Время подключения к крану")
+    finished_at = Column(DateTime(timezone=True), comment="Время, когда кега закончилась")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Связь "многие к одному": многие кеги могут быть одного типа напитка
+    beverage = relationship("Beverage", back_populates="kegs")
+    # Связь "один к одному": одна кега может быть подключена только к одному крану
+    tap = relationship("Tap", back_populates="keg", uselist=False)
+    # Связь "один ко многим": из одной кеги может быть много наливов
+    pours = relationship("Pour", back_populates="keg")
+
+
+class Tap(Base):
+    """
+    ФИЗИЧЕСКИЙ КРАН.
+    Представляет точку розлива в баре.
+    """
+    __tablename__ = "taps"
+
+    tap_id = Column(Integer, primary_key=True) # Используем простой Integer для легкой идентификации
+    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=True, unique=True)
+    display_name = Column(String(50), nullable=False, unique=True, comment="Имя крана для UI, e.g., 'Кран 1'")
+    
+    # ПРИНЦИП 2: Конечный автомат (статусы)
+    status = Column(String(20), nullable=False, default='locked', index=True, comment="Статус: active, locked, cleaning, empty")
+
+    last_cleaned_at = Column(DateTime(timezone=True))
+
+    # Связь "один к одному": к одному крану подключена одна кега
+    keg = relationship("Keg", back_populates="tap")
+    # Связь "один ко многим": с одного крана может быть много наливов
+    pours = relationship("Pour", back_populates="tap")
+
+
 class Guest(Base):
+    """
+    ГОСТЬ.
+    Представляет клиента бара.
+    """
     __tablename__ = "guests"
 
     guest_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
@@ -20,60 +99,137 @@ class Guest(Base):
     phone_number = Column(String(20), unique=True, nullable=False)
     date_of_birth = Column(Date, nullable=False)
     id_document = Column(String(100), unique=True, nullable=False, index=True)
-    balance = Column(DECIMAL(10, 2), nullable=False, server_default=text("0.00"))
+    balance = Column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
     is_active = Column(Boolean, nullable=False, server_default=text("TRUE"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-# --- НОВЫЕ МОДЕЛИ: Добавляем недостающие определения ---
+    # Связи "один ко многим"
+    cards = relationship("Card", back_populates="guest")
+    transactions = relationship("Transaction", back_populates="guest")
+    pours = relationship("Pour", back_populates="guest")
+
 
 class Card(Base):
+    """
+    RFID-КАРТА.
+    Физический носитель, привязанный к гостю.
+    """
     __tablename__ = "cards"
-    card_uid = Column(String(50), primary_key=True)
-    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False)
-    status = Column(String(20), nullable=False, server_default='active')
+
+    card_uid = Column(String(50), primary_key=True, comment="Уникальный идентификатор, читаемый с карты")
+    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
+
+    # ПРИНЦИП 2: Конечный автомат (статусы)
+    status = Column(String(20), nullable=False, default='inactive', index=True, comment="Статус: active, inactive, lost")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-class Keg(Base):
-    __tablename__ = "kegs"
-    keg_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
-    beer_name = Column(String(100), nullable=False)
-    brewery = Column(String(100))
-    beer_style = Column(String(50))
-    abv = Column(DECIMAL(4, 2))
-    initial_volume_ml = Column(Integer, nullable=False)
-    current_volume_ml = Column(Integer, nullable=False)
-    purchase_price = Column(DECIMAL(10, 2))
-    tapped_at = Column(DateTime(timezone=True))
-    finished_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Связь "многие к одному": многие карты могут принадлежать одному гостю
+    guest = relationship("Guest", back_populates="cards")
+    # Связь "один ко многим": одной картой можно сделать много наливов
+    pours = relationship("Pour", back_populates="card")
 
-class Tap(Base):
-    __tablename__ = "taps"
-    tap_id = Column(Integer, primary_key=True) # SERIAL в SQL -> Integer + primary_key в SQLAlchemy
-    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=True)
-    display_name = Column(String(50), nullable=False)
-    price_per_ml = Column(DECIMAL(10, 4), nullable=False)
-    last_cleaned_at = Column(DateTime(timezone=True))
 
-# --- МОДЕЛЬ POUR (Уже исправлена и соответствует схеме) ---
+# --- ПРИНЦИП 3: Транзакционная модель для всех изменений ---
+# Все изменения баланса и объема являются неизменяемыми записями (транзакциями).
+
 class Pour(Base):
+    """
+    ТРАНЗАКЦИЯ НАЛИВА.
+    Неизменяемая запись о каждом факте налива.
+    """
     __tablename__ = "pours"
 
     pour_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    client_tx_id = Column(String(100), unique=True, nullable=False, index=True, comment="Идентификатор от RPi для идемпотентности")
     
-    # Внешние ключи
-    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False)
-    card_uid = Column(String, ForeignKey("cards.card_uid"), nullable=False)
+    # Внешние ключи для связи с другими сущностями
+    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
     tap_id = Column(Integer, ForeignKey("taps.tap_id"), nullable=False)
-    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=False)
+    keg_id = Column(PG_UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=False, index=True)
     
     # Детали транзакции
-    client_tx_id = Column(String(100), unique=True, nullable=False, index=True)
     volume_ml = Column(Integer, nullable=False)
-    price_per_ml_at_pour = Column(DECIMAL(10, 4), nullable=False)
-    amount_charged = Column(DECIMAL(10, 2), nullable=False)
+    price_per_ml_at_pour = Column(Numeric(10, 4), nullable=False, comment="Цена на момент налива")
+    amount_charged = Column(Numeric(10, 2), nullable=False, comment="Списанная сумма")
     
     # Временные метки
     poured_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Связи "многие к одному"
+    guest = relationship("Guest", back_populates="pours")
+    card = relationship("Card", back_populates="pours")
+    tap = relationship("Tap", back_populates="pours")
+    keg = relationship("Keg", back_populates="pours")
+
+
+class Transaction(Base):
+    """
+    ФИНАНСОВАЯ ТРАНЗАКЦИЯ.
+    Неизменяемая запись о пополнении баланса, возврате и т.д.
+    """
+    __tablename__ = "transactions"
+
+    transaction_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    guest_id = Column(PG_UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    
+    amount = Column(Numeric(10, 2), nullable=False, comment="Сумма транзакции. Положительная для пополнения.")
+    type = Column(String(20), nullable=False, comment="Тип: top-up, refund, correction")
+    payment_method = Column(String(20), nullable=True, comment="Метод оплаты: cash, card")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    guest = relationship("Guest", back_populates="transactions")
+
+
+# --- СИСТЕМНЫЕ МОДЕЛИ ---
+
+class AuditLog(Base):
+    """
+    ЖУРНАЛ АУДИТА.
+    Записывает все важные действия администраторов и барменов.
+    """
+    __tablename__ = "audit_logs"
+
+    log_id = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+    actor_id = Column(String, nullable=True, comment="ID пользователя, совершившего действие")
+    action = Column(String, nullable=False, index=True, comment="Тип действия, e.g., 'create_keg'")
+    target_entity = Column(String, comment="Сущность, над которой совершено действие, e.g., 'Keg'")
+    target_id = Column(String, comment="ID целевой сущности")
+    details = Column(String, comment="Детали действия в формате JSON")
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+# --- МОДЕЛИ КОНТРОЛЛЕРОВ ---
+
+class Controller(Base):
+    """
+    КОНТРОЛЛЕР (RPi).
+    Представляет физическое устройство (Raspberry Pi), управляющее краном.
+    """
+    __tablename__ = "controllers"
+
+    # Уникальный ID контроллера, который он сам о себе знает (e.g., MAC-адрес).
+    # Используем String, так как это естественный ключ, предоставляемый устройством.
+    controller_id = Column(String(50), primary_key=True, index=True)
+    
+    # Информация, которую контроллер периодически сообщает о себе
+    ip_address = Column(String(45), nullable=False, comment="Текущий IP-адрес устройства в сети")
+    firmware_version = Column(String(20), nullable=True, comment="Версия прошивки на устройстве")
+    
+    # Метаданные, управляемые сервером
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="Время первой регистрации контроллера")
+    last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="Время последнего 'check-in' от контроллера")
+
+# --- МОДЕЛЬ СОСТОЯНИЯ СИСТЕМЫ ---
+class SystemState(Base):
+    """
+    ГЛОБАЛЬНОЕ СОСТОЯНИЕ СИСТЕМЫ.
+    Key-Value хранилище для глобальных флагов, таких как экстренная остановка.
+    """
+    __tablename__ = "system_states"
+
+    # Ключ настройки, e.g., 'emergency_stop_enabled'
+    key = Column(String(50), primary_key=True, index=True)
+    # Значение настройки, хранится как строка, e.g., 'true', 'false'
+    value = Column(String(255), nullable=False)
