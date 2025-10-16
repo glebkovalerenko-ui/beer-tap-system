@@ -1,0 +1,25 @@
+{
+  "projectName": "Beer Tap System",
+  "version": "1.0-MVP",
+  "status": "MVP Complete",
+  "repositoryUrl": "https://github.com/glebkovalerenko-ui/beer-tap-system.git",
+  "documentationDate": "2025-10-14",
+  "dataSources": [
+    {
+      "type": "github_repository",
+      "path": "/",
+      "description": "Primary source of truth for code and configuration."
+    },
+    {
+      "type": "chat_history",
+      "description": "Source for architectural decisions, rationale, and development process."
+    }
+  ],
+  "keyArtifacts": [
+    "backend/main.py",
+    "admin-app/src/App.svelte",
+    "rpi-controller/main_controller.py",
+    "docker-compose.yml",
+    "backend/tests/test_business_lifecycles.py"
+  ]
+}

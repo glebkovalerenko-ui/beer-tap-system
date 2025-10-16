@@ -1,0 +1,9 @@
+site_name: Beer Tap System Docs
+docs_dir: docs/mvp
+nav:
+  - Overview: mvp-bar-exec-summary.md
+  - Full Instruction: mvp-bar-instruction_v1.0.md
+  - Equipment: mvp-bar-bom.csv
+  - Changelog: changelog.md
+theme:
+  name: material

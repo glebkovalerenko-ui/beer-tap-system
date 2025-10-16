@@ -1,0 +1,8 @@
+{
+  "context_files": [
+    "docs/mvp/mvp-bar-instruction_v1.0.md",
+    "docs/mvp/mvp-bar-exec-summary.md",
+    "docs/mvp/mvp-bar-bom.csv"
+  ],
+  "project_summary": "Beer Tap System — MVP аппаратно-программного комплекса для бара самообслуживания. Состоит из FastAPI backend, Tauri Admin App и Raspberry Pi контроллеров. Offline-first архитектура."
+}
