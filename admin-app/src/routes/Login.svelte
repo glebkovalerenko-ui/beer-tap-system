@@ -1,17 +1,41 @@
+<!-- src/routes/Login.svelte -->
+
 <script>
-  import { login } from '../lib/api.js';
+  // Шаг 1: Импортируем нужные нам инструменты
+  import { sessionStore } from '../stores/sessionStore.js';
+  import { invoke } from '@tauri-apps/api/core';
 
   let username = 'admin';
-  let password = 'fake_password';
+  let password = 'password'; // Используйте ваш реальный пароль для теста
   let error = '';
+  let isLoading = false;
 
   async function handleLogin() {
     error = '';
+    isLoading = true;
     try {
-      await login(username, password);
-      // Успешный вход обработает App.svelte
+      // Шаг 2: Напрямую вызываем команду Rust, которую мы сейчас создадим
+      const token = await invoke('login', {
+        username: username,
+        password: password,
+      });
+      
+      // Шаг 3: Если команда выполнилась успешно и вернула токен...
+      if (token) {
+        // ...сохраняем его в наше глобальное хранилище.
+        sessionStore.setToken(token);
+        // App.svelte увидит это изменение и автоматически переключит интерфейс.
+      } else {
+        // На случай, если бэкенд по какой-то причине не вернул ошибку, но и токен пустой
+        error = 'Login failed: Invalid response from server.';
+      }
+
     } catch (e) {
-      error = 'Failed to log in. Please check your credentials.';
+      // Шаг 4: Если invoke() вернул ошибку, отображаем ее.
+      // Наш AppError в Rust как раз вернет сюда объект с полем `message`.
+      error = e.message || 'Failed to log in. Please check your credentials.';
+    } finally {
+      isLoading = false;
     }
   }
 </script>
@@ -21,13 +45,16 @@
   <form on:submit|preventDefault={handleLogin}>
     <div class="form-group">
       <label for="username">Username</label>
-      <input type="text" id="username" bind:value={username} />
+      <input type="text" id="username" bind:value={username} disabled={isLoading} />
     </div>
     <div class="form-group">
       <label for="password">Password</label>
-      <input type="password" id="password" bind:value={password} />
+      <input type="password" id="password" bind:value={password} disabled={isLoading} />
     </div>
-    <button type="submit">Log In</button>
+    <!-- Добавляем disabled на кнопку во время загрузки -->
+    <button type="submit" disabled={isLoading}>
+      {#if isLoading}Logging in...{:else}Log In{/if}
+    </button>
     {#if error}
       <p class="error">{error}</p>
     {/if}
@@ -35,7 +62,7 @@
 </div>
 
 <style>
-  /* Стили для формы входа */
+  /* Ваши стили остаются без изменений */
   .login-container { max-width: 400px; margin: 5rem auto; padding: 2rem; border: 1px solid #ddd; border-radius: 5px; }
   .form-group { margin-bottom: 1rem; }
   label { display: block; margin-bottom: 0.5rem; }

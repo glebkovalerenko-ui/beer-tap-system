@@ -1,6 +1,10 @@
+<!-- src/App.svelte -->
+
 <script>
   import Router from 'svelte-spa-router';
-  import { isAuthenticated, logout } from './lib/api.js';
+  // <-- ИЗМЕНЕНО: Импортируем Svelte Stores вместо api.js
+  import { sessionStore } from './stores/sessionStore.js';
+  import { guestStore } from './stores/guestStore.js';
 
   // Импортируем наши страницы
   import Dashboard from './routes/Dashboard.svelte';
@@ -14,10 +18,19 @@
     '/taps': Taps,
     '*': Dashboard
   };
+
+  // <-- ДОБАВЛЕНО: Реактивный блок для автоматической загрузки данных
+  // Этот код выполнится, когда $sessionStore.token изменится (например, после логина),
+  // но только если гости еще не были загружены.
+  /*$: if ($sessionStore.token && $guestStore.guests.length === 0 && !$guestStore.loading) {
+    guestStore.fetchGuests();
+  }*/
+
 </script>
 
 <!-- Реактивно показываем либо страницу входа, либо основное приложение -->
-{#if $isAuthenticated}
+<!-- <-- ИЗМЕНЕНО: Проверяем токен из sessionStore -->
+{#if $sessionStore.token}
   <!-- Если пользователь залогинен -->
   <div class="app-layout">
     <nav class="sidebar">
@@ -27,10 +40,32 @@
         <li><a href="#/guests">Guests</a></li>
         <li><a href="#/taps">Taps & Kegs</a></li>
       </ul>
-      <button on:click={logout} class="logout-button">Log Out</button>
+      <!-- <-- ИЗМЕНЕНО: Вызываем logout из sessionStore -->
+      <button on:click={() => sessionStore.logout()} class="logout-button">Log Out</button>
     </nav>
 
     <main class="main-content">
+      <!-- <-- ДОБАВЛЕНО: Временный блок для проверки загрузки данных -->
+      <!-- !!Этот блок можно будет удалить после того, как вы убедитесь, что все работает -->
+      <!-- !! <div style="background: #eee; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
+        <h3>Debug Info (Step 1.1)</h3>
+        {#if $guestStore.loading}
+          <p>Загрузка гостей...</p>
+        {:else if $guestStore.error}
+          <p style="color: red;">Ошибка: {$guestStore.error}</p>
+        {:else}
+          <p>Загружено <b>{$guestStore.guests.length}</b> гостей.</p>
+          <!-- Раскомментируйте, чтобы увидеть имена:
+          <ul>
+            {#each $guestStore.guests as guest}
+              <li>{guest.name}</li>
+            {/each}
+          </ul>
+          -->
+        <!-- !!{/if}
+      </div> !! -->
+      <!-- Конец временного блока -->
+
       <Router {routes} />
     </main>
   </div>

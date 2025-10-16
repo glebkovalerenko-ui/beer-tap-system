@@ -1,7 +1,11 @@
+// src-tauri/src/main.rs
+
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+
+mod api_client;
 
 use pcsc::{Context, Scope, ShareMode, Card, Protocols, Error};
 use serde::Serialize;
@@ -19,7 +23,7 @@ struct AppState {
 }
 
 // Единая структура для ошибок, отправляемых на фронтенд
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct AppError {
     message: String,
 }
@@ -111,7 +115,7 @@ fn connect_and_authenticate(
     Ok(card)
 }
 
-// --- Команды, вызываемые с фронтенда ---
+// --- Команды, вызываемые с фронтенда (NFC) ---
 
 #[tauri::command]
 fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
@@ -164,7 +168,6 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
     Ok(())
 }
 
-// --- НОВАЯ КОМАНДА: Смена ключей сектора ---
 #[tauri::command]
 fn change_sector_keys(
     reader_name: &str,
@@ -177,34 +180,19 @@ fn change_sector_keys(
 ) -> Result<(), AppError> {
     info!("[COMMAND] Запрос на смену ключей для сектора {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
-
-    // Шаг 1: Аутентификация с ТЕКУЩИМ ключом.
-    // Мы можем переиспользовать нашу функцию, т.к. она делает именно то, что нужно -
-    // аутентифицирует указанный блок (в данном случае - секторный трейлер).
     let card = connect_and_authenticate(&state.context, reader_name, trailer_block_addr, key_type, current_key_hex)?;
-
-    // Шаг 2: Подготовка и запись нового секторного трейлера.
     let new_key_a_bytes = hex::decode(new_key_a)?;
     let new_key_b_bytes = hex::decode(new_key_b)?;
     if new_key_a_bytes.len() != 6 || new_key_b_bytes.len() != 6 {
         return Err("Новые ключи должны быть длиной 6 байт (12 HEX)".into());
     }
-
-    // ВАЖНО: Используем "безопасные" байты прав доступа.
-    // FF 07 80 69 - стандартная конфигурация, где оба ключа имеют полные права на сектор.
-    // Это предотвращает случайное "окирпичивание" сектора.
     let access_bits: [u8; 4] = [0xFF, 0x07, 0x80, 0x69]; 
-
-    // Собираем 16-байтный трейлер
     let mut new_trailer_data: Vec<u8> = Vec::with_capacity(16);
     new_trailer_data.extend_from_slice(&new_key_a_bytes);
     new_trailer_data.extend_from_slice(&access_bits);
     new_trailer_data.extend_from_slice(&new_key_b_bytes);
-    
-    // Формируем APDU для записи
     let mut write_apdu = vec![0xFF, 0xD6, 0x00, trailer_block_addr, 0x10];
     write_apdu.extend_from_slice(&new_trailer_data);
-
     debug!("> APDU (Write Trailer): {}", hex::encode(&write_apdu));
     let mut rapdu_buf = [0; 256];
     let rapdu = card.transmit(&write_apdu, &mut rapdu_buf)?;
@@ -212,11 +200,39 @@ fn change_sector_keys(
         error!("Ошибка записи в секторный трейлер {}: {}", sector, hex::encode(rapdu));
         return Err("Не удалось записать новый трейлер. Права доступа карты могут не позволять эту операцию с выбранным ключом.".into());
     }
-    
     info!("Секторный трейлер для сектора {} успешно обновлен.", sector);
     Ok(())
 }
 
+// --- НОВАЯ КОМАНДА: Получение данных с API ---
+#[tauri::command]
+async fn get_guests(token: String) -> Result<Vec<api_client::Guest>, AppError> {
+    info!("[COMMAND] Запрос списка гостей с API...");
+    // Вызываем нашу функцию из api_client и конвертируем ее ошибку (String) в нашу AppError
+    api_client::get_guests(&token).await.map_err(AppError::from)
+}
+
+// --- НОВАЯ КОМАНДА: Аутентификация пользователя ---
+#[tauri::command]
+async fn login(username: String, password: String) -> Result<String, AppError> {
+    info!("[COMMAND] Попытка входа пользователя: {}", username);
+
+    // Создаем структуру с учетными данными
+    let credentials = api_client::LoginCredentials {
+        username: &username,
+        password: &password,
+    };
+
+    // Вызываем нашу новую функцию из api_client и возвращаем результат
+    api_client::login(&credentials).await.map_err(AppError::from)
+}
+
+// --- НОВАЯ КОМАНДА: Создание гостя ---
+#[tauri::command]
+async fn create_guest(token: String, guest_data: api_client::GuestPayload) -> Result<api_client::Guest, AppError> {
+    info!("[COMMAND] Запрос на создание нового гостя...");
+    api_client::create_guest(&token, &guest_data).await.map_err(AppError::from)
+}
 
 fn main() {
     let context = Arc::new(Mutex::new(Context::establish(Scope::User)
@@ -233,10 +249,15 @@ fn main() {
             .build())
         .manage(AppState { context: Arc::clone(&context) })
         .invoke_handler(tauri::generate_handler![
+            // Существующие команды
             list_readers,
             read_mifare_block,
             write_mifare_block,
-            change_sector_keys // <-- Новая команда зарегистрирована здесь
+            change_sector_keys,
+            // <-- Новая команда зарегистрирована здесь
+            get_guests,
+            login,
+            create_guest
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
