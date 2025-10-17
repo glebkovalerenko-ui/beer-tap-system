@@ -25,8 +25,7 @@ def get_guests(db: Session, skip: int = 0, limit: int = 100):
 # --- CREATE операция ---
 def create_guest(db: Session, guest: schemas.GuestCreate):
     """Создать нового гостя."""
-    db_guest = models.Guest(**guest.model_dump())
-    # ... (остальной код create_guest без изменений)
+    # ... (старый код create_guest без изменений)
     db_guest_by_doc = db.query(models.Guest).filter(models.Guest.id_document == guest.id_document).first()
     if db_guest_by_doc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
@@ -35,10 +34,51 @@ def create_guest(db: Session, guest: schemas.GuestCreate):
     if db_guest_by_phone:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
                             detail="Guest with this phone number already registered")
+    
+    db_guest = models.Guest(**guest.model_dump())
     db.add(db_guest)
     db.commit()
     db.refresh(db_guest)
     return db_guest
+
+# +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+# --- UPDATE операция ---
+def update_guest(db: Session, guest_id: uuid.UUID, guest_update: schemas.GuestUpdate) -> Optional[models.Guest]:
+    """
+    Обновляет данные существующего гостя.
+    
+    Args:
+        db (Session): Сессия базы данных.
+        guest_id (uuid.UUID): ID гостя для обновления.
+        guest_update (schemas.GuestUpdate): Схема с данными для обновления.
+        
+    Returns:
+        Optional[models.Guest]: Обновленный объект гостя или None, если гость не найден.
+    """
+    # 1. Получаем существующего гостя из БД. Используем уже созданную функцию.
+    db_guest = get_guest(db, guest_id=guest_id)
+    
+    if not db_guest:
+        # Если гость не найден, возвращаем None. Контроллер API обработает это как 404.
+        return None
+
+    # 2. Получаем данные из Pydantic-модели в виде словаря.
+    # exclude_unset=True гарантирует, что мы получим только те поля,
+    # которые были явно переданы в запросе, игнорируя поля со значением по умолчанию (None).
+    update_data = guest_update.model_dump(exclude_unset=True)
+
+    # 3. Итерируемся по словарю с данными и обновляем атрибуты модели SQLAlchemy.
+    for key, value in update_data.items():
+        setattr(db_guest, key, value)
+
+    # 4. Сохраняем изменения в базе данных.
+    db.commit()
+    # 5. Обновляем объект из базы данных, чтобы получить актуальные данные (например, `updated_at`).
+    db.refresh(db_guest)
+    
+    return db_guest
+# +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
 
 # --- УПРАВЛЕНИЕ КАРТАМИ ГОСТЯ ---
 
@@ -54,6 +94,7 @@ def assign_card_to_guest(db: Session, guest_id: uuid.UUID, uid: str):
 
     if db_card.guest_id is not None:
         if db_card.guest_id == guest_id:
+            # Карта уже привязана к этому гостю, ничего не делаем.
             return db_guest
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is already assigned to another guest")
             

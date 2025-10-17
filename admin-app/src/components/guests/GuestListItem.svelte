@@ -6,6 +6,10 @@
   // Получаем одного гостя как prop
   export let guest;
 
+  // +++ ИЗМЕНЕНИЕ: Добавляем пропс для отслеживания выбранного элемента +++
+  // Это нужно, чтобы правильно применять стили, когда кнопка внутри li
+  export let isSelected = false;
+
   // Создаем диспетчер для отправки событий родителю
   const dispatch = createEventDispatcher();
 
@@ -15,29 +19,73 @@
   }
 </script>
 
-<li class="guest-item" on:click={selectGuest}>
-  <div class="guest-info">
-    <!-- ИЗМЕНЕНИЕ: Добавляем индикатор статуса -->
-    <span class="status-indicator" class:active={guest.is_active} title={guest.is_active ? 'Active' : 'Inactive'}></span>
-    <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
-  </div>
-  <span>Balance: {(Number(guest.balance) || 0).toFixed(2)}</span>
+<!-- 
+  Элемент <li> теперь отвечает только за структуру списка. 
+  Мы убрали с него обработчик on:click.
+-->
+<li class:selected={isSelected}>
+  <!-- 
+    +++ НАЧАЛО ИЗМЕНЕНИЙ: Вся интерактивность перенесена на <button> +++
+    Это решает все проблемы доступности (a11y).
+    Кнопка является "фокусируемым" элементом по умолчанию.
+  -->
+  <button type="button" on:click={selectGuest} class="guest-item-button">
+    <div class="guest-info">
+      <span class="status-indicator" class:active={guest.is_active} title={guest.is_active ? 'Active' : 'Inactive'}></span>
+      <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
+    </div>
+    <span>Balance: {(Number(guest.balance) || 0).toFixed(2)}</span>
+  </button>
+  <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
 </li>
 
 <style>
-  .guest-item {
+  li {
+    /* Убираем все стили с li, он теперь просто контейнер */
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* +++ НАЧАЛО ИЗМЕНЕНИЙ: Новые стили для кнопки +++ */
+  .guest-item-button {
+    /* Сбрасываем стандартные стили кнопки, чтобы она не выглядела как кнопка */
+    background: none;
+    color: inherit;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+    outline: inherit;
+    
+    /* Применяем стили, которые раньше были у .guest-item */
+    width: 100%;
     display: flex;
     justify-content: space-between;
-    align-items: center; /* Добавлено для выравнивания по центру */
+    align-items: center;
     padding: 0.75rem;
     border-bottom: 1px solid #eee;
-    cursor: pointer;
     transition: background-color 0.2s;
   }
-  .guest-item:hover {
+
+  .guest-item-button:hover {
     background-color: #f0f8ff;
   }
-  /* ИЗМЕНЕНИЕ: Стили для индикатора и информации о госте */
+
+  /* Для выбранного элемента подсвечиваем фон через родительский li */
+  li.selected .guest-item-button {
+    background-color: #e6f3ff;
+  }
+  
+  /* Добавляем видимый контур фокуса для пользователей клавиатуры */
+  .guest-item-button:focus-visible {
+    outline: 2px solid #007bff;
+    outline-offset: -2px;
+    border-radius: 2px;
+  }
+  /* +++ КОНЕЦ ИЗМЕНЕНИЙ +++ */
+
   .guest-info {
     display: flex;
     align-items: center;

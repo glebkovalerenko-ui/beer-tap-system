@@ -16,7 +16,12 @@
 <div class="detail-container">
   <div class="detail-header">
     <h3>{`${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`}</h3>
-    <button class="close-btn" on:click={() => dispatch('close')} title="Close">×</button>
+    <div class="header-actions">
+      <button class="btn-edit" on:click={() => dispatch('edit')} title="Edit Guest">
+        Edit
+      </button>
+      <button class="close-btn" on:click={() => dispatch('close')} title="Close">×</button>
+    </div>
   </div>
 
   <div class="detail-body">
@@ -28,9 +33,15 @@
       </div>
       <div>
         <span class="label">Status</span>
-        <span class="value status" class:active={guest.is_active}>
+        <!-- +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем класс .inactive для неактивных гостей +++ -->
+        <span 
+          class="value status" 
+          class:active={guest.is_active} 
+          class:inactive={!guest.is_active}
+        >
           {guest.is_active ? 'Active' : 'Inactive'}
         </span>
+        <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
       </div>
     </div>
 
@@ -72,6 +83,9 @@
   .detail-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; margin-bottom: 1rem;}
   h3 { margin: 0; }
   h4 { margin-top: 0; margin-bottom: 0.5rem; border-bottom: 1px solid #f0f0f0; padding-bottom: 0.25rem; }
+  .header-actions { display: flex; align-items: center; gap: 0.5rem; }
+  .btn-edit { background-color: #f0f0f0; border: 1px solid #ccc; padding: 0.25rem 0.75rem; border-radius: 4px; cursor: pointer; }
+  .btn-edit:hover { background-color: #e0e0e0; }
   .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; }
   .close-btn:hover { color: #333; }
   .info-block { margin-bottom: 1.5rem; }
@@ -81,6 +95,7 @@
   .balance { font-size: 1.5rem; font-weight: bold; color: #2a9d8f; }
   .status { font-weight: bold; }
   .status.active { color: #2a9d8f; }
+  /* Теперь этот селектор используется и предупреждение исчезнет */
   .status.inactive { color: #e76f51; }
   ul { list-style-type: none; padding-left: 0; margin: 0; }
   li { background: #fafafa; padding: 0.25rem 0.5rem; border-radius: 3px; margin-bottom: 0.25rem; }

@@ -31,7 +31,6 @@ function createGuestStore() {
       }
     },
     
-    // НОВЫЙ МЕТОД для создания гостя
     createGuest: async (guestData) => {
       const token = get(sessionStore).token;
       if (!token) throw new Error("Not authenticated");
@@ -55,7 +54,33 @@ function createGuestStore() {
         throw error;
       }
     },
-    // Здесь в будущем будут методы addGuest, updateGuest и т.д.
+
+    // +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+    // НОВЫЙ МЕТОД для обновления гостя
+    updateGuest: async (guestId, guestData) => {
+      const token = get(sessionStore).token;
+      if (!token) throw new Error("Not authenticated");
+
+      update(s => ({ ...s, loading: true, error: null }));
+      try {
+        // Вызываем новую Rust-команду для обновления
+        const updatedGuest = await invoke('update_guest', { token, guestId, guestData });
+
+        // Оптимистичное обновление: находим гостя в списке и заменяем его
+        // на обновленную версию с сервера.
+        update(s => {
+          const updatedGuests = s.guests.map(g => 
+            g.guest_id === guestId ? updatedGuest : g
+          );
+          return { ...s, guests: updatedGuests, loading: false };
+        });
+
+      } catch (error) {
+        update(s => ({ ...s, loading: false, error: error.message || error }));
+        throw error;
+      }
+    },
+    // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
   };
 }
 

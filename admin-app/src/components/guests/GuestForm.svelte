@@ -11,6 +11,7 @@
   const dispatch = createEventDispatcher();
 
   // Инициализируем formData со всеми полями, которые ожидает `schemas.GuestCreate`
+  // Эта логика уже отлично работает и для создания, и для редактирования.
   let formData = {
     last_name: guest?.last_name || '',
     first_name: guest?.first_name || '',
@@ -22,12 +23,14 @@
 
   function handleSubmit() {
     // Отправляем событие 'save' с данными формы родителю
+    // Родитель решит, создавать нового гостя или обновлять существующего.
     dispatch('save', formData);
   }
 </script>
 
 <form on:submit|preventDefault={handleSubmit}>
-  <h3>{guest ? 'Edit Guest' : 'Create New Guest'}</h3>
+  <!-- +++ ИЗМЕНЕНИЕ: Заголовок теперь динамический +++ -->
+  <h3>{guest ? 'Edit Guest Information' : 'Create New Guest'}</h3>
   
   <!-- Раздел с персональными данными -->
   <fieldset>
@@ -69,7 +72,12 @@
   <div class="form-actions">
     <button type="button" class="btn-secondary" on:click={() => dispatch('cancel')} disabled={isSaving}>Cancel</button>
     <button type="submit" class="btn-primary" disabled={isSaving}>
-      {#if isSaving}Saving...{:else}Save Guest{/if}
+      {#if isSaving}
+        Saving...
+      {:else}
+        <!-- +++ ИЗМЕНЕНИЕ: Текст кнопки теперь тоже динамический +++ -->
+        {guest ? 'Save Changes' : 'Create Guest'}
+      {/if}
     </button>
   </div>
 </form>

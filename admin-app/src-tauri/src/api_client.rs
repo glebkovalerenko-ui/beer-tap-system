@@ -69,6 +69,28 @@ pub struct GuestPayload {
     pub id_document: String,
 }
 
+// +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+// Новая структура, соответствующая `schemas.GuestUpdate`
+// Все поля опциональны, т.к. мы отправляем только то, что изменилось.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GuestUpdatePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patronymic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_of_birth: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_document: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_active: Option<bool>,
+}
+// +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
 #[derive(Serialize)]
 pub struct LoginCredentials<'a> {
     pub username: &'a str,
@@ -126,3 +148,16 @@ pub async fn create_guest(token: &str, guest_data: &GuestPayload) -> Result<Gues
         Err(handle_api_error(response).await)
     }
 }
+
+// +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+// Новая функция для обновления гостя
+pub async fn update_guest(token: &str, guest_id: &str, guest_data: &GuestUpdatePayload) -> Result<Guest, String> {
+    let url = format!("{}/guests/{}", API_BASE_URL, guest_id);
+    let response = CLIENT.put(&url).bearer_auth(token).json(guest_data).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Guest>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+// +++ КОНЕЦ ИЗМЕНЕНИЙ +++

@@ -136,6 +136,21 @@ class GuestBase(BaseModel):
 class GuestCreate(GuestBase):
     pass
 
+# +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+class GuestUpdate(BaseModel):
+    """
+    Схема для обновления данных гостя. Все поля опциональны,
+    чтобы клиент мог отправлять только измененные данные.
+    """
+    last_name: Optional[str] = Field(default=None, json_schema_extra={'example': "Петров"})
+    first_name: Optional[str] = Field(default=None, json_schema_extra={'example': "Петр"})
+    patronymic: Optional[str] = Field(default=None, json_schema_extra={'example': "Петрович"})
+    phone_number: Optional[str] = Field(default=None, json_schema_extra={'example': "+79217654321"})
+    date_of_birth: Optional[date] = Field(default=None, json_schema_extra={'example': "1991-02-16"})
+    id_document: Optional[str] = Field(default=None, json_schema_extra={'example': "4511 654321"})
+    is_active: Optional[bool] = Field(default=None, json_schema_extra={'example': False})
+# +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
 class Guest(GuestBase):
     guest_id: uuid.UUID
     balance: Decimal

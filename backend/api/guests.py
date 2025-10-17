@@ -40,6 +40,21 @@ def read_guest(guest_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guest not found")
     return db_guest
 
+# +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+@router.put("/{guest_id}", response_model=schemas.Guest, summary="Обновить данные гостя")
+def update_guest(guest_id: uuid.UUID, guest_update: schemas.GuestUpdate, db: Session = Depends(get_db)):
+    """
+    Обновляет информацию о существующем госте.
+
+    Позволяет частично обновлять данные: можно передать только те поля,
+    которые необходимо изменить.
+    """
+    updated_guest = guest_crud.update_guest(db=db, guest_id=guest_id, guest_update=guest_update)
+    if updated_guest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guest not found")
+    return updated_guest
+# +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
 @router.post("/{guest_id}/cards", response_model=schemas.Guest, summary="Привязать карту к гостю")
 def assign_card_to_guest(guest_id: uuid.UUID, card_assign: schemas.CardAssign, db: Session = Depends(get_db)):
     """

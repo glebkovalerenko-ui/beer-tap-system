@@ -40,15 +40,13 @@ struct CardStatusPayload {
     error: Option<String>,
 }
 
-// Внутренняя функция для получения списка ридеров.
+// ... (внутренние функции NFC без изменений) ...
 fn list_readers_internal(context_arc: &Arc<Mutex<Context>>) -> Result<Vec<String>, Error> {
     let context = context_arc.lock().unwrap();
     let mut readers_buf = [0; 2048];
     let reader_names = context.list_readers(&mut readers_buf)?;
     Ok(reader_names.map(|name| name.to_string_lossy().into_owned()).collect())
 }
-
-// Внутренняя функция для получения UID.
 fn get_card_uid_internal(context_arc: &Arc<Mutex<Context>>, reader_name: &str) -> Result<Vec<u8>, Error> {
     let context = context_arc.lock().unwrap();
     let c_reader_name = CString::new(reader_name).unwrap();
@@ -61,8 +59,6 @@ fn get_card_uid_internal(context_arc: &Arc<Mutex<Context>>, reader_name: &str) -
     }
     Ok(rapdu[..rapdu.len()-2].to_vec())
 }
-
-// Вспомогательная функция для подключения и аутентификации.
 fn connect_and_authenticate(
     context_arc: &Arc<Mutex<Context>>,
     reader_name: &str,
@@ -234,6 +230,15 @@ async fn create_guest(token: String, guest_data: api_client::GuestPayload) -> Re
     api_client::create_guest(&token, &guest_data).await.map_err(AppError::from)
 }
 
+// +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+// --- НОВАЯ КОМАНДА: Обновление гостя ---
+#[tauri::command]
+async fn update_guest(token: String, guest_id: String, guest_data: api_client::GuestUpdatePayload) -> Result<api_client::Guest, AppError> {
+    info!("[COMMAND] Запрос на обновление гостя ID: {}", guest_id);
+    api_client::update_guest(&token, &guest_id, &guest_data).await.map_err(AppError::from)
+}
+// +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
 fn main() {
     let context = Arc::new(Mutex::new(Context::establish(Scope::User)
         .expect("Не удалось установить PC/SC контекст...")));
@@ -254,10 +259,13 @@ fn main() {
             read_mifare_block,
             write_mifare_block,
             change_sector_keys,
-            // <-- Новая команда зарегистрирована здесь
+            // API команды
             get_guests,
             login,
-            create_guest
+            create_guest,
+            // +++ НАЧАЛО ИЗМЕНЕНИЙ +++
+            update_guest // <-- Новая команда зарегистрирована здесь
+            // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

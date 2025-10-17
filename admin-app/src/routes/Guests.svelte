@@ -4,7 +4,6 @@
   import { onMount } from 'svelte';
   import { guestStore } from '../stores/guestStore.js';
 
-  // --- ИЗМЕНЕНИЕ: Импортируем компоненты для модального окна и формы ---
   import GuestSearch from '../components/guests/GuestSearch.svelte';
   import GuestList from '../components/guests/GuestList.svelte';
   import GuestDetail from '../components/guests/GuestDetail.svelte';
@@ -15,10 +14,13 @@
   let searchTerm = '';
   let selectedGuestId = null;
 
-  // --- ИЗМЕНЕНИЕ: Добавляем состояние для модального окна ---
+  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем состояние для режима редактирования +++
   let isModalOpen = false;
   let formError = '';
-  let formKey = 0;
+  // `guestToEdit` будет хранить данные гостя, когда мы открываем форму для редактирования.
+  // Если он `null`, форма работает в режиме создания.
+  let guestToEdit = null; 
+  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
 
   // --- Загрузка данных (без изменений) ---
   onMount(() => {
@@ -46,31 +48,45 @@
     selectedGuestId = null;
   }
 
-  // --- ИЗМЕНЕНИЕ: Новые обработчики для модального окна ---
+  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Обновляем логику работы с модальным окном +++
+
+  // Открывает модальное окно для СОЗДАНИЯ нового гостя
   function handleOpenCreateModal() {
-    formError = ''; // Сбрасываем старые ошибки при открытии
-    formKey += 1;
+    guestToEdit = null; // Убеждаемся, что мы в режиме создания
+    formError = '';
     isModalOpen = true;
   }
 
+  // Открывает модальное окно для РЕДАКТИРОВАНИЯ существующего гостя
+  function handleOpenEditModal() {
+    guestToEdit = selectedGuest; // Запоминаем, кого редактируем
+    formError = '';
+    isModalOpen = true;
+  }
+
+  // Универсальный обработчик сохранения (для создания и редактирования)
   async function handleSave(event) {
     formError = '';
     try {
-      // Вызываем метод из стора, передавая ему данные из события 'save'
-      await guestStore.createGuest(event.detail);
+      if (guestToEdit) {
+        // РЕЖИМ РЕДАКТИРОВАНИЯ
+        await guestStore.updateGuest(guestToEdit.guest_id, event.detail);
+      } else {
+        // РЕЖИМ СОЗДАНИЯ
+        await guestStore.createGuest(event.detail);
+      }
       isModalOpen = false; // Закрываем окно при успехе
+      guestToEdit = null; // Сбрасываем состояние редактирования
     } catch (error) {
-      // Используем тот же надежный паттерн:
-      // извлекаем поле `message` из объекта ошибки.
       formError = error.message || error.toString();
     }
   }
+  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
 
 </script>
 
 <div class="guests-page-layout">
   <div class="list-panel">
-    <!-- ИЗМЕНЕНИЕ: Добавляем обертку для заголовка и кнопки -->
     <div class="panel-header">
       <h2>Guests</h2>
       <button on:click={handleOpenCreateModal}>+ New Guest</button>
@@ -87,27 +103,31 @@
     {:else if $guestStore.error}
       <p class="error">Error: {$guestStore.error}</p>
     {:else}
-      <GuestList guests={filteredGuests} on:select={handleSelectGuest} />
+      <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
     {/if}
   </div>
 
   {#if selectedGuest}
     <div class="detail-panel">
-      <GuestDetail guest={selectedGuest} on:close={handleCloseDetail} />
+      <!-- +++ ИЗМЕНЕНИЕ: Слушаем новое событие 'edit' +++ -->
+      <GuestDetail 
+        guest={selectedGuest} 
+        on:close={handleCloseDetail}
+        on:edit={handleOpenEditModal}
+      />
     </div>
   {/if}
 </div>
 
-<!-- ИЗМЕНЕНИЕ: Добавляем логику модального окна в конец файла -->
 {#if isModalOpen}
-  <Modal on:close={() => isModalOpen = false}>
+  <Modal on:close={() => { isModalOpen = false; guestToEdit = null; }}>
+    <!-- +++ ИЗМЕНЕНИЕ: Передаем `guestToEdit` в форму +++ -->
     <GuestForm 
-      key={formKey}
+      guest={guestToEdit}
       on:save={handleSave} 
-      on:cancel={() => isModalOpen = false}
+      on:cancel={() => { isModalOpen = false; guestToEdit = null; }}
       isSaving={$guestStore.loading}
     />
-    <!-- Отображение ошибки, если она возникла при сохранении -->
     {#if formError}
       <p class="error" style="margin-top: 1rem;">{formError}</p>
     {/if}
@@ -124,8 +144,8 @@
   .list-panel {
     flex: 1;
     overflow-y: auto;
-    display: flex; /* Добавлено для лучшего контроля дочерних элементов */
-    flex-direction: column; /* Добавлено */
+    display: flex;
+    flex-direction: column;
   }
   .detail-panel {
     flex: 1;
@@ -135,14 +155,13 @@
   }
   .error { color: red; }
   
-  /* ИЗМЕНЕНИЕ: Новый стиль для заголовка панели */
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem; /* Добавляем отступ после заголовка */
+    margin-bottom: 1rem; 
   }
   .panel-header h2 {
-    margin: 0; /* Убираем стандартный отступ у заголовка */
+    margin: 0;
   }
 </style>
