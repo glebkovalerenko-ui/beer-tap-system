@@ -24,8 +24,6 @@ function createGuestStore() {
         const guests = await invoke('get_guests', { token });
         set({ guests, loading: false, error: null });
       } catch (error) {
-        // Проверяем, есть ли у ошибки поле `message`, и сохраняем его.
-        // Если нет, сохраняем ошибку как есть (на всякий случай).
         const errorMessage = error.message || error.toString();
         set({ guests: [], loading: false, error: errorMessage });
       }
@@ -37,10 +35,8 @@ function createGuestStore() {
       
       update(s => ({ ...s, loading: true, error: null }));
       try {
-        // Вызываем нашу новую Rust-команду
         const newGuest = await invoke('create_guest', { token, guestData });
         
-        // Оптимистичное обновление: добавляем нового гостя в список без refetch
         update(s => ({
           ...s,
           guests: [...s.guests, newGuest].sort((a, b) => a.last_name.localeCompare(b.last_name)),
@@ -48,26 +44,19 @@ function createGuestStore() {
         }));
 
       } catch (error) {
-        // В случае ошибки, обновляем состояние
         update(s => ({ ...s, loading: false, error: error.message || error }));
-        // Пробрасываем ошибку дальше, чтобы компонент формы мог ее обработать
         throw error;
       }
     },
 
-    // +++ НАЧАЛО ИЗМЕНЕНИЙ +++
-    // НОВЫЙ МЕТОД для обновления гостя
     updateGuest: async (guestId, guestData) => {
       const token = get(sessionStore).token;
       if (!token) throw new Error("Not authenticated");
 
       update(s => ({ ...s, loading: true, error: null }));
       try {
-        // Вызываем новую Rust-команду для обновления
         const updatedGuest = await invoke('update_guest', { token, guestId, guestData });
 
-        // Оптимистичное обновление: находим гостя в списке и заменяем его
-        // на обновленную версию с сервера.
         update(s => {
           const updatedGuests = s.guests.map(g => 
             g.guest_id === guestId ? updatedGuest : g
@@ -77,6 +66,39 @@ function createGuestStore() {
 
       } catch (error) {
         update(s => ({ ...s, loading: false, error: error.message || error }));
+        throw error;
+      }
+    },
+    
+    // +++ НАЧАЛО ИЗМЕНЕНИЙ: НОВЫЙ МЕТОД для привязки карты +++
+    bindCardToGuest: async (guestId, cardUid) => {
+      const token = get(sessionStore).token;
+      if (!token) throw new Error("Not authenticated");
+
+      // КОММЕНТАРИЙ: Мы не устанавливаем loading=true здесь, так как
+      // основная "загрузка" - это ожидание карты, что обрабатывается в NFCModal.
+      // API-запрос должен быть очень быстрым.
+      update(s => ({ ...s, error: null }));
+      try {
+        // Вызываем новую Tauri-команду, которую мы создадим в Rust.
+        const updatedGuest = await invoke('bind_card_to_guest', { 
+          token, 
+          guestId, 
+          cardUid 
+        });
+
+        // Используем наш стандартный паттерн "оптимистичного" обновления.
+        // Бэкенд возвращает обновленного гостя, и мы заменяем его в сторе.
+        update(s => {
+          const updatedGuests = s.guests.map(g =>
+            g.guest_id === guestId ? updatedGuest : g
+          );
+          return { ...s, guests: updatedGuests };
+        });
+
+      } catch (error) {
+        update(s => ({ ...s, error: error.message || error }));
+        // Пробрасываем ошибку дальше, чтобы UI мог ее показать.
         throw error;
       }
     },

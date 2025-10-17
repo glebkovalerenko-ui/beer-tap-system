@@ -9,18 +9,19 @@
   import GuestDetail from '../components/guests/GuestDetail.svelte';
   import Modal from '../components/common/Modal.svelte';
   import GuestForm from '../components/guests/GuestForm.svelte';
+  
+  import NFCModal from '../components/modals/NFCModal.svelte';
 
   // --- Управление состоянием ---
   let searchTerm = '';
   let selectedGuestId = null;
 
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем состояние для режима редактирования +++
   let isModalOpen = false;
   let formError = '';
-  // `guestToEdit` будет хранить данные гостя, когда мы открываем форму для редактирования.
-  // Если он `null`, форма работает в режиме создания.
   let guestToEdit = null; 
-  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
+  let isNFCModalOpen = false;
+  let nfcError = '';
 
   // --- Загрузка данных (без изменений) ---
   onMount(() => {
@@ -39,7 +40,7 @@
     ? $guestStore.guests.find(g => g.guest_id === selectedGuestId) 
     : null;
 
-  // --- Обработчики событий ---
+  // --- Обработчики событий (без изменений в существующих) ---
   function handleSelectGuest(event) {
     selectedGuestId = event.detail.guestId;
   }
@@ -48,37 +49,66 @@
     selectedGuestId = null;
   }
 
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Обновляем логику работы с модальным окном +++
-
-  // Открывает модальное окно для СОЗДАНИЯ нового гостя
   function handleOpenCreateModal() {
-    guestToEdit = null; // Убеждаемся, что мы в режиме создания
+    guestToEdit = null; 
     formError = '';
     isModalOpen = true;
   }
 
-  // Открывает модальное окно для РЕДАКТИРОВАНИЯ существующего гостя
   function handleOpenEditModal() {
-    guestToEdit = selectedGuest; // Запоминаем, кого редактируем
+    guestToEdit = selectedGuest;
     formError = '';
     isModalOpen = true;
   }
 
-  // Универсальный обработчик сохранения (для создания и редактирования)
   async function handleSave(event) {
     formError = '';
     try {
       if (guestToEdit) {
-        // РЕЖИМ РЕДАКТИРОВАНИЯ
         await guestStore.updateGuest(guestToEdit.guest_id, event.detail);
       } else {
-        // РЕЖИМ СОЗДАНИЯ
         await guestStore.createGuest(event.detail);
       }
-      isModalOpen = false; // Закрываем окно при успехе
-      guestToEdit = null; // Сбрасываем состояние редактирования
+      isModalOpen = false;
+      guestToEdit = null;
     } catch (error) {
       formError = error.message || error.toString();
+    }
+  }
+
+  // --- Обработчики NFC ---
+  
+  function handleBindCard() {
+    if (!selectedGuest) {
+      alert("Please select a guest first.");
+      return;
+    }
+    nfcError = ''; 
+    isNFCModalOpen = true;
+  }
+
+  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Убираем alert и передаем ошибку в дочерний компонент +++
+  async function handleUidRead(event) {
+    const uid = event.detail.uid;
+    console.log(`✅ UID ${uid} получен. Привязываем к гостю ID: ${selectedGuestId}`);
+    
+    // Сбрасываем ошибку перед новой попыткой
+    nfcError = ''; 
+    try {
+      await guestStore.bindCardToGuest(selectedGuestId, uid);
+      // При успехе модальное окно закроется само по таймеру.
+    } catch (error) {
+      // В случае ошибки от бэкенда...
+      const errorMessage = error.message || error.toString();
+      console.error('Ошибка привязки карты:', errorMessage);
+      
+      // ...передаем текст ошибки в дочерний компонент NFCModal.
+      nfcError = errorMessage;
+
+      // Убираем alert(), так как теперь ошибку покажет NFCModal.
+      // alert(`Failed to bind card: ${nfcError}`);
+
+      // Не закрываем модальное окно, чтобы пользователь увидел ошибку.
     }
   }
   // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
@@ -94,9 +124,11 @@
     
     <GuestSearch bind:searchTerm />
     
-    <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
-      {#if $guestStore.loading && $guestStore.guests.length === 0}Refreshing...{:else}Refresh List{/if}
-    </button>
+    <div class="button-group">
+      <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
+        {#if $guestStore.loading && $guestStore.guests.length === 0}Refreshing...{:else}Refresh List{/if}
+      </button>
+    </div>
 
     {#if $guestStore.loading && $guestStore.guests.length === 0}
       <p>Loading guests...</p>
@@ -109,11 +141,11 @@
 
   {#if selectedGuest}
     <div class="detail-panel">
-      <!-- +++ ИЗМЕНЕНИЕ: Слушаем новое событие 'edit' +++ -->
       <GuestDetail 
         guest={selectedGuest} 
         on:close={handleCloseDetail}
         on:edit={handleOpenEditModal}
+        on:bind-card={handleBindCard}
       />
     </div>
   {/if}
@@ -121,7 +153,6 @@
 
 {#if isModalOpen}
   <Modal on:close={() => { isModalOpen = false; guestToEdit = null; }}>
-    <!-- +++ ИЗМЕНЕНИЕ: Передаем `guestToEdit` в форму +++ -->
     <GuestForm 
       guest={guestToEdit}
       on:save={handleSave} 
@@ -133,6 +164,16 @@
     {/if}
   </Modal>
 {/if}
+
+<!-- +++ НАЧАЛО ИЗМЕНЕНИЙ: Передаем ошибку в NFCModal через prop +++ -->
+{#if isNFCModalOpen}
+  <NFCModal 
+    on:close={() => { isNFCModalOpen = false; }}
+    on:uid-read={handleUidRead}
+    externalError={nfcError}
+  />
+{/if}
+<!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
 
 
 <style>
@@ -163,5 +204,11 @@
   }
   .panel-header h2 {
     margin: 0;
+  }
+  
+  .button-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
   }
 </style>

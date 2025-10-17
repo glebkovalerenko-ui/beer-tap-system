@@ -33,7 +33,6 @@
       </div>
       <div>
         <span class="label">Status</span>
-        <!-- +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем класс .inactive для неактивных гостей +++ -->
         <span 
           class="value status" 
           class:active={guest.is_active} 
@@ -41,7 +40,6 @@
         >
           {guest.is_active ? 'Active' : 'Inactive'}
         </span>
-        <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
       </div>
     </div>
 
@@ -55,11 +53,29 @@
 
     <!-- Блок с привязанными картами -->
     <div class="info-block">
-      <h4>Assigned Cards ({guest.cards.length})</h4>
+      <!-- +++ НАЧАЛО ИЗМЕНЕНИЙ: Улучшаем заголовок и добавляем кнопку привязки +++ -->
+      <div class="cards-header">
+        <h4>Assigned Cards ({guest.cards.length})</h4>
+        <!-- КОММЕНТАРИЙ: Кнопка "Привязать карту" появляется, только если у гостя еще нет карт.
+             Это хорошая практика UX, чтобы не предлагать пользователю уже выполненное действие.
+             По клику она генерирует новое событие 'bind-card'. -->
+        {#if guest.cards.length === 0}
+          <button class="btn-action" on:click={() => dispatch('bind-card')}>+ Bind Card</button>
+        {/if}
+      </div>
+      <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
       {#if guest.cards.length > 0}
-        <ul>
+        <ul class="card-list">
           {#each guest.cards as card (card.card_uid)}
-            <li><strong>UID:</strong> {card.card_uid} ({card.status})</li>
+            <!-- +++ ИЗМЕНЕНИЕ: Улучшаем отображение карты, добавляя иконку и статус +++ -->
+            <li class:active={card.status === 'active'} class:inactive={card.status !== 'active'}>
+              <span class="card-icon">💳</span>
+              <div class="card-details">
+                <span class="card-uid">{card.card_uid}</span>
+                <span class="card-status">{card.status}</span>
+              </div>
+            </li>
+            <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
           {/each}
         </ul>
       {:else}
@@ -95,10 +111,50 @@
   .balance { font-size: 1.5rem; font-weight: bold; color: #2a9d8f; }
   .status { font-weight: bold; }
   .status.active { color: #2a9d8f; }
-  /* Теперь этот селектор используется и предупреждение исчезнет */
   .status.inactive { color: #e76f51; }
-  ul { list-style-type: none; padding-left: 0; margin: 0; }
-  li { background: #fafafa; padding: 0.25rem 0.5rem; border-radius: 3px; margin-bottom: 0.25rem; }
+  
+  /* +++ НАЧАЛО ИЗМЕНЕНИЙ: Новые стили для блока карт +++ */
+  .cards-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .btn-action {
+    background-color: #2a9d8f;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .btn-action:hover {
+    background-color: #268a7e;
+  }
+  .card-list { list-style-type: none; padding-left: 0; margin: 0; }
+  .card-list li { 
+    background: #fafafa; 
+    padding: 0.5rem; 
+    border-radius: 3px; 
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-left: 4px solid #ccc; /* Default border */
+  }
+  .card-list li.active {
+    border-left-color: #2a9d8f; /* Green for active */
+  }
+  .card-list li.inactive {
+    border-left-color: #e76f51; /* Red for inactive */
+    opacity: 0.7;
+  }
+  .card-icon { font-size: 1.5rem; }
+  .card-details { display: flex; flex-direction: column; }
+  .card-uid { font-family: monospace; font-weight: bold; }
+  .card-status { font-size: 0.8rem; text-transform: capitalize; color: #555; }
+  /* +++ КОНЕЦ ИЗМЕНЕНИЙ +++ */
+
   .system-info { font-size: 0.8rem; color: #888; }
   .uuid { font-family: monospace; }
 </style>
