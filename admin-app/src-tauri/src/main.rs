@@ -5,9 +5,11 @@
     windows_subsystem = "windows"
 )]
 
+// --- Модули ---
 mod api_client;
 mod nfc_handler; 
 
+// --- Зависимости ---
 use pcsc::{Context, Scope, Error};
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -17,28 +19,38 @@ use tauri::{State, Emitter};
 use tauri_plugin_log::{Target, TargetKind};
 use log::{info, error, debug};
 
-// ... (структуры AppState, AppError, CardStatusPayload без изменений) ...
+// =============================================================================
+// СТРУКТУРЫ УРОВНЯ ПРИЛОЖЕНИЯ
+// =============================================================================
+
+/// Структура для хранения общего PC/SC контекста, управляемого Tauri.
 struct AppState {
     context: Arc<Mutex<Context>>,
 }
 
+/// Единая структура для ошибок, возвращаемых на фронтенд.
 #[derive(Debug, Serialize, Clone)]
 pub struct AppError { 
     message: String,
 }
+// Преобразования из разных типов ошибок в нашу AppError
 impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: err.to_string() } } }
 impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: s } } }
 impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: s.to_string() } } }
 impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: err.to_string() } } }
 
+/// Структура для данных, передаваемых в событии `card-status-changed`.
 #[derive(Clone, serde::Serialize)]
 struct CardStatusPayload {
     uid: Option<String>,
     error: Option<String>,
 }
 
+// =============================================================================
+// TAURI-КОМАНДЫ (мост между Frontend и Rust)
+// =============================================================================
 
-// ... (все Tauri-команды остаются без изменений) ...
+// --- Команды для работы с NFC ---
 #[tauri::command]
 fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
     info!("[COMMAND] Запрос списка считывателей...");
@@ -55,7 +67,6 @@ fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex
     let mut rapdu_buf = [0; 256];
     let rapdu = card.transmit(read_apdu, &mut rapdu_buf)?;
     if rapdu.len() < 2 || rapdu[rapdu.len()-2..] != [0x90, 0x00] {
-        error!("< RAPDU (Read Block) Error: {}", hex::encode(rapdu));
         return Err(format!("Ошибка чтения блока: {:?}", hex::encode(rapdu)).into());
     }
     let data_hex = hex::encode(&rapdu[..rapdu.len()-2]);
@@ -74,7 +85,6 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
     let mut rapdu_buf = [0; 256];
     let rapdu = card.transmit(&write_apdu, &mut rapdu_buf)?;
     if rapdu != [0x90, 0x00] {
-        error!("< RAPDU (Write Block) Error: {}", hex::encode(rapdu));
         return Err(format!("Ошибка записи в блок: {:?}", hex::encode(rapdu)).into());
     }
     info!("[COMMAND] Блок {} успешно записан.", block_addr);
@@ -82,15 +92,7 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
 }
 
 #[tauri::command]
-fn change_sector_keys(
-    reader_name: &str,
-    sector: u8,
-    key_type: &str,
-    current_key_hex: &str,
-    new_key_a: &str,
-    new_key_b: &str,
-    state: State<AppState>,
-) -> Result<(), AppError> {
+fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_key_hex: &str, new_key_a: &str, new_key_b: &str, state: State<AppState>) -> Result<(), AppError> {
     info!("[COMMAND] Запрос на смену ключей для сектора {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, trailer_block_addr, key_type, current_key_hex)?;
@@ -109,27 +111,24 @@ fn change_sector_keys(
     let mut rapdu_buf = [0; 256];
     let rapdu = card.transmit(&write_apdu, &mut rapdu_buf)?;
     if rapdu != [0x90, 0x00] {
-        error!("Ошибка записи в секторный трейлер {}: {}", sector, hex::encode(rapdu));
-        return Err("Не удалось записать новый трейлер. Права доступа карты могут не позволять эту операцию с выбранным ключом.".into());
+        return Err("Не удалось записать новый трейлер.".into());
     }
     info!("Секторный трейлер для сектора {} успешно обновлен.", sector);
     Ok(())
+}
+
+// --- Команды для работы с API ---
+#[tauri::command]
+async fn login(username: String, password: String) -> Result<String, AppError> {
+    info!("[COMMAND] Попытка входа пользователя: {}", username);
+    let credentials = api_client::LoginCredentials { username: &username, password: &password };
+    api_client::login(&credentials).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn get_guests(token: String) -> Result<Vec<api_client::Guest>, AppError> {
     info!("[COMMAND] Запрос списка гостей с API...");
     api_client::get_guests(&token).await.map_err(AppError::from)
-}
-
-#[tauri::command]
-async fn login(username: String, password: String) -> Result<String, AppError> {
-    info!("[COMMAND] Попытка входа пользователя: {}", username);
-    let credentials = api_client::LoginCredentials {
-        username: &username,
-        password: &password,
-    };
-    api_client::login(&credentials).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -150,24 +149,32 @@ async fn bind_card_to_guest(token: String, guest_id: String, card_uid: String) -
     api_client::bind_card_to_guest(&token, &guest_id, &card_uid).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn top_up_balance(token: String, guest_id: String, top_up_data: api_client::TopUpPayload) -> Result<api_client::Guest, AppError> {
+    info!("[COMMAND] Запрос на пополнение баланса для гостя ID: {}", guest_id);
+    api_client::top_up_balance(&token, &guest_id, &top_up_data).await.map_err(AppError::from)
+}
+
+
+// =============================================================================
+// ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
+// =============================================================================
 
 fn main() {
-    // +++ НАЧАЛО ИЗМЕНЕНИЙ: Установка глобального обработчика паники +++
-    // КОММЕНТАРИЙ: Этот блок перехватывает любую панику в любом потоке.
-    // Вместо аварийного завершения приложения, он логирует критическую ошибку.
-    // Это делает приложение чрезвычайно устойчивым к сбоям в низкоуровневых библиотеках.
+    // Лучшая практика: Установка глобального обработчика паники.
+    // Этот блок перехватывает любую панику (например, от pcsc), логирует ее
+    // как критическую ошибку, но не дает приложению аварийно завершиться.
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        // Логируем панику как критическую ошибку.
         error!("!!! THREAD PANICKED !!!: {}", panic_info);
-        // Вызываем стандартный обработчик, чтобы он вывел информацию в stderr, как обычно.
         default_panic_hook(panic_info);
     }));
-    // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
 
+    // Инициализация PC/SC контекста
     let context = Arc::new(Mutex::new(Context::establish(Scope::User)
         .expect("Не удалось установить PC/SC контекст...")));
 
+    // Сборка и запуск Tauri приложения
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
             .targets([
@@ -179,18 +186,21 @@ fn main() {
             .build())
         .manage(AppState { context: Arc::clone(&context) })
         .invoke_handler(tauri::generate_handler![
+            // NFC
             list_readers,
             read_mifare_block,
             write_mifare_block,
             change_sector_keys,
-            get_guests,
+            // API
             login,
+            get_guests,
             create_guest,
             update_guest,
-            bind_card_to_guest
+            bind_card_to_guest,
+            top_up_balance
         ])
         .setup(move |app| {
-            // (Фоновый поток остается без изменений)
+            // Запуск фонового потока для мониторинга NFC-карт
             let app_handle = app.handle().clone();
             let context_clone = Arc::clone(&context);
             
@@ -230,7 +240,9 @@ fn main() {
                             }
                         },
                         Err(err) => {
+                            // Устойчивая обработка ошибок
                             match err {
+                                // Штатные ситуации, когда карты нет
                                 Error::NoSmartcard | Error::RemovedCard | Error::ReaderUnavailable => {
                                     if last_uid.is_some() {
                                         info!("Карта убрана или ридер недоступен");
@@ -238,9 +250,11 @@ fn main() {
                                         app_handle.emit("card-status-changed", CardStatusPayload { uid: None, error: None }).unwrap();
                                     }
                                 },
+                                // Состояние гонки, игнорируем
                                 Error::SharingViolation => {
-                                     debug!("Возникло нарушение общего доступа (SharingViolation), скорее всего, карта была убрана в момент опроса. Игнорируем.");
+                                     debug!("Возникло нарушение общего доступа (SharingViolation), игнорируем.");
                                 },
+                                // Действительно неожиданные ошибки
                                 _ => {
                                     if last_uid.is_some() {
                                         last_uid = None;

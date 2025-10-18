@@ -12,10 +12,14 @@ function createGuestStore() {
 
   return {
     subscribe,
+    // +++ НАЧАЛО ИЗМЕНЕНИЙ: Возвращаем полную и правильную реализацию fetchGuests +++
     fetchGuests: async () => {
       const token = get(sessionStore).token;
       if (!token) {
-        set({ guests: [], loading: false, error: 'Not authenticated' });
+        // Если токена нет, это не ошибка, просто мы еще не готовы.
+        // Устанавливаем пустой массив, чтобы избежать ошибок в UI.
+        set({ guests: [], loading: false, error: null });
+        console.warn("fetchGuests called without a token. Aborting.");
         return;
       }
       
@@ -28,6 +32,7 @@ function createGuestStore() {
         set({ guests: [], loading: false, error: errorMessage });
       }
     },
+    // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
     
     createGuest: async (guestData) => {
       const token = get(sessionStore).token;
@@ -36,13 +41,11 @@ function createGuestStore() {
       update(s => ({ ...s, loading: true, error: null }));
       try {
         const newGuest = await invoke('create_guest', { token, guestData });
-        
         update(s => ({
           ...s,
           guests: [...s.guests, newGuest].sort((a, b) => a.last_name.localeCompare(b.last_name)),
           loading: false,
         }));
-
       } catch (error) {
         update(s => ({ ...s, loading: false, error: error.message || error }));
         throw error;
@@ -56,53 +59,49 @@ function createGuestStore() {
       update(s => ({ ...s, loading: true, error: null }));
       try {
         const updatedGuest = await invoke('update_guest', { token, guestId, guestData });
-
         update(s => {
-          const updatedGuests = s.guests.map(g => 
-            g.guest_id === guestId ? updatedGuest : g
-          );
+          const updatedGuests = s.guests.map(g => g.guest_id === guestId ? updatedGuest : g);
           return { ...s, guests: updatedGuests, loading: false };
         });
-
       } catch (error) {
         update(s => ({ ...s, loading: false, error: error.message || error }));
         throw error;
       }
     },
     
-    // +++ НАЧАЛО ИЗМЕНЕНИЙ: НОВЫЙ МЕТОД для привязки карты +++
     bindCardToGuest: async (guestId, cardUid) => {
       const token = get(sessionStore).token;
       if (!token) throw new Error("Not authenticated");
 
-      // КОММЕНТАРИЙ: Мы не устанавливаем loading=true здесь, так как
-      // основная "загрузка" - это ожидание карты, что обрабатывается в NFCModal.
-      // API-запрос должен быть очень быстрым.
       update(s => ({ ...s, error: null }));
       try {
-        // Вызываем новую Tauri-команду, которую мы создадим в Rust.
-        const updatedGuest = await invoke('bind_card_to_guest', { 
-          token, 
-          guestId, 
-          cardUid 
-        });
-
-        // Используем наш стандартный паттерн "оптимистичного" обновления.
-        // Бэкенд возвращает обновленного гостя, и мы заменяем его в сторе.
+        const updatedGuest = await invoke('bind_card_to_guest', { token, guestId, cardUid });
         update(s => {
-          const updatedGuests = s.guests.map(g =>
-            g.guest_id === guestId ? updatedGuest : g
-          );
+          const updatedGuests = s.guests.map(g => g.guest_id === guestId ? updatedGuest : g);
           return { ...s, guests: updatedGuests };
         });
-
       } catch (error) {
         update(s => ({ ...s, error: error.message || error }));
-        // Пробрасываем ошибку дальше, чтобы UI мог ее показать.
         throw error;
       }
     },
-    // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
+    topUpBalance: async (guestId, topUpData) => {
+      const token = get(sessionStore).token;
+      if (!token) throw new Error("Not authenticated");
+
+      update(s => ({ ...s, loading: true, error: null }));
+      try {
+        const updatedGuest = await invoke('top_up_balance', { token, guestId, topUpData });
+        update(s => {
+          const updatedGuests = s.guests.map(g => g.guest_id === guestId ? updatedGuest : g);
+          return { ...s, guests: updatedGuests, loading: false };
+        });
+      } catch (error) {
+        update(s => ({ ...s, loading: false, error: error.message || error }));
+        throw error;
+      }
+    },
   };
 }
 
