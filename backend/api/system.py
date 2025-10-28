@@ -9,7 +9,7 @@ from crud import system_crud
 from database import get_db
 
 router = APIRouter(
-    prefix="/api/system",
+    prefix="/system",
     tags=["System"]
 )
 

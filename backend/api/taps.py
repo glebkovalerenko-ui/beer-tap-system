@@ -8,7 +8,7 @@ from crud import tap_crud
 from database import get_db
 
 router = APIRouter(
-    prefix="/api/taps",
+    prefix="/taps",
     tags=["Taps"],
     dependencies=[Depends(security.get_current_user)]
 )

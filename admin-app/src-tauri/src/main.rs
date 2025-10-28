@@ -23,23 +23,19 @@ use log::{info, error, debug};
 // СТРУКТУРЫ УРОВНЯ ПРИЛОЖЕНИЯ
 // =============================================================================
 
-/// Структура для хранения общего PC/SC контекста, управляемого Tauri.
 struct AppState {
     context: Arc<Mutex<Context>>,
 }
 
-/// Единая структура для ошибок, возвращаемых на фронтенд.
 #[derive(Debug, Serialize, Clone)]
 pub struct AppError { 
     message: String,
 }
-// Преобразования из разных типов ошибок в нашу AppError
 impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: err.to_string() } } }
 impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: s } } }
 impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: s.to_string() } } }
 impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: err.to_string() } } }
 
-/// Структура для данных, передаваемых в событии `card-status-changed`.
 #[derive(Clone, serde::Serialize)]
 struct CardStatusPayload {
     uid: Option<String>,
@@ -53,6 +49,7 @@ struct CardStatusPayload {
 // --- Команды для работы с NFC ---
 #[tauri::command]
 fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос списка считывателей...");
     let readers_vec = nfc_handler::list_readers_internal(&state.context)?;
     info!("[COMMAND] Найдено считывателей: {}", readers_vec.len());
@@ -61,6 +58,7 @@ fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
 
 #[tauri::command]
 fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, state: State<AppState> ) -> Result<String, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на чтение блока {}", block_addr);
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
     let read_apdu = &[0xFF, 0xB0, 0x00, block_addr, 0x10];
@@ -76,6 +74,7 @@ fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex
 
 #[tauri::command]
 fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, data_hex: &str, state: State<AppState> ) -> Result<(), AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на запись в блок {}. Данные: {}", block_addr, data_hex);
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
     let data = hex::decode(data_hex)?;
@@ -93,6 +92,7 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
 
 #[tauri::command]
 fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_key_hex: &str, new_key_a: &str, new_key_b: &str, state: State<AppState>) -> Result<(), AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на смену ключей для сектора {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, trailer_block_addr, key_type, current_key_hex)?;
@@ -120,6 +120,7 @@ fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_ke
 // --- Команды для работы с API ---
 #[tauri::command]
 async fn login(username: String, password: String) -> Result<String, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Попытка входа пользователя: {}", username);
     let credentials = api_client::LoginCredentials { username: &username, password: &password };
     api_client::login(&credentials).await.map_err(AppError::from)
@@ -127,54 +128,119 @@ async fn login(username: String, password: String) -> Result<String, AppError> {
 
 #[tauri::command]
 async fn get_guests(token: String) -> Result<Vec<api_client::Guest>, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос списка гостей с API...");
     api_client::get_guests(&token).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn create_guest(token: String, guest_data: api_client::GuestPayload) -> Result<api_client::Guest, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на создание нового гостя...");
     api_client::create_guest(&token, &guest_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn update_guest(token: String, guest_id: String, guest_data: api_client::GuestUpdatePayload) -> Result<api_client::Guest, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на обновление гостя ID: {}", guest_id);
     api_client::update_guest(&token, &guest_id, &guest_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn bind_card_to_guest(token: String, guest_id: String, card_uid: String) -> Result<api_client::Guest, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на привязку карты UID: {} к гостю ID: {}", card_uid, guest_id);
     api_client::bind_card_to_guest(&token, &guest_id, &card_uid).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn top_up_balance(token: String, guest_id: String, top_up_data: api_client::TopUpPayload) -> Result<api_client::Guest, AppError> {
+    // ... (без изменений)
     info!("[COMMAND] Запрос на пополнение баланса для гостя ID: {}", guest_id);
     api_client::top_up_balance(&token, &guest_id, &top_up_data).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn get_kegs(token: String) -> Result<Vec<api_client::Keg>, AppError> {
+    // ... (без изменений)
+    info!("[COMMAND] Запрос списка кег с API...");
+    api_client::get_kegs(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn create_keg(token: String, keg_data: api_client::KegPayload) -> Result<api_client::Keg, AppError> {
+    // ... (без изменений)
+    info!("[COMMAND] Запрос на создание новой кеги...");
+    api_client::create_keg(&token, &keg_data).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn update_keg(token: String, keg_id: String, keg_data: api_client::KegUpdatePayload) -> Result<api_client::Keg, AppError> {
+    // ... (без изменений)
+    info!("[COMMAND] Запрос на обновление кеги ID: {}", keg_id);
+    api_client::update_keg(&token, &keg_id, &keg_data).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn delete_keg(token: String, keg_id: String) -> Result<(), AppError> {
+    // ... (без изменений)
+    info!("[COMMAND] Запрос на удаление кеги ID: {}", keg_id);
+    api_client::delete_keg(&token, &keg_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_taps(token: String) -> Result<Vec<api_client::Tap>, AppError> {
+    // ... (без изменений)
+    info!("[COMMAND] Запрос списка кранов с API...");
+    api_client::get_taps(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_beverages(token: String) -> Result<Vec<api_client::Beverage>, AppError> {
+    info!("[COMMAND] Запрос списка напитков с API...");
+    api_client::get_beverages(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn create_beverage(token: String, beverage_data: api_client::BeveragePayload) -> Result<api_client::Beverage, AppError> {
+    info!("[COMMAND] Запрос на создание нового напитка...");
+    api_client::create_beverage(&token, &beverage_data).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn assign_keg_to_tap(token: String, tap_id: i32, keg_id: String) -> Result<api_client::Tap, AppError> {
+    info!("[COMMAND] Запрос на назначение кеги ID: {} на кран ID: {}", keg_id, tap_id);
+    api_client::assign_keg_to_tap(&token, tap_id, &keg_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn unassign_keg_from_tap(token: String, tap_id: i32) -> Result<api_client::Tap, AppError> {
+    info!("[COMMAND] Запрос на снятие кеги с крана ID: {}", tap_id);
+    api_client::unassign_keg_from_tap(&token, tap_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn update_tap(token: String, tap_id: i32, payload: api_client::TapUpdatePayload) -> Result<api_client::Tap, AppError> {
+    info!("[COMMAND] Запрос на обновление крана ID: {}", tap_id);
+    api_client::update_tap(&token, tap_id, &payload).await.map_err(AppError::from)
+}
 
 // =============================================================================
 // ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
 // =============================================================================
 
 fn main() {
-    // Лучшая практика: Установка глобального обработчика паники.
-    // Этот блок перехватывает любую панику (например, от pcsc), логирует ее
-    // как критическую ошибку, но не дает приложению аварийно завершиться.
+    // ... (panic_hook и PC/SC context без изменений)
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         error!("!!! THREAD PANICKED !!!: {}", panic_info);
         default_panic_hook(panic_info);
     }));
 
-    // Инициализация PC/SC контекста
     let context = Arc::new(Mutex::new(Context::establish(Scope::User)
         .expect("Не удалось установить PC/SC контекст...")));
 
-    // Сборка и запуск Tauri приложения
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
             .targets([
@@ -185,22 +251,35 @@ fn main() {
             .level(log::LevelFilter::Debug)
             .build())
         .manage(AppState { context: Arc::clone(&context) })
+        // --- ИЗМЕНЕНИЕ: Добавлены новые команды в обработчик ---
         .invoke_handler(tauri::generate_handler![
             // NFC
             list_readers,
             read_mifare_block,
             write_mifare_block,
             change_sector_keys,
-            // API
+            // API - Guests
             login,
             get_guests,
             create_guest,
             update_guest,
             bind_card_to_guest,
-            top_up_balance
+            top_up_balance,
+            // API - Kegs & Taps
+            get_kegs,
+            create_keg,
+            update_keg,
+            delete_keg,
+            get_taps,
+            // API - Beverages
+            get_beverages,
+            create_beverage,
+            assign_keg_to_tap,
+            unassign_keg_from_tap,
+            update_tap
         ])
         .setup(move |app| {
-            // Запуск фонового потока для мониторинга NFC-карт
+            // ... (фоновый поток NFC без изменений)
             let app_handle = app.handle().clone();
             let context_clone = Arc::clone(&context);
             
@@ -240,9 +319,7 @@ fn main() {
                             }
                         },
                         Err(err) => {
-                            // Устойчивая обработка ошибок
                             match err {
-                                // Штатные ситуации, когда карты нет
                                 Error::NoSmartcard | Error::RemovedCard | Error::ReaderUnavailable => {
                                     if last_uid.is_some() {
                                         info!("Карта убрана или ридер недоступен");
@@ -250,11 +327,9 @@ fn main() {
                                         app_handle.emit("card-status-changed", CardStatusPayload { uid: None, error: None }).unwrap();
                                     }
                                 },
-                                // Состояние гонки, игнорируем
                                 Error::SharingViolation => {
                                      debug!("Возникло нарушение общего доступа (SharingViolation), игнорируем.");
                                 },
-                                // Действительно неожиданные ошибки
                                 _ => {
                                     if last_uid.is_some() {
                                         last_uid = None;

@@ -10,7 +10,7 @@ from crud import controller_crud
 from database import get_db
 
 router = APIRouter(
-    prefix="/api/controllers",
+    prefix="/controllers",
     tags=["Controllers"]
 )
 

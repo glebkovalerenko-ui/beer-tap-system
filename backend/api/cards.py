@@ -8,7 +8,7 @@ from database import get_db
 from crud import card_crud
 
 router = APIRouter(
-    prefix="/api/cards",
+    prefix="/cards",
     tags=["Cards"],
     dependencies=[Depends(security.get_current_user)]
 )

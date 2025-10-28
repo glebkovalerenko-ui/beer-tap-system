@@ -25,22 +25,18 @@
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
+  let initialLoadAttempted = false;
 
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Заменяем onMount на реактивную загрузку данных +++
-  // КОММЕНТАРИЙ: Этот реактивный блок (`$:`) автоматически выполняется каждый раз,
-  // когда значение `$sessionStore.token` или `$guestStore` изменяется.
-  // Это решает проблему "состояния гонки".
-  $: {
-    // Мы запускаем загрузку, только если:
-    // 1. Токен появился (мы аутентифицированы).
-    // 2. Список гостей все еще пуст.
-    // 3. Загрузка не идет прямо сейчас.
-    if ($sessionStore.token && $guestStore.guests.length === 0 && !$guestStore.loading) {
-      console.log("Токен доступен, запускаем загрузку гостей...");
-      guestStore.fetchGuests();
-    }
+ $: {
+  // Мы запускаем загрузку, только если:
+  // 1. Токен появился (мы аутентифицированы).
+  // 2. И мы еще НЕ ПЫТАЛИСЬ выполнить первоначальную загрузку.
+  if ($sessionStore.token && !initialLoadAttempted) {
+    console.log("Токен доступен, первая попытка загрузки гостей...");
+    guestStore.fetchGuests();
+    initialLoadAttempted = true; // <-- Устанавливаем флаг, что попытка была.
   }
-  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+}
 
   // --- Производные данные (без изменений) ---
   $: filteredGuests = $guestStore.guests.filter(guest => {

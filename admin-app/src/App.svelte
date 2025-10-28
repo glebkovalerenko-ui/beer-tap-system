@@ -9,13 +9,13 @@
   // Импортируем наши страницы
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
-  import Taps from './routes/Taps.svelte';
+  import TapsKegs from './routes/TapsKegs.svelte'; 
   import Login from './routes/Login.svelte';
 
   const routes = {
     '/': Dashboard,
     '/guests': Guests,
-    '/taps': Taps,
+    '/taps-kegs': TapsKegs,
     '*': Dashboard
   };
 
@@ -38,7 +38,7 @@
       <ul>
         <li><a href="#/">Dashboard</a></li>
         <li><a href="#/guests">Guests</a></li>
-        <li><a href="#/taps">Taps & Kegs</a></li>
+        <li><a href="#/taps-kegs">Taps & Kegs</a></li>
       </ul>
       <!-- <-- ИЗМЕНЕНО: Вызываем logout из sessionStore -->
       <button on:click={() => sessionStore.logout()} class="logout-button">Log Out</button>

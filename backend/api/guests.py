@@ -12,7 +12,7 @@ from database import get_db
 import uuid
 
 router = APIRouter(
-    prefix="/api/guests",
+    prefix="/guests",
     tags=["Guests"],
     dependencies=[Depends(security.get_current_user)]
 )

@@ -6,7 +6,7 @@
   import { invoke } from '@tauri-apps/api/core';
 
   let username = 'admin';
-  let password = 'password'; // Используйте ваш реальный пароль для теста
+  let password = 'fake_password'; // Используйте ваш реальный пароль для теста
   let error = '';
   let isLoading = false;
 

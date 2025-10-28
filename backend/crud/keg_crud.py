@@ -1,5 +1,6 @@
+# backend/crud/keg_crud.py
 import uuid
-from sqlalchemy.orm import Session, joinedload # <-- 1. ИМПОРТИРУЙТЕ joinedload
+from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
 from datetime import datetime
 import models, schemas
@@ -8,7 +9,7 @@ from crud import beverage_crud
 def get_keg(db: Session, keg_id: uuid.UUID):
     """ Получение одной кеги по ее UUID. """
     db_keg = db.query(models.Keg).options(
-        joinedload(models.Keg.beverage) # <-- 2. ДОБАВЬТЕ ЭТУ ОПЦИЮ
+        joinedload(models.Keg.beverage)
     ).filter(models.Keg.keg_id == keg_id).first()
     
     if db_keg is None:
@@ -18,7 +19,7 @@ def get_keg(db: Session, keg_id: uuid.UUID):
 def get_kegs(db: Session, skip: int = 0, limit: int = 100):
     """ Получение списка всех кег. """
     return db.query(models.Keg).options(
-        joinedload(models.Keg.beverage) # <-- 3. И ЗДЕСЬ
+        joinedload(models.Keg.beverage)
     ).offset(skip).limit(limit).all()
 
 def create_keg(db: Session, keg: schemas.KegCreate):
@@ -61,15 +62,19 @@ def update_keg(db: Session, keg_id: uuid.UUID, keg_update: schemas.KegUpdate):
 
 def delete_keg(db: Session, keg_id: uuid.UUID):
     """ Удаление кеги из системы. """
-    # get_keg уже использует eager loading, так что db_keg будет "полным"
     db_keg = get_keg(db, keg_id=keg_id)
 
+    # --- ИЗМЕНЕНИЕ: Реализована проверка бизнес-правила ---
+    # Нельзя удалить кегу, которая в данный момент подключена к крану.
     if db_keg.status == 'in_use':
-        raise HTTPException(...)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete keg {keg_id} because it is currently in use."
+        )
         
     db.delete(db_keg)
     db.commit()
     
-    # Теперь, когда мы возвращаем db_keg, его атрибут .beverage уже загружен
-    # и Pydantic не будет пытаться выполнить ленивую загрузку на отсоединенном объекте.
+    # Для операции DELETE мы не возвращаем тело ответа,
+    # поэтому возвращать объект не обязательно.
     return db_keg

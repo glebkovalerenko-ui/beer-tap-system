@@ -11,7 +11,7 @@ from database import get_db
 
 
 router = APIRouter(
-    prefix="/api/audit",
+    prefix="/audit",
     tags=["Audit"]
 )
 

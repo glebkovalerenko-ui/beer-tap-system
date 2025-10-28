@@ -40,17 +40,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Middleware для аудита БЫЛО ПОЛНОСТЬЮ УДАЛЕНО ---
-
 # --- Подключение модульных роутеров ---
-app.include_router(guests.router)
-app.include_router(cards.router)
-app.include_router(taps.router)
-app.include_router(kegs.router)
-app.include_router(beverages.router)
-app.include_router(controllers.router)
-app.include_router(system.router)
-app.include_router(audit.router)
+# --- ИЗМЕНЕНИЕ: Добавлен префикс /api ко всем роутерам для консистентности ---
+app.include_router(guests.router, prefix="/api")
+app.include_router(cards.router, prefix="/api")
+app.include_router(taps.router, prefix="/api")
+app.include_router(kegs.router, prefix="/api")
+app.include_router(beverages.router, prefix="/api")
+app.include_router(controllers.router, prefix="/api")
+app.include_router(system.router, prefix="/api")
+app.include_router(audit.router, prefix="/api")
+
 
 # --- Системные и служебные эндпоинты, оставшиеся в main.py ---
 @app.get("/", tags=["System"])
@@ -77,6 +77,7 @@ def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
     Для каждой записи выполняет полную валидацию и атомарно обновляет состояние.
     Вся пачка обрабатывается в рамках одной транзакции БД.
     """
+    # ... (логика без изменений)
     response_results = []
     
     for pour_data in sync_data.pours:

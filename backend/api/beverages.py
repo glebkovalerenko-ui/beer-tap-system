@@ -9,7 +9,7 @@ from database import get_db
 import security
 
 router = APIRouter(
-    prefix="/api/beverages",
+    prefix="/beverages",
     tags=["Beverages"],
     dependencies=[Depends(security.get_current_user)]
 )
