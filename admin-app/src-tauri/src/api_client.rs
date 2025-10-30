@@ -68,6 +68,26 @@ pub struct TopUpPayload {
     pub payment_method: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PourGuest {
+    pub guest_id: String,
+    pub last_name: String,
+    pub first_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PourResponse {
+    // Поля из `Pour`
+    pub pour_id: String,
+    pub volume_ml: i32,
+    pub amount_charged: String,
+    pub poured_at: String,
+    // Вложенные структуры для UI
+    pub guest: PourGuest,
+    pub beverage: Beverage,
+    pub tap: Tap,
+}
+
 // --- Guests ---
 #[derive(Debug, Deserialize, Serialize, Clone)] 
 pub struct Guest {
@@ -349,6 +369,18 @@ pub async fn get_taps(token: &str) -> Result<Vec<Tap>, String> {
     let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Vec<Tap>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+// --- Pour Functions ---
+/// Получение списка последних наливов.
+pub async fn get_pours(token: &str, limit: u32) -> Result<Vec<PourResponse>, String> {
+    let url = format!("{}/pours/?limit={}", API_BASE_URL, limit);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Vec<PourResponse>>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

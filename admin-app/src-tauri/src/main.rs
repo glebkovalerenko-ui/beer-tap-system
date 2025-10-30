@@ -120,7 +120,6 @@ fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_ke
 // --- Команды для работы с API ---
 #[tauri::command]
 async fn login(username: String, password: String) -> Result<String, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Попытка входа пользователя: {}", username);
     let credentials = api_client::LoginCredentials { username: &username, password: &password };
     api_client::login(&credentials).await.map_err(AppError::from)
@@ -128,72 +127,68 @@ async fn login(username: String, password: String) -> Result<String, AppError> {
 
 #[tauri::command]
 async fn get_guests(token: String) -> Result<Vec<api_client::Guest>, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос списка гостей с API...");
     api_client::get_guests(&token).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn create_guest(token: String, guest_data: api_client::GuestPayload) -> Result<api_client::Guest, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на создание нового гостя...");
     api_client::create_guest(&token, &guest_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn update_guest(token: String, guest_id: String, guest_data: api_client::GuestUpdatePayload) -> Result<api_client::Guest, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на обновление гостя ID: {}", guest_id);
     api_client::update_guest(&token, &guest_id, &guest_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn bind_card_to_guest(token: String, guest_id: String, card_uid: String) -> Result<api_client::Guest, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на привязку карты UID: {} к гостю ID: {}", card_uid, guest_id);
     api_client::bind_card_to_guest(&token, &guest_id, &card_uid).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn top_up_balance(token: String, guest_id: String, top_up_data: api_client::TopUpPayload) -> Result<api_client::Guest, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на пополнение баланса для гостя ID: {}", guest_id);
     api_client::top_up_balance(&token, &guest_id, &top_up_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn get_kegs(token: String) -> Result<Vec<api_client::Keg>, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос списка кег с API...");
     api_client::get_kegs(&token).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn create_keg(token: String, keg_data: api_client::KegPayload) -> Result<api_client::Keg, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на создание новой кеги...");
     api_client::create_keg(&token, &keg_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn update_keg(token: String, keg_id: String, keg_data: api_client::KegUpdatePayload) -> Result<api_client::Keg, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на обновление кеги ID: {}", keg_id);
     api_client::update_keg(&token, &keg_id, &keg_data).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn delete_keg(token: String, keg_id: String) -> Result<(), AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос на удаление кеги ID: {}", keg_id);
     api_client::delete_keg(&token, &keg_id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn get_taps(token: String) -> Result<Vec<api_client::Tap>, AppError> {
-    // ... (без изменений)
     info!("[COMMAND] Запрос списка кранов с API...");
     api_client::get_taps(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_pours(token: String, limit: u32) -> Result<Vec<api_client::PourResponse>, AppError> {
+    info!("[COMMAND] Запрос списка наливов с API...");
+    api_client::get_pours(&token, limit).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -271,6 +266,7 @@ fn main() {
             update_keg,
             delete_keg,
             get_taps,
+            get_pours,
             // API - Beverages
             get_beverages,
             create_beverage,

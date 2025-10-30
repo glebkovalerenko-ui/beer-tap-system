@@ -13,7 +13,7 @@ from database import get_db
 from crud import pour_crud
 
 # --- Импорты для новых роутеров API ---
-from api import guests, cards, taps, kegs, beverages, controllers, system, audit
+from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,6 +50,7 @@ app.include_router(beverages.router, prefix="/api")
 app.include_router(controllers.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
+app.include_router(pours.router, prefix="/api")
 
 
 # --- Системные и служебные эндпоинты, оставшиеся в main.py ---

@@ -123,6 +123,20 @@ class Pour(BaseModel):
     amount_charged: Decimal
     poured_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+# --- Компактная схема для отображения гостя в ленте наливов ---
+class PourGuest(BaseModel):
+    guest_id: uuid.UUID
+    last_name: str
+    first_name: str
+    model_config = ConfigDict(from_attributes=True)
+
+# --- Расширенная схема налива для ответа API. Включает в себя вложенные данные о госте и напитке для удобства фронтенда. ---
+class PourResponse(Pour):
+    guest: PourGuest
+    beverage: Beverage # Мы можем переиспользовать уже существующую схему Beverage
+    tap: Tap # И схему Tap
+    model_config = ConfigDict(from_attributes=True)
         
 # --- Схемы для Гостей (Guests) ---
 class GuestBase(BaseModel):
@@ -136,7 +150,6 @@ class GuestBase(BaseModel):
 class GuestCreate(GuestBase):
     pass
 
-# +++ НАЧАЛО ИЗМЕНЕНИЙ +++
 class GuestUpdate(BaseModel):
     """
     Схема для обновления данных гостя. Все поля опциональны,
@@ -149,7 +162,6 @@ class GuestUpdate(BaseModel):
     date_of_birth: Optional[date] = Field(default=None, json_schema_extra={'example': "1991-02-16"})
     id_document: Optional[str] = Field(default=None, json_schema_extra={'example': "4511 654321"})
     is_active: Optional[bool] = Field(default=None, json_schema_extra={'example': False})
-# +++ КОНЕЦ ИЗМЕНЕНИЙ +++
 
 class Guest(GuestBase):
     guest_id: uuid.UUID

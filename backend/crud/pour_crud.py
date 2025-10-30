@@ -94,3 +94,14 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         # В случае любой ошибки во время обработки, возвращаем статус rejected
         # Откат транзакции также будет произведен в main.py
         return {"status": "rejected", "reason": f"Internal server error: {str(e)}"}
+    
+def get_pours(db: Session, skip: int = 0, limit: int = 20):
+    """
+    Получение списка последних наливов для отображения в UI.
+    Жадно подгружает связанные сущности для минимизации запросов к БД.
+    """
+    return db.query(models.Pour).options(
+        joinedload(models.Pour.guest),
+        joinedload(models.Pour.tap),
+        joinedload(models.Pour.keg).joinedload(models.Keg.beverage)
+    ).order_by(models.Pour.poured_at.desc()).offset(skip).limit(limit).all()
