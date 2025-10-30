@@ -12,7 +12,7 @@ from smartcard.Exceptions import NoCardException, CardConnectionException
 
 import threading
 from config import TAP_ID, PRICE_PER_100ML_CENTS, SYNC_INTERVAL_SECONDS
-from sync_client import sync_pours_to_server
+from sync_client import sync_pours_to_server, check_emergency_stop
 
 # --- Конфигурация ---
 DB_NAME = "local_journal.db"
@@ -114,6 +114,16 @@ def main_loop():
 
                 uid = toHexString(data).replace(" ", "")
                 print(f"\n💳 Карта приложена. UID: {uid}")
+                
+                 # --- ПРОВЕРКА СТАТУСА EMERGENCY STOP ---
+                print("    ...проверка статуса системы...")
+                if check_emergency_stop():
+                    print("    🛑 ОПЕРАЦИЯ ЗАБЛОКИРОВАНА СЕРВЕРОМ (EMERGENCY STOP)")
+                    # Ждем, пока уберут карту, чтобы не спамить сообщениями
+                    while True: 
+                        try: connection.getATR(); time.sleep(0.5)
+                        except: break 
+                    continue # Переходим к следующей итерации цикла
 
                 # 3. Ожидание ввода
                 print("    Нажмите Enter, чтобы 'налить' (q для отмены). У вас 10 сек...")

@@ -73,3 +73,34 @@ def sync_pours_to_server():
     finally:
         if conn:
             conn.close()
+
+def check_emergency_stop() -> bool:
+    """
+    Проверяет на сервере флаг экстренной остановки.
+
+    Возвращает:
+        True: если система заблокирована (emergency_stop == 'true') или произошла ошибка.
+        False: если система в порядке (emergency_stop == 'false').
+    """
+    try:
+        status_url = f"{SERVER_URL}/api/system/status"
+        response = requests.get(status_url, timeout=2) # Короткий таймаут
+        response.raise_for_status()
+
+        data = response.json()
+        
+        # Проверяем, что ключ 'value' существует и его значение равно 'true'
+        if data.get('value') == 'true':
+            logging.warning("[CHECK] СЕРВЕР: Система находится в режиме экстренной остановки!")
+            return True
+        
+        return False
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"[CHECK ERROR] Ошибка сети при проверке статуса: {e}")
+        # В случае ошибки сети, по умолчанию считаем, что система заблокирована (безопасный режим)
+        return True
+    except Exception as e:
+        logging.error(f"[CHECK ERROR] Неизвестная ошибка при проверке статуса: {e}")
+        # В случае любой другой ошибки, также считаем, что система заблокирована
+        return True

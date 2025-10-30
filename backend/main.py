@@ -1,4 +1,15 @@
 # backend/main.py
+
+# --- ИЗМЕНЕНИЕ: Добавляем централизованную конфигурацию логирования в самом начале ---
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    force=True, # Перезаписывает любую существующую конфигурацию (важно для Uvicorn)
+)
+# --- КОНЕЦ ИЗМЕНЕНИЯ ---
+
 # --- Стандартные и внешние импорты ---
 from typing import List, Annotated
 from contextlib import asynccontextmanager
@@ -17,11 +28,9 @@ from api import guests, cards, taps, kegs, beverages, controllers, system, audit
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # В production среде мы полагаемся на Alembic для создания таблиц.
-    # В тестах таблицы создаются фикстурой pytest.
-    print("INFO:     Application startup complete.")
+    logging.info("Application startup complete.")
     yield
-    # Код здесь (если он есть) выполняется ПРИ ОСТАНОВКЕ приложения
+    logging.info("Application shutdown.")
 
 # --- Инициализация FastAPI приложения ---
 app = FastAPI(
@@ -41,7 +50,6 @@ app.add_middleware(
 )
 
 # --- Подключение модульных роутеров ---
-# --- ИЗМЕНЕНИЕ: Добавлен префикс /api ко всем роутерам для консистентности ---
 app.include_router(guests.router, prefix="/api")
 app.include_router(cards.router, prefix="/api")
 app.include_router(taps.router, prefix="/api")
@@ -78,7 +86,6 @@ def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
     Для каждой записи выполняет полную валидацию и атомарно обновляет состояние.
     Вся пачка обрабатывается в рамках одной транзакции БД.
     """
-    # ... (логика без изменений)
     response_results = []
     
     for pour_data in sync_data.pours:
@@ -102,6 +109,8 @@ def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
         db.commit()
     except Exception as e:
         db.rollback()
+        # --- ИЗМЕНЕНИЕ: Используем logger для ошибок ---
+        logging.error(f"Failed to commit pours batch: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to commit pours batch: {str(e)}"

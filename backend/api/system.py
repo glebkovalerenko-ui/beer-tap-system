@@ -1,4 +1,5 @@
 # backend/api/system.py
+
 from typing import List, Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -15,24 +16,19 @@ router = APIRouter(
 
 EMERGENCY_STOP_KEY = "emergency_stop_enabled"
 
-@router.get("/state", response_model=List[schemas.SystemStateItem], summary="Получить глобальное состояние системы")
-def get_system_state(db: Session = Depends(get_db)):
+@router.get("/status", response_model=schemas.SystemStateItem, summary="Получить статус экстренной остановки")
+def get_system_status(db: Session = Depends(get_db)):
     """
-    Возвращает все глобальные флаги состояния системы в виде списка пар ключ-значение.
+    Возвращает текущее состояние флага экстренной остановки.
 
-    Этот эндпоинт является публичным и используется контроллерами для постоянного
-    опроса текущего состояния (например, режима экстренной остановки).
+    Этот эндпоинт является публичным и оптимизирован для частого опроса
+    контроллерами (RPi) для проверки глобального состояния системы.
     """
-    states = system_crud.get_all_states(db)
-    # Гарантируем, что флаг экстренной остановки всегда присутствует в ответе
-    if not any(s.key == EMERGENCY_STOP_KEY for s in states):
-        emergency_state = system_crud.get_state(db, EMERGENCY_STOP_KEY, "false")
-        states.append(emergency_state)
-    
-    return states
+    state = system_crud.get_state(db, EMERGENCY_STOP_KEY, "false")
+    return state
 
 
-@router.put("/state/emergency_stop", response_model=schemas.SystemStateItem, summary="Включить/выключить экстренную остановку")
+@router.post("/emergency_stop", response_model=schemas.SystemStateItem, summary="Включить/выключить экстренную остановку")
 def set_emergency_stop(
     state_update: schemas.SystemStateUpdate,
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)],
@@ -53,3 +49,18 @@ def set_emergency_stop(
         value=state_update.value
     )
     return updated_state
+
+
+@router.get("/states/all", response_model=List[schemas.SystemStateItem], summary="Получить все флаги состояния системы", include_in_schema=False)
+def get_all_system_states(db: Session = Depends(get_db)):
+    """
+    Возвращает все глобальные флаги состояния системы.
+    Используется для отладки.
+    """
+    states = system_crud.get_all_states(db)
+    # Гарантируем, что флаг экстренной остановки всегда присутствует в ответе
+    if not any(s.key == EMERGENCY_STOP_KEY for s in states):
+        emergency_state = system_crud.get_state(db, EMERGENCY_STOP_KEY, "false")
+        states.append(emergency_state)
+    
+    return states

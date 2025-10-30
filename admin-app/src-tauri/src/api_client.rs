@@ -213,6 +213,18 @@ pub struct AssignKegPayload {
     pub keg_id: String,
 }
 
+// --- System State ---
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SystemStateItem {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SystemStateUpdatePayload {
+    pub value: String,
+}
+
 // --- Error Handling ---
 #[derive(Deserialize)]
 struct ApiErrorDetail {
@@ -440,6 +452,29 @@ pub async fn create_beverage(token: &str, beverage_data: &BeveragePayload) -> Re
     let response = CLIENT.post(&url).bearer_auth(token).json(beverage_data).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Beverage>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+// --- System Functions ---
+/// Получение статуса экстренной остановки.
+pub async fn get_system_status(token: &str) -> Result<SystemStateItem, String> {
+    let url = format!("{}/system/status", API_BASE_URL);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+/// Установка статуса экстренной остановки.
+pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload) -> Result<SystemStateItem, String> {
+    let url = format!("{}/system/emergency_stop", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

@@ -221,6 +221,19 @@ async fn update_tap(token: String, tap_id: i32, payload: api_client::TapUpdatePa
     api_client::update_tap(&token, tap_id, &payload).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn get_system_status(token: String) -> Result<api_client::SystemStateItem, AppError> {
+    info!("[COMMAND] Запрос статуса системы...");
+    api_client::get_system_status(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn set_emergency_stop(token: String, value: String) -> Result<api_client::SystemStateItem, AppError> {
+    info!("[COMMAND] Запрос на изменение статуса Emergency Stop на '{}'", value);
+    let payload = api_client::SystemStateUpdatePayload { value };
+    api_client::set_emergency_stop(&token, &payload).await.map_err(AppError::from)
+}
+
 // =============================================================================
 // ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
 // =============================================================================
@@ -272,7 +285,10 @@ fn main() {
             create_beverage,
             assign_keg_to_tap,
             unassign_keg_from_tap,
-            update_tap
+            update_tap,
+            // API - System
+            get_system_status,
+            set_emergency_stop
         ])
         .setup(move |app| {
             // ... (фоновый поток NFC без изменений)

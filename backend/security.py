@@ -1,22 +1,23 @@
 # backend/security.py
-from datetime import datetime, timedelta, timezone # Добавляем timezone
-from jose import JWTError, jwt
-from typing import Annotated # Добавляем Annotated
-from sqlalchemy.orm import Session # Добавляем Session
 
-# Импортируем все необходимое из FastAPI и от нашего приложения
+from datetime import datetime, timedelta, timezone
+from jose import JWTError, jwt
+from typing import Annotated
+from sqlalchemy.orm import Session
+
 from fastapi import Depends, HTTPException, status, Request, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
-from database import get_db
+# --- ИЗМЕНЕНИЕ: импортируем SessionLocal для создания сессий в фоне ---
+from database import get_db, SessionLocal
 from crud import audit_crud
 import schemas
 
-# --- НАСТРОЙКИ ---
+# --- НАСТРОЙКИ (без изменений) ---
 SECRET_KEY = "your-very-secret-key-that-should-be-in-env-file"
-ALGORITHM = "HS256" # Исправлено на HS256, так как это стандарт
+ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# --- ВРЕМЕННАЯ БАЗА ДАННЫХ ПОЛЬЗОВАТЕЛЕЙ (заглушка) ---
+# --- ВРЕМЕННАЯ БАЗА ДАННЫХ ПОЛЬЗОВАТЕЛЕЙ (без изменений) ---
 FAKE_USERS_DB = {
     "admin": {
         "username": "admin",
@@ -25,7 +26,7 @@ FAKE_USERS_DB = {
     }
 }
 
-# --- ОСНОВНАЯ ЛОГИКА ---
+# --- ОСНОВНАЯ ЛОГИКА (без изменений) ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
 
 def get_user(username: str):
@@ -35,25 +36,38 @@ def get_user(username: str):
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    # Исправлено на современный, timezone-aware способ работы с UTC
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+# --- Функция-обертка для фоновой задачи ---
+def audit_log_task_wrapper(
+    actor_id: str,
+    action: str
+):
+    """
+    Эта обертка создает свою собственную сессию БД, выполняет логирование
+    и закрывает сессию.
+    """
+    db = SessionLocal() # Создаем новую, независимую сессию
+    try:
+        audit_crud.create_audit_log_entry(
+            db=db,
+            actor_id=actor_id,
+            action=action
+        )
+    finally:
+        db.close()
+
+
 async def get_current_user(
     request: Request,
     background_tasks: BackgroundTasks,
     token: Annotated[str, Depends(oauth2_scheme)],
+    # --- ИЗМЕНЕНИЕ: db больше не требуется для этой функции, но оставим для совместимости ---
     db: Annotated[Session, Depends(get_db)]
-) -> dict: # Явно указываем тип возвращаемого значения
-    """
-    Зависимость, которая:
-    1. Проверяет JWT-токен.
-    2. Возвращает данные пользователя.
-    3. В фоновом режиме добавляет задачу для записи в журнал аудита,
-       если метод запроса изменяет состояние (POST, PUT, DELETE).
-    """
+) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -67,20 +81,17 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    user = get_user(username) # В будущем это будет crud.get_user(db, ...)
+    user = get_user(username)
     if user is None:
         raise credentials_exception
 
-    # --- НОВАЯ ЛОГИКА АУДИТА ---
-    # Мы будем добавлять задачу в фон только для запросов, меняющих состояние
+    # --- ФИНАЛЬНАЯ ЛОГИКА АУДИТА С BACKGROUND TASKS ---
     if request.method in ["POST", "PUT", "DELETE"]:
         action = f"{request.method}_{request.url.path}"
         
-        # Добавляем задачу, которая выполнится ПОСЛЕ успешного ответа эндпоинта.
-        # Она будет использовать ту же сессию `db`, которая была передана в эндпоинт.
+        # Добавляем в фон нашу функцию-обертку, которая сама управляет сессией
         background_tasks.add_task(
-            audit_crud.create_audit_log,
-            db=db,
+            audit_log_task_wrapper,
             actor_id=user["username"],
             action=action
         )

@@ -1,12 +1,13 @@
-<!-- src/App.svelte -->
+<!-- admin-app/src/App.svelte -->
 
 <script>
+  import { onMount, onDestroy } from 'svelte'; // <-- ИЗМЕНЕНО: Добавлены хуки жизненного цикла
   import Router from 'svelte-spa-router';
-  // <-- ИЗМЕНЕНО: Импортируем Svelte Stores вместо api.js
+  
   import { sessionStore } from './stores/sessionStore.js';
   import { guestStore } from './stores/guestStore.js';
+  import { systemStore } from './stores/systemStore.js'; 
 
-  // Импортируем наши страницы
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
   import TapsKegs from './routes/TapsKegs.svelte'; 
@@ -15,24 +16,46 @@
   const routes = {
     '/': Dashboard,
     '/guests': Guests,
-    '/taps-kegs': TapsKegs,
+    '/taps-kgs': TapsKegs,
     '*': Dashboard
   };
+  
+  // --- ИЗМЕНЕНО: Явно управляем жизненным циклом фоновых процессов ---
+  onMount(() => {
+    console.log('[App.svelte] Компонент смонтирован, запускаем фоновые процессы.');
+    // Запускаем опрос статуса системы
+    systemStore.startPolling();
 
-  // <-- ДОБАВЛЕНО: Реактивный блок для автоматической загрузки данных
-  // Этот код выполнится, когда $sessionStore.token изменится (например, после логина),
-  // но только если гости еще не были загружены.
-  /*$: if ($sessionStore.token && $guestStore.guests.length === 0 && !$guestStore.loading) {
+    // Здесь же можно инициализировать и другие сторы, которым нужно загрузить данные
+    // Это более надежно, чем реактивный блок.
+    if ($guestStore.guests.length === 0 && !$guestStore.loading) {
+      guestStore.fetchGuests();
+    }
+  });
+
+  onDestroy(() => {
+    console.log('[App.svelte] Компонент уничтожен, останавливаем фоновые процессы.');
+    // Останавливаем опрос статуса системы, чтобы избежать утечек памяти
+    systemStore.stopPolling();
+  });
+
+  /* <-- ИЗМЕНЕНО: Старый реактивный блок закомментирован в пользу onMount
+  $: if ($sessionStore.token && $guestStore.guests.length === 0 && !$guestStore.loading) {
     guestStore.fetchGuests();
-  }*/
+  }
+  */
 
 </script>
 
 <!-- Реактивно показываем либо страницу входа, либо основное приложение -->
-<!-- <-- ИЗМЕНЕНО: Проверяем токен из sessionStore -->
 {#if $sessionStore.token}
   <!-- Если пользователь залогинен -->
-  <div class="app-layout">
+  <div class="app-layout" class:emergency-active={$systemStore.emergencyStop}>
+    {#if $systemStore.emergencyStop}
+    <div class-="emergency-banner">
+      WARNING: SYSTEM IS IN EMERGENCY STOP MODE. ALL TAPS ARE LOCKED.
+    </div>
+    {/if}
     <nav class="sidebar">
       <h1>Admin App</h1>
       <ul>
@@ -40,32 +63,10 @@
         <li><a href="#/guests">Guests</a></li>
         <li><a href="#/taps-kegs">Taps & Kegs</a></li>
       </ul>
-      <!-- <-- ИЗМЕНЕНО: Вызываем logout из sessionStore -->
       <button on:click={() => sessionStore.logout()} class="logout-button">Log Out</button>
     </nav>
 
     <main class="main-content">
-      <!-- <-- ДОБАВЛЕНО: Временный блок для проверки загрузки данных -->
-      <!-- !!Этот блок можно будет удалить после того, как вы убедитесь, что все работает -->
-      <!-- !! <div style="background: #eee; padding: 10px; margin-bottom: 15px; border-radius: 5px;">
-        <h3>Debug Info (Step 1.1)</h3>
-        {#if $guestStore.loading}
-          <p>Загрузка гостей...</p>
-        {:else if $guestStore.error}
-          <p style="color: red;">Ошибка: {$guestStore.error}</p>
-        {:else}
-          <p>Загружено <b>{$guestStore.guests.length}</b> гостей.</p>
-          <!-- Раскомментируйте, чтобы увидеть имена:
-          <ul>
-            {#each $guestStore.guests as guest}
-              <li>{guest.name}</li>
-            {/each}
-          </ul>
-          -->
-        <!-- !!{/if}
-      </div> !! -->
-      <!-- Конец временного блока -->
-
       <Router {routes} />
     </main>
   </div>
@@ -83,4 +84,24 @@
   .sidebar ul li a:hover { color: #007bff; }
   .main-content { flex-grow: 1; padding: 1rem; }
   .logout-button { position: absolute; bottom: 1rem; left: 1rem; right: 1rem; width: calc(100% - 2rem); }
+  .emergency-banner {
+    background-color: #d9534f;
+    color: white;
+    text-align: center;
+    padding: 0.5rem;
+    font-weight: bold;
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+  }
+  .app-layout { 
+    display: flex; 
+    height: 100vh;
+    padding-top: 0;
+  }
+  .app-layout.emergency-active {
+    padding-top: 2.5rem;
+  }
 </style>
