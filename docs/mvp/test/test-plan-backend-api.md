@@ -33,6 +33,7 @@
 | **Комментарий / Bug ID**| ID задачи из трекера (Jira, GitHub Issues), детали ошибки, `cURL` команды для воспроизведения. |
 
 ### 1.5. Общая карта тестового покрытия (Mind Map)
+```mermaid
 mindmap
   root((Backend API Test Plan))
     (Module 1: Security & Auth)
@@ -83,8 +84,10 @@ mindmap
         - Process valid pour (Happy Path)
         - Handle duplicates (Idempotency)
         - Reject invalid pours (balance, status)
+```
 
 ### 1.6. Сквозной сценарий "Happy Path" (Sequence Diagram)
+```mermaid
 sequenceDiagram
     actor Bartender
     participant AdminApp as Admin App (UI)
@@ -110,8 +113,10 @@ sequenceDiagram
     Database->>BackendAPI: COMMIT
     BackendAPI-->>AdminApp: 200 OK (Updated Guest Object)
     AdminApp-->>Bartender: 10. Мгновенно обновляет баланс в UI
+```
 
 ### 1.7. Процесс выполнения тестового плана (Flowchart)
+```mermaid
 graph TD
     A[Start: Протокол тестирования утвержден] --> B{Выбор тест-кейса из протокола};
     
@@ -140,6 +145,7 @@ graph TD
     style A fill:#c9f,stroke:#333,stroke-width:2px
     style M fill:#dfd,stroke:#333,stroke-width:2px
     style N fill:#fdd,stroke:#333,stroke-width:2px
+```
 
 ---
 
