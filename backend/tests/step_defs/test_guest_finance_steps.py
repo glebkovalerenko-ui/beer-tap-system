@@ -1,11 +1,11 @@
 # backend/tests/step_defs/test_guest_finance_steps.py
 
 from pytest_bdd import scenarios, then, parsers, given, when
-from models import Guest, Card, Transaction
+from models import Guest, Card, Transaction, Beverage, Keg, Tap
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-import models, uuid
+import models, uuid, pytest
 
 # Указываем, какой feature-файл реализуют шаги из этого файла
 scenarios('../features/guest_finance.feature')
@@ -294,4 +294,219 @@ def check_guest_balance(db_session: Session, expected_balance: str, context: dic
     print(f"[THEN] Проверка баланса. Ожидаемый: {expected_decimal}, Фактический: {guest.balance}")
     assert guest.balance == expected_decimal, "Баланс гостя в БД не соответствует ожидаемому."
     print("[THEN] Баланс гостя успешно обновлен.")
+
+@when(parsers.parse('Клиент отправляет POST-запрос на /api/guests/ без поля "{missing_field}"'))
+def attempt_create_guest_with_missing_field(client, context: dict, missing_field: str):
+    """
+    Отправляет запрос на создание гостя с JSON-телом,
+    в котором умышленно отсутствует одно из обязательных полей.
+    """
+    access_token = context.get("access_token")
+    assert access_token, "Токен доступа не найден в context. Шаг 'Дано Администратор авторизован' должен быть выполнен перед этим шагом."
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # Лучшая практика для негативных тестов:
+    # 1. Начать с полностью валидного payload.
+    payload = {
+        "last_name": "Валидный",
+        "first_name": "Тест",
+        "patronymic": "Сергеевич",
+        "phone_number": "+79010203045",
+        "date_of_birth": "2001-01-10",
+        "id_document": "5555 666777"
+    }
+
+    # 2. Целенаправленно удалить из него только одно поле, указанное в Gherkin-шаге.
+    #    Это гарантирует, что тест проверяет именно отсутствие поля, а не что-то еще.
+    if missing_field in payload:
+        del payload[missing_field]
+    else:
+        pytest.fail(f"Поле '{missing_field}', указанное для удаления в .feature файле, не найдено в эталонном payload в коде шага.")
+
+    print(f"\n[WHEN] Отправка запроса на создание гостя без обязательного поля '{missing_field}'. Payload: {payload}")
+    response = client.post("/api/guests/", headers=headers, json=payload)
+    context["response"] = response
+
+@given(parsers.parse('Карта "{card_uid}" привязана к другому гостю'))
+def given_a_card_is_assigned_to_another_guest(db_session: Session, card_uid: str, context: dict):
+    """
+    Шаг подготовки: создает двух гостей. Первому гостю ("другому")
+    привязывает карту с указанным UID. Второго гостя ("нового")
+    оставляет без карты, сохраняя его ID для следующего шага.
+    """
+    # 1. Создаем "другого" гостя, который будет владеть картой.
+    owner_guest = Guest(
+        last_name="Владельцев", first_name="Кармен", phone_number=f"+7944{uuid.uuid4().hex[:7]}",
+        date_of_birth=date(1985, 4, 1), id_document=f"4444 {uuid.uuid4().hex[:6]}"
+    )
+    db_session.add(owner_guest)
+    db_session.commit()
+    db_session.refresh(owner_guest)
+
+    # 2. Создаем карту и привязываем ее к первому гостю.
+    taken_card = Card(card_uid=card_uid, guest_id=owner_guest.guest_id, status="active")
+    db_session.add(taken_card)
+
+    # 3. Создаем "нового" гостя, к которому мы будем пытаться привязать занятую карту.
+    new_guest = Guest(
+        last_name="Претендентов", first_name="Петр", phone_number=f"+7955{uuid.uuid4().hex[:7]}",
+        date_of_birth=date(1995, 5, 2), id_document=f"5555 {uuid.uuid4().hex[:6]}"
+    )
+    db_session.add(new_guest)
+    db_session.commit()
+    db_session.refresh(new_guest)
+    
+    # 4. Сохраняем UID карты и ID "нового" гостя в context для шага 'When'.
+    context['taken_card_uid'] = card_uid
+    context['new_guest_id'] = new_guest.guest_id
+
+    print(f"\n[GIVEN] Карта '{card_uid}' привязана к гостю {owner_guest.guest_id}. Создан новый гость {new_guest.guest_id}.")
+
+@when("Клиент пытается привязать эту карту к новому гостю")
+def when_attempt_to_assign_taken_card(client, context: dict):
+    """
+    Шаг выполнения: отправляет запрос на привязку уже занятой карты
+    к другому (новому) гостю.
+    """
+    access_token = context.get("access_token")
+    card_uid = context.get("taken_card_uid")
+    guest_id = context.get("new_guest_id")
+    assert all([access_token, card_uid, guest_id]), "Необходимые данные (токен, UID карты, ID гостя) не найдены в context."
+
+    url = f"/api/guests/{guest_id}/cards"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    payload = {"card_uid": card_uid}
+
+    print(f"[WHEN] Попытка привязать карту '{card_uid}' к новому гостю '{guest_id}'.")
+    response = client.post(url, headers=headers, json=payload)
+    context['response'] = response
+
+@when(parsers.parse("Клиент отправляет POST-запрос на /api/guests/{несуществующий_uuid}/topup"))
+def attempt_topup_for_nonexistent_guest(client, context: dict):
+    """
+    Отправляет запрос на пополнение баланса для заведомо несуществующего UUID гостя.
+    """
+    access_token = context.get("access_token")
+    assert access_token, "Токен доступа не найден в context."
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # 1. Генерируем случайный, валидный по формату, но гарантированно
+    #    несуществующий в тестовой БД UUID.
+    non_existent_uuid = uuid.uuid4()
+    url = f"/api/guests/{non_existent_uuid}/topup"
+    
+    # 2. Тело запроса должно быть валидным, так как мы проверяем
+    #    обработку URL, а не данных.
+    payload = {"amount": 100.00, "payment_method": "cash"}
+
+    print(f"\n[WHEN] Попытка пополнить баланс для несуществующего гостя UUID: {non_existent_uuid}")
+    response = client.post(url, headers=headers, json=payload)
+    context['response'] = response
+
+@given("У гостя есть пополнение и налив")
+def create_guest_with_mixed_history(db_session: Session, context: dict):
+    """
+    Шаг подготовки: создает полную инфраструктуру для гостя,
+    включая запись о наливе (pour) и запись о пополнении (topup)
+    с разными временными метками для проверки сортировки.
+    """
+    # 1. Создаем гостя, карту, напиток, кегу и кран.
+    guest = Guest(
+        last_name="Историев", first_name="Алексей",
+        phone_number=f"+7966{uuid.uuid4().hex[:7]}",
+        date_of_birth=date(1990, 5, 15),  # Добавлено
+        id_document=f"6666 {uuid.uuid4().hex[:6]}",  # Добавлено
+        balance=Decimal("1000.00")
+    )
+    card = Card(card_uid=f"HISTORY-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
+    beverage = Beverage(
+        name=f"HistoryBeer-{uuid.uuid4()}",
+        brewery="BDD Brewery",
+        style="Pilsner",
+        abv=Decimal("4.8"),
+        sell_price_per_liter=Decimal("400.00")
+    )
+    keg = Keg(
+        beverage=beverage,
+        initial_volume_ml=50000,
+        current_volume_ml=40000,
+        purchase_price=Decimal("5000.00"),  # Добавлено
+        status="in_use"
+    )
+    tap = Tap(display_name=f"HistoryTap-{uuid.uuid4()}", keg=keg, status="active")
+    db_session.add_all([guest, card, beverage, keg, tap])
+    db_session.commit()
+    db_session.refresh(guest)
+
+    # 2. Создаем запись о наливе, который произошел "в прошлом" (час назад).
+    pour_time = datetime.now(timezone.utc) - timedelta(hours=1)
+    pour = models.Pour(
+        client_tx_id=f"history-pour-{uuid.uuid4()}",  # Добавлено
+        guest_id=guest.guest_id, card_uid=card.card_uid, tap_id=tap.tap_id, keg_id=keg.keg_id,
+        volume_ml=500, amount_charged=Decimal("200.00"), poured_at=pour_time
+    )
+    db_session.add(pour)
+
+    # 3. Создаем запись о пополнении, которое произошло "сейчас".
+    topup = Transaction(
+        guest_id=guest.guest_id, amount=Decimal("500.00"),
+        type="topup", payment_method="cash"
+    )
+    db_session.add(topup)
+    
+    db_session.commit()
+
+    # 4. Сохраняем ID гостя для шага 'When'.
+    context['guest_id'] = guest.guest_id
+    print(f"\n[GIVEN] Создан гость {guest.guest_id} с наливом ({pour_time}) и пополнением (now).")
+
+
+@when("Клиент отправляет GET-запрос на /api/guests/{guest_id}/history")
+def get_guest_history(client, context: dict):
+    """
+    Отправляет запрос на получение истории операций для гостя.
+    """
+    access_token = context.get("access_token")
+    guest_id = context.get("guest_id")
+    assert access_token and guest_id, "Необходимые данные не найдены в context."
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    url = f"/api/guests/{guest_id}/history"
+    print(f"\n[WHEN] Отправка GET-запроса на {url}")
+    response = client.get(url, headers=headers)
+    context["response"] = response
+
+
+@then("Тело ответа должно содержать отсортированный список из двух операций")
+def check_history_response(context: dict):
+    """
+    Проверяет, что ответ содержит объект с ключом 'history',
+    в котором находится список из двух элементов, отсортированный
+    по времени в порядке убывания.
+    """
+    response_json = context["response"].json()
+    
+    # 1. Проверяем, что тело ответа - это словарь и содержит ключ 'history'.
+    assert isinstance(response_json, dict), f"Тело ответа не является словарем. Получено: {type(response_json)}"
+    assert "history" in response_json, "В теле ответа отсутствует ключ 'history'."
+    
+    history_list = response_json["history"]
+    
+    # 2. Проверяем, что значение по ключу 'history' - это список.
+    assert isinstance(history_list, list), f"Значение по ключу 'history' не является списком. Получено: {type(history_list)}"
+    
+    # 3. Проверяем, что в списке ровно две операции.
+    assert len(history_list) == 2, f"Ожидалось 2 операции в истории, получено: {len(history_list)}"
+    print("[THEN] В истории найдено 2 операции.")
+
+    # 4. Проверяем, что операции отсортированы (от новых к старым).
+    timestamp1 = datetime.fromisoformat(history_list[0]['timestamp'])
+    timestamp2 = datetime.fromisoformat(history_list[1]['timestamp'])
+    assert timestamp1 > timestamp2, "Операции в истории не отсортированы по убыванию времени."
+    print(f"[THEN] Сортировка корректна: {timestamp1} > {timestamp2}.")
+
+    # 5. Проверяем, что типы операций разные.
+    types = {op['type'] for op in history_list}
+    assert "topup" in types and "pour" in types, f"В истории отсутствуют необходимые типы операций. Найдены: {types}"
+    print("[THEN] В истории присутствуют и 'topup', и 'pour'.")
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from models import SystemState, Guest, Card, Beverage, Keg, Tap, Pour
 from decimal import Decimal
 import datetime
+from datetime import datetime, date, timezone, timedelta
 
 # Этот файл связывает controller_interaction.feature с нашим тестовым фреймворком.
 scenarios('../features/controller_interaction.feature')
@@ -212,8 +213,12 @@ def send_valid_pour_request(client, context: dict):
     response = client.post("/api/sync/pours", json=full_payload)
     context['response'] = response
 
-@then('API должен вернуть 200 OK со статусом "accepted"')
-def check_pour_response_status(context: dict):
+@then(parsers.parse('API должен вернуть 200 OK со статусом "{status}"'))
+def check_pour_response_status(context: dict, status: str):
+    """
+    Универсальная проверка ответа от эндпоинта /sync/pours.
+    Проверяет код 200 и указанный статус ("accepted" или "rejected").
+    """
     response = context.get('response')
     assert response is not None, "Ответ от API не найден."
     
@@ -221,13 +226,12 @@ def check_pour_response_status(context: dict):
     print("[THEN] Код ответа 200 OK подтвержден.")
     
     response_json = response.json()
-    # Ответ содержит список результатов, нам нужно проверить первый (и единственный)
     assert "results" in response_json and len(response_json["results"]) > 0, "Ответ не содержит списка 'results'."
     
     result = response_json["results"][0]
     
-    assert result.get("status") == "accepted", f"Ожидался статус 'accepted', но получен '{result.get('status')}' с причиной: '{result.get('reason')}'"
-    print("[THEN] Статус 'accepted' в теле ответа подтвержден.")
+    assert result.get("status") == status, f"Ожидался статус '{status}', но получен '{result.get('status')}' с причиной: '{result.get('reason')}'"
+    print(f"[THEN] Статус '{status}' в теле ответа подтвержден.")
 
 @then("Баланс гостя и остаток в кеге должны уменьшиться")
 def check_balance_and_volume_decreased(db_session: Session, context: dict):
@@ -257,7 +261,7 @@ def create_processed_pour(client, db_session: Session, tx_id: str, context: dict
     initial_balance = Decimal("2000.00")
     initial_volume_ml = 40000
     guest = Guest(last_name="Идемпотентный", first_name="Тест", phone_number=f"+7900{uuid.uuid4().hex[:7]}",
-                  date_of_birth=datetime.date(1991, 2, 2), id_document=f"7777 {uuid.uuid4().hex[:6]}", balance=initial_balance)
+                  date_of_birth=date(1991, 2, 2), id_document=f"7777 {uuid.uuid4().hex[:6]}", balance=initial_balance)
     card = Card(card_uid=f"IDEMPOTENT-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
     beverage = Beverage(name=f"IdempotentBeer-{uuid.uuid4()}", brewery="BDD", style="Amber Ale", abv=5.5, sell_price_per_liter=Decimal("450.00"))
     keg = Keg(beverage=beverage, initial_volume_ml=50000, current_volume_ml=initial_volume_ml, purchase_price=5500)
@@ -274,7 +278,7 @@ def create_processed_pour(client, db_session: Session, tx_id: str, context: dict
     pour_record = Pour(
         client_tx_id=tx_id, card_uid=card.card_uid, tap_id=tap.tap_id,
         guest_id=guest.guest_id, keg_id=keg.keg_id,
-        volume_ml=100, amount_charged=Decimal("45.00"), poured_at=datetime.datetime.now(datetime.timezone.utc)
+        volume_ml=100, amount_charged=Decimal("45.00"), poured_at=datetime.now(timezone.utc)
     )
     db_session.add(pour_record)
     db_session.commit()
@@ -296,8 +300,8 @@ def resend_duplicate_pour(client, context: dict):
         "client_tx_id": context['duplicate_tx_id'],
         "card_uid": context['card_uid'],
         "tap_id": context['tap_id'],
-        "start_ts": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=1)).isoformat(),
-        "end_ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "start_ts": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        "end_ts": datetime.now(timezone.utc).isoformat(),
         "volume_ml": 100,
         "price_cents": 4500
     }
@@ -353,7 +357,7 @@ def setup_for_insufficient_funds(client, db_session: Session, context: dict):
     # Создаем полную инфраструктуру
     initial_balance = Decimal("10.00") # Очень маленький баланс
     guest = Guest(last_name="Бедняков", first_name="Тест", phone_number=f"+7922{uuid.uuid4().hex[:7]}",
-                  date_of_birth=datetime.date(1995, 5, 5), id_document=f"6666 {uuid.uuid4().hex[:6]}", balance=initial_balance)
+                  date_of_birth=date(1995, 5, 5), id_document=f"6666 {uuid.uuid4().hex[:6]}", balance=initial_balance)
     card = Card(card_uid=f"NO-FUNDS-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
     # Напиток с высокой ценой
     beverage = Beverage(name=f"ExpensiveBeer-{uuid.uuid4()}", brewery="BDD", style="Barleywine", abv=12.0, sell_price_per_liter=Decimal("2000.00"))
@@ -391,3 +395,113 @@ def send_pour_with_insufficient_funds(client, context: dict):
     response = client.post("/api/sync/pours", json=full_payload)
     context['response'] = response
 
+@given('Кран имеет статус "locked"')
+def given_tap_is_locked(db_session: Session, context: dict):
+    """
+    Шаг подготовки: создает полную инфраструктуру (гость, карта, напиток, кега),
+    но оставляет кран в статусе 'locked' (не привязанным к кеге).
+    """
+    # 1. Создаем все необходимые сущности
+    guest = Guest(last_name="Блокировкин", first_name="Тест", phone_number=f"+7933{uuid.uuid4().hex[:7]}",
+              date_of_birth=date(1993, 3, 3), id_document=f"5555 {uuid.uuid4().hex[:6]}", balance=Decimal("500.00"))
+    card = Card(card_uid=f"LOCKED-TAP-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
+    beverage = Beverage(name=f"LockedBeer-{uuid.uuid4()}", brewery="BDD", style="Stout", abv=8.0, sell_price_per_liter=Decimal("600.00"))
+    keg = Keg(beverage=beverage, initial_volume_ml=50000, current_volume_ml=50000, purchase_price=Decimal("7000"))
+    # 2. Создаем кран, но НЕ привязываем к нему кегу. Его статус по умолчанию 'locked'.
+    tap = Tap(display_name=f"LockedTap-{uuid.uuid4()}")
+    db_session.add_all([guest, card, beverage, keg, tap])
+    db_session.commit()
+    
+    # 3. Сохраняем данные для шага 'Когда'
+    context['card_uid'] = card.card_uid
+    context['tap_id'] = tap.tap_id
+    
+    print(f"\n[GIVEN] Создан гость, карта и кран {tap.tap_id} со статусом 'locked'.")
+
+
+@when("Контроллер отправляет налив с этого крана")
+def when_controller_sends_pour_from_this_tap(client, context: dict):
+    """
+    Шаг выполнения: отправляет запрос на налив, используя ID заблокированного крана.
+    """
+    payload_item = {
+        "client_tx_id": f"locked-tap-tx-{uuid.uuid4()}",
+        "card_uid": context['card_uid'],
+        "tap_id": context['tap_id'],
+        "start_ts": (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat(),
+        "end_ts": datetime.now(timezone.utc).isoformat(),
+        "volume_ml": 100,
+        "price_cents": 6000 # 60 рублей
+    }
+    full_payload = {"pours": [payload_item]}
+    
+    print(f"[WHEN] Отправка запроса на налив с заблокированного крана {context['tap_id']}.")
+    response = client.post("/api/sync/pours", json=full_payload)
+    context['response'] = response
+
+@given("Остаток в кеге равен объему налива")
+def given_keg_volume_equals_pour_volume(db_session: Session, context: dict):
+    """
+    Шаг подготовки: создает инфраструктуру, где в кеге осталось ровно столько напитка,
+    сколько будет в запросе на налив.
+    """
+    pour_volume = 500  # Объем, который опустошит кегу (в мл)
+    
+    # 1. Создаем гостя, карту, напиток, кегу и кран.
+    guest = Guest(last_name="Последнекаплев", first_name="Тест", phone_number=f"+7944{uuid.uuid4().hex[:7]}",
+                  date_of_birth=date(1994, 4, 4), id_document=f"4444 {uuid.uuid4().hex[:6]}", balance=Decimal("1000.00"))
+    card = Card(card_uid=f"EMPTYING-POUR-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
+    beverage = Beverage(name=f"EmptyingBeer-{uuid.uuid4()}", brewery="BDD", style="Porter", abv=6.0, sell_price_per_liter=Decimal("500.00"))
+    # 2. Создаем кегу, где current_volume_ml РАВЕН объему будущего налива.
+    keg = Keg(beverage=beverage, initial_volume_ml=50000, current_volume_ml=pour_volume, purchase_price=Decimal("6000"), status="in_use")
+    tap = Tap(display_name=f"EmptyingTap-{uuid.uuid4()}", keg=keg, status="active")
+    db_session.add_all([guest, card, beverage, keg, tap])
+    db_session.commit()
+    
+    # 3. Сохраняем данные для следующих шагов
+    context['card_uid'] = card.card_uid
+    context['tap_id'] = tap.tap_id
+    context['keg_id'] = keg.keg_id
+    context['pour_volume_ml'] = pour_volume
+    context['price_per_liter'] = beverage.sell_price_per_liter
+    
+    print(f"\n[GIVEN] В кеге {keg.keg_id} осталось {pour_volume} мл. Подготовлен налив на тот же объем.")
+
+@when("Контроллер отправляет этот налив")
+def when_controller_sends_insufficient_funds_pour(client, context: dict):
+    """
+    Шаг выполнения для сценария с недостаточным балансом.
+    Формирует payload для налива, который гость не может себе позволить.
+    """
+    payload_item = {
+        "client_tx_id": f"no-funds-tx-{uuid.uuid4()}",
+        "card_uid": context['card_uid'],
+        "tap_id": context['tap_id'],
+        "start_ts": (datetime.now(timezone.utc) - timedelta(seconds=2)).isoformat(),
+        "end_ts": datetime.now(timezone.utc).isoformat(),
+        "volume_ml": 200,
+        "price_cents": 40000 # 400 рублей
+    }
+    full_payload = {"pours": [payload_item]}
+    
+    print(f"[WHEN] Отправка запроса на налив, который гость не может себе позволить.")
+    response = client.post("/api/sync/pours", json=full_payload)
+    context['response'] = response
+
+@then('Статус кеги и крана должен измениться на "empty"')
+def then_keg_and_tap_status_should_be_empty(db_session: Session, context: dict):
+    """
+    Шаг проверки: убеждается, что и кега, и кран получили статус 'empty'.
+    """
+    keg_id = context['keg_id']
+    tap_id = context['tap_id']
+    
+    db_keg = db_session.query(Keg).get(keg_id)
+    db_tap = db_session.query(Tap).get(tap_id)
+    
+    print(f"[THEN] Проверка статусов. Кега: {db_keg.status}, Кран: {db_tap.status}")
+    
+    assert db_keg.status == "empty", f"Ожидался статус 'empty' для кеги, но получен '{db_keg.status}'."
+    assert db_tap.status == "empty", f"Ожидался статус 'empty' для крана, но получен '{db_tap.status}'."
+    
+    print("[THEN] Статусы кеги и крана корректно изменены на 'empty'.")

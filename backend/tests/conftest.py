@@ -32,11 +32,12 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(scope="function")
-def client():
-    Base.metadata.create_all(bind=engine)
+def client(db_session: Session): # Добавляем зависимость от db_session
+    # Логика создания/удаления таблиц теперь в db_session,
+    # поэтому здесь она больше не нужна.
+    # Зависимость от db_session гарантирует, что БД будет готова.
     with TestClient(app) as c:
         yield c
-    Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture(scope="function")
 def context():
@@ -44,11 +45,15 @@ def context():
 
 @pytest.fixture(scope="function")
 def db_session():
+    # Создаем все таблицы перед началом теста
+    Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
+        # Удаляем все таблицы после завершения теста
+        Base.metadata.drop_all(bind=engine)
 
 class SyncBackgroundTasks:
     def add_task(self, func, *args, **kwargs):

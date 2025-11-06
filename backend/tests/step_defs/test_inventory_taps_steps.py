@@ -5,6 +5,7 @@ from pytest_bdd import scenarios, given, when, parsers, then
 from sqlalchemy.orm import Session
 import models
 from models import Keg, Tap
+from decimal import Decimal
 
 # Этот файл связывает inventory_taps.feature с нашим тестовым фреймворком.
 # Все шаги для сценария TC-API-INV-01 уже реализованы или будут реализованы
@@ -379,3 +380,105 @@ def unassign_keg_from_tap(client, context: dict):
     response = client.delete(url, headers=headers)
     context['response'] = response
 
+@when("Клиент отправляет POST-запрос на /api/kegs/ с несуществующим beverage_id")
+def attempt_create_keg_with_nonexistent_beverage(client, context: dict):
+    """
+    Отправляет запрос на создание кеги, используя заведомо несуществующий UUID
+    для напитка (beverage_id).
+    """
+    access_token = context.get("access_token")
+    assert access_token, "Токен доступа не найден в context."
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # 1. Генерируем случайный, но гарантированно несуществующий UUID.
+    non_existent_beverage_id = uuid.uuid4()
+    
+    # 2. Формируем валидный в остальном payload.
+    payload = {
+        "beverage_id": str(non_existent_beverage_id),
+        "initial_volume_ml": 50000,
+        "purchase_price": "5000.00"
+    }
+    
+    print(f"\n[WHEN] Попытка создать кегу с несуществующим beverage_id: {non_existent_beverage_id}")
+    response = client.post("/api/kegs/", headers=headers, json=payload)
+    context["response"] = response
+
+@given('Существует кега со статусом "full"')
+def create_keg_with_full_status(db_session: Session, context: dict):
+    """
+    Шаг подготовки: создает напиток и привязанную к нему кегу
+    со статусом 'full', которая не установлена на кран.
+    """
+    # 1. Сначала нужен напиток, к которому будет привязана кега.
+    beverage = models.Beverage(
+        name=f"BeerToDelete-{uuid.uuid4()}",
+        brewery="BDD Factory",
+        style="Lager",
+        abv=Decimal("5.0"),
+        sell_price_per_liter=Decimal("350.00")
+    )
+    db_session.add(beverage)
+    db_session.commit()
+    db_session.refresh(beverage)
+    
+    # 2. Создаем кегу со статусом 'full'.
+    keg = Keg(
+        beverage_id=beverage.beverage_id,
+        initial_volume_ml=30000,
+        current_volume_ml=30000,
+        purchase_price=Decimal("4000"),
+        status="full"  # Явно указываем статус
+    )
+    db_session.add(keg)
+    db_session.commit()
+    db_session.refresh(keg)
+    
+    # 3. Сохраняем ID кеги в context для использования в шаге 'Когда'.
+    context['keg_id'] = keg.keg_id
+    print(f"\n[GIVEN] Создана неиспользуемая кега {keg.keg_id} со статусом 'full'.")
+
+@given("К крану {tap_id} привязана кега")
+def create_tap_with_assigned_keg(db_session: Session, context: dict):
+    """
+    Шаг подготовки: создает полную цепочку Напиток -> Кега -> Кран
+    и связывает их, чтобы кран стал "занятым".
+    """
+    # 1. Создаем напиток, кегу и кран
+    beverage = models.Beverage(name=f"BeerOnTap-{uuid.uuid4()}", brewery="BDD", style="IPA", abv=Decimal("6.5"), sell_price_per_liter=Decimal("550"))
+    keg = Keg(
+        beverage=beverage,
+        initial_volume_ml=50000,
+        current_volume_ml=50000,  # Добавлено
+        purchase_price=Decimal("6000"),
+        status="full"
+    )
+    tap = Tap(display_name=f"TapToDelete-{uuid.uuid4()}")
+    db_session.add_all([beverage, keg, tap])
+    db_session.commit()
+    
+    # 2. "Устанавливаем" кегу на кран, меняя статусы
+    tap.keg_id = keg.keg_id
+    keg.status = "in_use"
+    db_session.commit()
+    db_session.refresh(tap)
+    
+    # 3. Сохраняем ID крана в context для использования в следующих шагах
+    context['tap_id'] = tap.tap_id
+    print(f"\n[GIVEN] К крану {tap.tap_id} привязана кега {keg.keg_id}.")
+
+@when("Клиент отправляет DELETE-запрос на /api/taps/{tap_id}")
+def attempt_to_delete_tap(client, context: dict):
+    """
+    Шаг выполнения: пытается удалить кран по ID из context.
+    """
+    access_token = context.get("access_token")
+    tap_id = context.get("tap_id")
+    assert access_token and tap_id, "Необходимые данные (токен, ID крана) не найдены в context."
+
+    url = f"/api/taps/{tap_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    print(f"[WHEN] Попытка удалить занятый кран. DELETE-запрос на {url}")
+    response = client.delete(url, headers=headers)
+    context['response'] = response
