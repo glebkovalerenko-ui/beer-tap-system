@@ -23,7 +23,7 @@ def _create_pour_record(db: Session, pour_data: schemas.PourData, guest_id: uuid
         volume_ml=pour_data.volume_ml,
         poured_at=pour_data.start_ts, # Используем время начала налива
         amount_charged=amount_charged,
-        price_per_ml_at_pour=price_per_ml,
+        # price_per_ml_at_pour=price_per_ml,
         guest_id=guest_id,
         keg_id=keg_id
     )
