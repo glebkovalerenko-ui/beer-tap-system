@@ -18,6 +18,8 @@ use std::time::Duration;
 use tauri::{State, Emitter}; 
 use tauri_plugin_log::{Target, TargetKind};
 use log::{info, error, debug};
+use serde_json; 
+use hex;
 
 // =============================================================================
 // СТРУКТУРЫ УРОВНЯ ПРИЛОЖЕНИЯ
@@ -296,62 +298,61 @@ fn main() {
             let context_clone = Arc::clone(&context);
             
             info!("Запуск фонового потока для мониторинга карт...");
+            // Вставь этот код вместо старого thread::spawn
             thread::spawn(move || {
-                let mut last_uid: Option<Vec<u8>> = None;
-                let mut reader_present = false;
+                let mut last_payload_json = String::new(); // Идемпотентность события на фронтенде
 
                 loop {
-                    let readers_result = nfc_handler::list_readers_internal(&context_clone);
-                    let reader_name = match readers_result {
+                    let payload = match nfc_handler::list_readers_internal(&context_clone) {
+                        // ШАБЛОН: Ридеры найдены и список НЕ пуст
                         Ok(mut names) if !names.is_empty() => {
-                            if !reader_present {
-                                info!("Считыватель подключен: {}", names[0]);
-                                reader_present = true;
+                            let reader_name = names.remove(0);
+                            // Ридер найден. Пытаемся прочитать карту.
+                            match nfc_handler::get_card_uid_internal(&context_clone, &reader_name) {
+                                Ok(uid_bytes) => {
+                                    // Карта найдена.
+                                    CardStatusPayload { uid: Some(hex::encode(uid_bytes)), error: None }
+                                },
+                                Err(pcsc::Error::NoSmartcard) | Err(pcsc::Error::RemovedCard) => {
+                                    // Ридер есть, но карты нет (или убрали). Это штатный, "рабочий" статус.
+                                    CardStatusPayload { uid: None, error: None }
+                                },
+                                Err(e) => {
+                                    // Другая ошибка PC/SC, но ридер виден.
+                                    error!("Ошибка чтения карты (ридер доступен): {}", e);
+                                    CardStatusPayload { uid: None, error: Some(e.to_string()) }
+                                }
                             }
-                            names.remove(0)
                         },
-                        _ => {
-                            if reader_present {
-                                info!("Считыватель отключен");
-                                reader_present = false;
-                                last_uid = None;
-                                app_handle.emit("card-status-changed", CardStatusPayload { uid: None, error: Some("Считыватель не найден.".to_string()) }).unwrap();
-                            }
-                            thread::sleep(Duration::from_secs(2));
-                            continue;
+                        // +++ НОВЫЙ ШАБЛОН: Ридеры найдены, но список ПУСТ (логически невозможно, но Rust требует)
+                        Ok(_) => {
+                            error!("Ошибка: список ридеров пуст, хотя контекст ОК.");
+                            CardStatusPayload { uid: None, error: Some("Считыватель не найден.".to_string()) }
+                        }
+                        // ШАБЛОН: Ридер не найден из-за ошибки PC/SC
+                        Err(e) => {
+                            // Ридер не найден или глобальная ошибка контекста.
+                            error!("Глобальная ошибка PC/SC: {}", e);
+                            CardStatusPayload { uid: None, error: Some("Считыватель не найден.".to_string()) }
                         }
                     };
                     
-                    match nfc_handler::get_card_uid_internal(&context_clone, &reader_name) {
-                        Ok(current_uid_bytes) => {
-                            if last_uid.as_deref() != Some(&current_uid_bytes) {
-                                info!("Обнаружена новая карта: {}", hex::encode(&current_uid_bytes));
-                                last_uid = Some(current_uid_bytes.clone());
-                                app_handle.emit("card-status-changed", CardStatusPayload { uid: Some(hex::encode(current_uid_bytes)), error: None }).unwrap();
+                    // Отправляем событие, только если текущий payload отличается от предыдущего.
+                    match serde_json::to_string(&payload) {
+                        Ok(current_payload_json) => {
+                            if current_payload_json != last_payload_json {
+                                info!("Статус NFC изменился, отправка события: {}", current_payload_json);
+                                if let Err(e) = app_handle.emit("card-status-changed", payload.clone()) { // Добавил .clone()
+                                    error!("Не удалось отправить событие card-status-changed: {}", e);
+                                }
+                                last_payload_json = current_payload_json;
                             }
                         },
-                        Err(err) => {
-                            match err {
-                                Error::NoSmartcard | Error::RemovedCard | Error::ReaderUnavailable => {
-                                    if last_uid.is_some() {
-                                        info!("Карта убрана или ридер недоступен");
-                                        last_uid = None;
-                                        app_handle.emit("card-status-changed", CardStatusPayload { uid: None, error: None }).unwrap();
-                                    }
-                                },
-                                Error::SharingViolation => {
-                                     debug!("Возникло нарушение общего доступа (SharingViolation), игнорируем.");
-                                },
-                                _ => {
-                                    if last_uid.is_some() {
-                                        last_uid = None;
-                                        app_handle.emit("card-status-changed", CardStatusPayload { uid: None, error: Some(err.to_string()) }).unwrap();
-                                    }
-                                    error!("Неожиданная ошибка PC/SC: {}", err);
-                                }
-                            }
+                        Err(e) => {
+                            error!("Не удалось сериализовать payload: {}", e);
                         }
                     }
+
                     thread::sleep(Duration::from_millis(500));
                 }
             });

@@ -17,10 +17,10 @@
   <div class="detail-header">
     <h3>{`${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`}</h3>
     <div class="header-actions">
-      <button class="btn-edit" on:click={() => dispatch('edit')} title="Edit Guest">
-        Edit
+      <button class="btn-edit" on:click={() => dispatch('edit')} title="Редактировать гостя">
+        Редакт.
       </button>
-      <button class="close-btn" on:click={() => dispatch('close')} title="Close">×</button>
+      <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
     </div>
   </div>
 
@@ -28,40 +28,40 @@
     <!-- Основной блок с балансом и статусом -->
     <div class="info-block primary">
       <div class="balance-section">
-        <span class="label">Balance</span>
+        <span class="label">Баланс</span>
         <span class="value balance">{(Number(guest.balance) || 0).toFixed(2)}</span>
         <!-- +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем кнопку пополнения баланса +++ -->
         <button class="btn-action top-up-btn" on:click={() => dispatch('top-up')}>
-          + Top Up
+          + Пополнить
         </button>
         <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
       </div>
       <div>
-        <span class="label">Status</span>
+        <span class="label">Статус</span>
         <span 
           class="value status" 
           class:active={guest.is_active} 
           class:inactive={!guest.is_active}
         >
-          {guest.is_active ? 'Active' : 'Inactive'}
+          {guest.is_active ? 'Активен' : 'Неактивен'}
         </span>
       </div>
     </div>
 
     <!-- Блок с контактной информацией -->
     <div class="info-block">
-      <h4>Contact & ID</h4>
-      <p><span class="label">Phone:</span> {guest.phone_number}</p>
-      <p><span class="label">ID Document:</span> {guest.id_document}</p>
-      <p><span class="label">Date of Birth:</span> {guest.date_of_birth}</p>
+      <h4>Контакты и документы</h4>
+      <p><span class="label">Телефон:</span> {guest.phone_number}</p>
+      <p><span class="label">Документ:</span> {guest.id_document}</p>
+      <p><span class="label">Дата рождения:</span> {guest.date_of_birth}</p>
     </div>
 
     <!-- Блок с привязанными картами -->
     <div class="info-block">
       <div class="cards-header">
-        <h4>Assigned Cards ({guest.cards.length})</h4>
+        <h4>Привязанные карты ({guest.cards.length})</h4>
         {#if guest.cards.length === 0}
-          <button class="btn-action" on:click={() => dispatch('bind-card')}>+ Bind Card</button>
+          <button class="btn-action" on:click={() => dispatch('bind-card')}>+ Привязать карту</button>
         {/if}
       </div>
       {#if guest.cards.length > 0}
@@ -77,7 +77,7 @@
           {/each}
         </ul>
       {:else}
-        <p>No cards assigned.</p>
+        <p>Карты не привязаны.</p>
       {/if}
     </div>
 

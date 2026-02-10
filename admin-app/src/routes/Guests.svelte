@@ -70,7 +70,7 @@
   }
 
   function handleBindCard() {
-    if (!selectedGuest) { alert("Please select a guest first."); return; }
+    if (!selectedGuest) { alert("Сначала выберите гостя."); return; }
     nfcError = ''; 
     isNFCModalOpen = true;
   }
@@ -89,7 +89,7 @@
   }
   
   function handleOpenTopUpModal() {
-    if (!selectedGuest) { alert("Please select a guest first."); return; }
+    if (!selectedGuest) { alert("Сначала выберите гостя."); return; }
     topUpError = '';
     isTopUpModalOpen = true;
   }
@@ -110,25 +110,25 @@
 <div class="guests-page-layout">
   <div class="list-panel">
     <div class="panel-header">
-      <h2>Guests</h2>
-      <button on:click={handleOpenCreateModal}>+ New Guest</button>
+      <h2>Гости</h2>
+      <button on:click={handleOpenCreateModal}>+ Новый гость</button>
     </div>
     <GuestSearch bind:searchTerm />
     <div class="button-group">
       <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
-        {#if $guestStore.loading}Refreshing...{:else}Refresh List{/if}
+        {#if $guestStore.loading}Обновление...{:else}Обновить список{/if}
       </button>
     </div>
     
     <!-- +++ ИЗМЕНЕНИЕ: Улучшаем отображение состояния загрузки и пустого списка +++ -->
     {#if $guestStore.loading && $guestStore.guests.length === 0}
-      <p>Loading guests...</p>
+      <p>Загрузка гостей...</p>
     {:else if $guestStore.error}
-      <p class="error">Error: {$guestStore.error}</p>
+      <p class="error">Ошибка: {$guestStore.error}</p>
     {:else if filteredGuests.length === 0}
       <!-- КОММЕНТАРИЙ: Это сообщение теперь будет показываться и когда список пуст,
            и когда поиск ничего не нашел, что является корректным UX. -->
-      <p>No guests match your search.</p>
+      <p>Гостей, соответствующих вашему поиску, не найдено.</p>
     {:else}
       <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
     {/if}

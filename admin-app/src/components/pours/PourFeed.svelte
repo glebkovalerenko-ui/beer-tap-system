@@ -11,7 +11,7 @@
 
 <div class="pour-feed">
   <div class="header">
-    <h4>Live Feed</h4>
+    <h4>Живая лента</h4>
   </div>
   <div class="feed-body">
     {#if pours.length > 0}
@@ -22,7 +22,7 @@
             <div class="info">
               <span class="guest-name">{pour.guest.first_name} {pour.guest.last_name}</span>
               <span class="details">
-                poured {pour.volume_ml}ml of {pour.beverage.name}
+                налил {pour.volume_ml}мл из {pour.beverage.name}
               </span>
             </div>
             <div class="amount">-${pour.amount_charged}</div>
@@ -30,7 +30,7 @@
         {/each}
       </ul>
     {:else}
-      <p class="no-pours-message">No recent pours to display.</p>
+      <p class="no-pours-message">Нет недавних наливов для отображения.</p>
     {/if}
   </div>
 </div>

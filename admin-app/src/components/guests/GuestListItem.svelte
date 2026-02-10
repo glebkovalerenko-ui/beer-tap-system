@@ -31,10 +31,10 @@
   -->
   <button type="button" on:click={selectGuest} class="guest-item-button">
     <div class="guest-info">
-      <span class="status-indicator" class:active={guest.is_active} title={guest.is_active ? 'Active' : 'Inactive'}></span>
+      <span class="status-indicator" class:active={guest.is_active} title={guest.is_active ? 'Активен' : 'Неактивен'}></span>
       <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
     </div>
-    <span>Balance: {(Number(guest.balance) || 0).toFixed(2)}</span>
+    <span>Баланс: {(Number(guest.balance) || 0).toFixed(2)}</span>
   </button>
   <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
 </li>

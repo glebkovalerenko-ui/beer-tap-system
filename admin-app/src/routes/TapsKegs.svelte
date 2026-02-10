@@ -38,7 +38,7 @@
   // --- Обработчики для CRUD кег (без изменений) ---
   function handleOpenCreateModal() {
     if ($beverageStore.beverages.length === 0) {
-      alert("Please add a beverage to the directory before creating a keg.");
+      alert("Сначала добавьте напиток в справочник, прежде чем создавать кегу.");
       return;
     }
     kegToEdit = null;
@@ -56,7 +56,7 @@
   async function handleSaveAssign(event) {
     const { kegId } = event.detail;
     if (!kegId) {
-      alert("Please select a keg.");
+      alert("Выберите кегу.");
       return;
     }
     
@@ -69,8 +69,8 @@
       isAssignModalOpen = false;
       tapToAssign = null;
     } catch (error) {
-      const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
-      alert(`Error assigning keg: ${errorMessage}`);
+      const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
+      alert(`Ошибка назначения кеги: ${errorMessage}`);
     } finally {
       isAssigning = false;
     }
@@ -79,17 +79,17 @@
 </script>
 
 <div class="page-header">
-  <h1>Taps & Kegs Management</h1>
+  <h1>Управление кранами и кегами</h1>
 </div>
 
 <div class="page-layout">
   
   <section class="taps-section">
-    <h2>Taps Status</h2>
+    <h2>Статус кранов</h2>
     {#if $tapStore.loading && $tapStore.taps.length === 0}
-      <p>Loading taps...</p>
+      <p>Загрузка кранов...</p>
     {:else if $tapStore.error}
-      <p class="error">Error loading taps: {$tapStore.error}</p>
+      <p class="error">Ошибка загрузки кранов: {$tapStore.error}</p>
     {:else}
       <!-- --- ИЗМЕНЕНИЕ: Добавляем обработчик события 'assign' --- -->
       <TapGrid taps={$tapStore.taps} on:assign={handleOpenAssignModal} />
@@ -99,13 +99,13 @@
   <div class="inventory-grid">
     <section class="kegs-section">
       <div class="section-header">
-        <h2>Keg Inventory</h2>
-        <button on:click={handleOpenCreateModal}>+ Add New Keg</button>
+        <h2>Инвентарь кег</h2>
+        <button on:click={handleOpenCreateModal}>+ Добавить кегу</button>
       </div>
       {#if $kegStore.loading && $kegStore.kegs.length === 0}
-        <p>Loading kegs...</p>
+        <p>Загрузка кег...</p>
       {:else if $kegStore.error}
-        <p class="error">Error loading kegs: {$kegStore.error}</p>
+        <p class="error">Ошибка загрузки кег: {$kegStore.error}</p>
       {:else}
         <KegList 
           kegs={$kegStore.kegs}
@@ -117,7 +117,7 @@
 
     <section class="beverages-section">
        <div class="section-header">
-        <h2>Beverage Directory</h2>
+        <h2>Справочник напитков</h2>
       </div>
       <BeverageManager />
     </section>

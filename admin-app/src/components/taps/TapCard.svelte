@@ -19,13 +19,13 @@
 
   async function handleUnassign() {
     if (!keg) return;
-    if (confirm(`Are you sure you want to unassign keg of "${keg.beverage.name}" from ${tap.display_name}?`)) {
+    if (confirm(`Вы уверены, что хотите отключить кегу "${keg.beverage.name}" с ${tap.display_name}?`)) {
       isLoading = true;
       try {
         await tapStore.unassignKegFromTap(tap.tap_id);
         kegStore.markKegAsAvailable(keg.keg_id);
       } catch (error) {
-        alert(`Error: ${error}`);
+        alert(`Ошибка: ${error}`);
       } finally {
         isLoading = false;
       }
@@ -33,12 +33,12 @@
   }
 
   async function handleStatusChange(newStatus) {
-    if (confirm(`Change status of ${tap.display_name} to "${newStatus}"?`)) {
+    if (confirm(`Изменить статус ${tap.display_name} на "${newStatus}"?`)) {
       isLoading = true;
       try {
         await tapStore.updateTapStatus(tap.tap_id, newStatus);
       } catch (error) {
-        alert(`Error: ${error}`);
+        alert(`Ошибка: ${error}`);
       } finally {
         isLoading = false;
       }
@@ -63,11 +63,11 @@
         <div class="volume-bar" style="width: {kegPercentage}%"></div>
       </div>
       <p class="volume-text">
-        {keg.current_volume_ml} / {keg.initial_volume_ml} ml left
+        {keg.current_volume_ml} / {keg.initial_volume_ml} мл осталось
       </p>
     {:else}
       <div class="empty-keg">
-        <p>No Keg Assigned</p>
+        <p>Кега не назначена</p>
       </div>
     {/if}
   </div>
@@ -77,17 +77,17 @@
     {#if tap.keg_id}
       <!-- Кнопки, если кега назначена -->
       <button class="btn-secondary" on:click={() => handleStatusChange(tap.status === 'active' ? 'locked' : 'active')}>
-        {tap.status === 'active' ? 'Lock Tap' : 'Activate Tap'}
+        {tap.status === 'active' ? 'Заблокировать кран' : 'Активировать кран'}
       </button>
-      <button class="btn-danger" on:click={handleUnassign}>Unassign Keg</button>
+      <button class="btn-danger" on:click={handleUnassign}>Отключить кегу</button>
     {:else}
       <!-- Кнопки, если кега НЕ назначена -->
       {#if tap.status === 'cleaning'}
-        <button class="btn-primary" on:click={() => handleStatusChange('locked')}>Mark as Clean</button>
+        <button class="btn-primary" on:click={() => handleStatusChange('locked')}>Отметить чистой</button>
       {:else}
-        <button class="btn-secondary" on:click={() => handleStatusChange('cleaning')}>Set to Cleaning</button>
+        <button class="btn-secondary" on:click={() => handleStatusChange('cleaning')}>Перевести на чистку</button>
         <button class="btn-primary" on:click={() => dispatch('assign', { tap })} disabled={!isAssignable}>
-          Assign Keg
+          Назначить кегу
         </button>
       {/if}
     {/if}

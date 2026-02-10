@@ -31,7 +31,7 @@
       formData.sell_price_per_liter = '7.50';
 
     } catch (error) {
-      formError = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
+      formError = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
     }
   }
 </script>
@@ -39,9 +39,9 @@
 <div class="beverage-manager">
   <div class="beverage-list">
     {#if $beverageStore.loading && $beverageStore.beverages.length === 0}
-      <p class="placeholder-text">Loading beverages...</p>
+      <p class="placeholder-text">Загрузка напитков...</p>
     {:else if $beverageStore.beverages.length === 0}
-      <p class="placeholder-text">No beverages found. Add one below.</p>
+      <p class="placeholder-text">Напитки не найдены. Добавьте один ниже.</p>
     {:else}
       <ul>
         {#each $beverageStore.beverages as beverage (beverage.beverage_id)}
@@ -57,35 +57,35 @@
 
   <!-- --- ИЗМЕНЕНИЕ: Поля формы и плейсхолдеры обновлены --- -->
   <form class="beverage-form" on:submit|preventDefault={handleSubmit}>
-    <h4>Add New Beverage</h4>
-    <input type="text" placeholder="Beverage Name" bind:value={formData.name} required disabled={$beverageStore.loading} />
-    <input type="text" placeholder="Brewery" bind:value={formData.brewery} required disabled={$beverageStore.loading} />
+    <h4>Добавить напиток</h4>
+    <input type="text" placeholder="Название напитка" bind:value={formData.name} required disabled={$beverageStore.loading} />
+    <input type="text" placeholder="Пивоварня" bind:value={formData.brewery} required disabled={$beverageStore.loading} />
     <select bind:value={formData.style} disabled={$beverageStore.loading}>
       <option value="IPA">IPA</option>
-      <option value="Stout">Stout</option>
-      <option value="Lager">Lager</option>
-      <option value="Cider">Cider</option>
-      <option value="Other">Other</option>
+      <option value="Stout">Стаут</option>
+      <option value="Lager">Лагер</option>
+      <option value="Cider">Сидр</option>
+      <option value="Other">Другое</option>
     </select>
     <input 
       type="text" 
-      placeholder="ABV (e.g., 5.0)" 
+      placeholder="ABV (напр., 5.0)" 
       bind:value={formData.abv}
       pattern="^\d*\.?\d*$"
-      title="ABV should be a number, e.g., 5.0 or 4.5"
+      title="ABV должно быть числом, напр. 5.0 или 4.5"
       disabled={$beverageStore.loading}
     />
     <input 
       type="text" 
-      placeholder="Sell Price per Liter (e.g., 7.50)" 
+      placeholder="Цена за литр (напр., 7.50)" 
       bind:value={formData.sell_price_per_liter} 
       required 
       pattern="^\d*\.?\d*$"
-      title="Price should be a number, e.g., 7.50 or 8"
+      title="Цена должна быть числом, напр. 7.50 или 8"
       disabled={$beverageStore.loading}
     />
     <button type="submit" disabled={$beverageStore.loading}>
-      {$beverageStore.loading ? 'Adding...' : '+ Add Beverage'}
+      {$beverageStore.loading ? 'Добавление...' : '+ Добавить напиток'}
     </button>
     {#if formError}<p class="error">{formError}</p>{/if}
   </form>

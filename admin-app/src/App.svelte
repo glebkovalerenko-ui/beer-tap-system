@@ -16,7 +16,7 @@
   const routes = {
     '/': Dashboard,
     '/guests': Guests,
-    '/taps-kgs': TapsKegs,
+    '/taps-kegs': TapsKegs,
     '*': Dashboard
   };
   
@@ -53,17 +53,17 @@
   <div class="app-layout" class:emergency-active={$systemStore.emergencyStop}>
     {#if $systemStore.emergencyStop}
     <div class-="emergency-banner">
-      WARNING: SYSTEM IS IN EMERGENCY STOP MODE. ALL TAPS ARE LOCKED.
+      ВНИМАНИЕ: СИСТЕМА В РЕЖИМЕ ЭКСТРЕННОЙ ОСТАНОВКИ. ВСЕ КРАНЫ ЗАБЛОКИРОВАНЫ.
     </div>
     {/if}
     <nav class="sidebar">
-      <h1>Admin App</h1>
+      <h1>Админ-панель</h1>
       <ul>
-        <li><a href="#/">Dashboard</a></li>
-        <li><a href="#/guests">Guests</a></li>
-        <li><a href="#/taps-kegs">Taps & Kegs</a></li>
+        <li><a href="#/">Дашборд</a></li>
+        <li><a href="#/guests">Гости</a></li>
+        <li><a href="#/taps-kegs">Краны и Кеги</a></li>
       </ul>
-      <button on:click={() => sessionStore.logout()} class="logout-button">Log Out</button>
+      <button on:click={() => sessionStore.logout()} class="logout-button">Выход</button>
     </nav>
 
     <main class="main-content">

@@ -13,12 +13,12 @@
     <table>
       <thead>
         <tr>
-          <th>Beverage</th>
-          <th>Status</th>
-          <th>Volume</th>
-          <th>Purchase Price</th>
-          <th>Created At</th>
-          <th>Actions</th>
+          <th>Напиток</th>
+          <th>Статус</th>
+          <th>Объем</th>
+          <th>Цена покупки</th>
+          <th>Создано</th>
+          <th>Действия</th>
         </tr>
       </thead>
       <tbody>
@@ -31,14 +31,14 @@
               </div>
             </td>
             <td><span class="status {keg.status}">{keg.status}</span></td>
-            <td>{keg.current_volume_ml} / {keg.initial_volume_ml} ml</td>
+            <td>{keg.current_volume_ml} / {keg.initial_volume_ml} мл</td>
             <td>${keg.purchase_price}</td>
-            <td>{new Date(keg.created_at).toLocaleDateString()}</td>
+            <td>{new Date(keg.created_at).toLocaleDateString('ru-RU')}</td>
             <td>
               <div class="action-buttons">
                 <!-- --- ИЗМЕНЕНИЕ: "Оживляем" кнопки --- -->
-                <button class="btn-sm btn-edit" on:click={() => dispatch('edit', { keg })}>Edit</button>
-                <button class="btn-sm btn-delete" on:click={() => dispatch('delete', { keg })}>Delete</button>
+                <button class="btn-sm btn-edit" on:click={() => dispatch('edit', { keg })}>Редакт.</button>
+                <button class="btn-sm btn-delete" on:click={() => dispatch('delete', { keg })}>Удалить</button>
               </div>
             </td>
           </tr>
@@ -47,7 +47,7 @@
     </table>
   </div>
 {:else}
-  <p>No kegs found in inventory. Try adding one!</p>
+  <p>В инвентаре нет кег. Попробуйте добавить одну!</p>
 {/if}
 
 <style>

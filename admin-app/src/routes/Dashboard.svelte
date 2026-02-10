@@ -30,13 +30,13 @@
       showConfirmModal = false; // Закрываем модальное окно при успехе
     } catch (error) {
       // Ошибки уже логируются в сторе, можно добавить alert
-      alert(`Failed to change state: ${error}`);
+      alert(`Ошибка изменения состояния: ${error}`);
     }
   }
 </script>
 
 <div class="page-header">
-  <h1>Dashboard</h1>
+  <h1>Дашборд</h1>
   <!-- Кнопка управления режимом ЧС -->
   <button 
     class="emergency-button" 
@@ -45,11 +45,11 @@
     disabled={$systemStore.loading}
   >
     {#if $systemStore.loading}
-      Processing...
+      Обработка...
     {:else if $systemStore.emergencyStop}
-      Deactivate Emergency Stop
+      Отключить экстренную остановку
     {:else}
-      Activate Emergency Stop
+      Активировать экстренную остановку
     {/if}
   </button>
 </div>
@@ -57,15 +57,15 @@
 <div class="dashboard-layout">
   <!-- Основная секция -->
   <section class="main-section">
-    <h2>Equipment Status</h2>
+    <h2>Статус оборудования</h2>
     <div class="status-widgets-grid">
       <NfcReaderStatus />
     </div>
 
     {#if $tapStore.loading && $tapStore.taps.length === 0}
-      <p>Loading tap statuses...</p>
+      <p>Загрузка статусов кранов...</p>
     {:else if $tapStore.error}
-      <p class="error">Error loading taps: {$tapStore.error}</p>
+      <p class="error">Ошибка загрузки кранов: {$tapStore.error}</p>
     {:else}
       <TapGrid taps={$tapStore.taps} />
     {/if}
@@ -74,9 +74,9 @@
   <!-- Боковая секция -->
   <aside class="sidebar-section">
     {#if $pourStore.loading && $pourStore.pours.length === 0}
-      <p>Loading live feed...</p>
+      <p>Загрузка ленты наливов...</p>
     {:else if $pourStore.error}
-       <p class="error">Error loading feed: {$pourStore.error}</p>
+       <p class="error">Ошибка загрузки ленты: {$pourStore.error}</p>
     {:else}
       <PourFeed pours={$pourStore.pours} />
     {/if}
@@ -86,28 +86,28 @@
 <!-- Модальное окно подтверждения -->
 {#if showConfirmModal}
   <Modal on:close={() => showConfirmModal = false}>
-    <h2 slot="header">Confirm Action</h2>
+    <h2 slot="header">Подтверждение действия</h2>
     <p>
-      You are about to 
-      <b>{$systemStore.emergencyStop ? 'DEACTIVATE' : 'ACTIVATE'}</b> 
-      the emergency stop mode.
+      Вы собираетесь 
+      <b>{$systemStore.emergencyStop ? 'ОТКЛЮЧИТЬ' : 'АКТИВИРОВАТЬ'}</b> 
+      режим экстренной остановки.
     </p>
     <p>
       {#if !$systemStore.emergencyStop}
-        This will immediately <b>LOCK</b> all taps and prevent any new pours.
+        Это немедленно <b>ЗАБЛОКИРУЕТ</b> все краны и запретит новые наливы.
       {:else}
-        This will <b>UNLOCK</b> the system and allow normal operation.
+        Это <b>РАЗБЛОКИРУЕТ</b> систему и вернет нормальное функционирование.
       {/if}
     </p>
-    <p>Are you sure you want to proceed?</p>
+    <p>Вы уверены, что хотите продолжить?</p>
     <div slot="footer" class="modal-actions">
-      <button on:click={() => showConfirmModal = false}>Cancel</button>
+      <button on:click={() => showConfirmModal = false}>Отмена</button>
       <button 
         class="confirm-button" 
         class:danger={!$systemStore.emergencyStop}
         on:click={handleEmergencyStopToggle}
       >
-        Yes, proceed
+        Да, продолжить
       </button>
     </div>
   </Modal>

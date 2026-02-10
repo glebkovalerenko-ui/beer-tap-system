@@ -5,7 +5,7 @@
 <div class="search-container">
   <input 
     type="text" 
-    placeholder="Search by name..." 
+    placeholder="Поиск по имени..." 
     bind:value={searchTerm}
   />
 </div>

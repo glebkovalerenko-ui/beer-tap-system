@@ -27,13 +27,13 @@
         // App.svelte увидит это изменение и автоматически переключит интерфейс.
       } else {
         // На случай, если бэкенд по какой-то причине не вернул ошибку, но и токен пустой
-        error = 'Login failed: Invalid response from server.';
+        error = 'Ошибка входа: неверный ответ сервера.';
       }
 
     } catch (e) {
       // Шаг 4: Если invoke() вернул ошибку, отображаем ее.
       // Наш AppError в Rust как раз вернет сюда объект с полем `message`.
-      error = e.message || 'Failed to log in. Please check your credentials.';
+      error = e.message || 'Ошибка входа. Проверьте учетные данные.';
     } finally {
       isLoading = false;
     }
@@ -41,19 +41,19 @@
 </script>
 
 <div class="login-container">
-  <h2>Login</h2>
+  <h2>Вход</h2>
   <form on:submit|preventDefault={handleLogin}>
     <div class="form-group">
-      <label for="username">Username</label>
+      <label for="username">Имя пользователя</label>
       <input type="text" id="username" bind:value={username} disabled={isLoading} />
     </div>
     <div class="form-group">
-      <label for="password">Password</label>
+      <label for="password">Пароль</label>
       <input type="password" id="password" bind:value={password} disabled={isLoading} />
     </div>
     <!-- Добавляем disabled на кнопку во время загрузки -->
     <button type="submit" disabled={isLoading}>
-      {#if isLoading}Logging in...{:else}Log In{/if}
+      {#if isLoading}Вход...{:else}Войти{/if}
     </button>
     {#if error}
       <p class="error">{error}</p>

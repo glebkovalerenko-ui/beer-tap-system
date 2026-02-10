@@ -5,21 +5,21 @@
 
 <div class="status-widget">
   <div class="header">
-    <h4>NFC Reader</h4>
+    <h4>NFC считыватель</h4>
   </div>
   <div class="body">
     {#if $nfcReaderStore.status === 'initializing'}
-      <p>Initializing...</p>
+      <p>Инициализация...</p>
     {:else if $nfcReaderStore.status === 'ok'}
       <div class="status-indicator ok"></div>
       <div class="info">
-        <span class="status-text">Connected</span>
-        <span class="detail">Reader: {$nfcReaderStore.readerName || 'ACR122U'}</span>
+        <span class="status-text">Подключено</span>
+        <span class="detail">Считыватель: {$nfcReaderStore.readerName || 'ACR122U'}</span>
       </div>
     {:else if $nfcReaderStore.status === 'error'}
       <div class="status-indicator error"></div>
        <div class="info">
-        <span class="status-text error-text">Error</span>
+        <span class="status-text error-text">Ошибка</span>
         <span class="detail error-detail">{$nfcReaderStore.error}</span>
       </div>
     {/if}

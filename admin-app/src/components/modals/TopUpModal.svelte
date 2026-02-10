@@ -10,7 +10,7 @@
    * Имя гостя для отображения в заголовке
    * @type {string}
    */
-  export let guestName = 'Guest';
+  export let guestName = 'Гость';
   /**
    * Флаг, указывающий на процесс сохранения (для блокировки кнопки)
    * @type {boolean}
@@ -26,7 +26,7 @@
     const numericAmount = parseFloat(amount);
 
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      error = 'Please enter a valid positive amount.';
+      error = 'Введите положительную сумму.';
       return;
     }
 
@@ -41,19 +41,19 @@
 
 <Modal on:close={() => dispatch('close')}>
   <div class="top-up-modal">
-    <h2>Top Up Balance for {guestName}</h2>
-    <p>Enter the amount to add to the guest's balance.</p>
+    <h2>Пополнить баланс гостя {guestName}</h2>
+    <p>Введите сумму для пополнения баланса.</p>
 
     <form on:submit|preventDefault={handleSave}>
       <div class="form-field">
-        <label for="amount">Amount</label>
+        <label for="amount">Сумма</label>
         <input
           type="number"
           id="amount"
           bind:value={amount}
           step="0.01"
           min="0.01"
-          placeholder="e.g., 500.00"
+          placeholder="напр., 500.00"
           required
           disabled={isSaving}
         />
@@ -65,13 +65,13 @@
 
       <div class="form-actions">
         <button type="button" class="btn-cancel" on:click={() => dispatch('close')} disabled={isSaving}>
-          Cancel
+          Отмена
         </button>
         <button type="submit" class="btn-save" disabled={isSaving}>
           {#if isSaving}
-            Saving...
+            Сохранение...
           {:else}
-            Save
+            Сохранить
           {/if}
         </button>
       </div>

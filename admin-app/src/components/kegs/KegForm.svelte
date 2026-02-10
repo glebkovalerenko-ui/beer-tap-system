@@ -28,7 +28,7 @@
 
   function handleSubmit() {
     if (!formData.beverage_id) {
-      alert("Please select a beverage. If the list is empty, add one in the 'Beverage Directory' first.");
+      alert("Выберите напиток. Если список пуст, сначала добавьте напиток в 'Справочник напитков'.");
       return;
     }
     const payload = {
@@ -40,12 +40,12 @@
 </script>
 
 <form on:submit|preventDefault={handleSubmit}>
-  <h3>{keg ? 'Edit Keg Information' : 'Add New Keg to Inventory'}</h3>
+  <h3>{keg ? 'Редактирование кеги' : 'Добавление новой кеги в инвентарь'}</h3>
   
   <fieldset>
-    <legend>Beverage & Volume</legend>
+    <legend>Напиток и объем</legend>
     <div class="form-group">
-      <label for="beverage_id">Beverage</label>
+      <label for="beverage_id">Напиток</label>
       <!-- --- ИЗМЕНЕНИЕ: Select теперь полностью динамический --- -->
       <select 
         id="beverage_id" 
@@ -54,9 +54,9 @@
         disabled={isSaving || availableBeverages.length === 0}
       >
         {#if $beverageStore.loading}
-          <option value="" disabled>Loading beverages...</option>
+          <option value="" disabled>Загрузка напитков...</option>
         {:else if availableBeverages.length === 0}
-          <option value="" disabled>Please add a beverage first</option>
+          <option value="" disabled>Сначала добавьте напиток</option>
         {:else}
           {#each availableBeverages as beverage (beverage.beverage_id)}
             <option value={beverage.beverage_id}>{beverage.name}</option>
@@ -65,7 +65,7 @@
       </select>
     </div>
     <div class="form-group">
-      <label for="initial_volume_ml">Initial Volume (ml)</label>
+      <label for="initial_volume_ml">Начальный объем (мл)</label>
       <input 
         id="initial_volume_ml" 
         type="number" 
@@ -79,16 +79,16 @@
   </fieldset>
 
   <fieldset>
-    <legend>Financial</legend>
+    <legend>Финансовая информация</legend>
     <div class="form-group">
-      <label for="purchase_price">Purchase Price ($)</label>
+      <label for="purchase_price">Цена покупки ($)</label>
       <input 
         id="purchase_price" 
         type="text" 
         bind:value={formData.purchase_price} 
         required
         pattern="^\d*\.?\d*$"
-        title="Price should be a number, e.g., 99.50 or 100"
+        title="Цена должна быть числом, напр. 99.50 или 100"
         disabled={isSaving}
       />
     </div>
@@ -96,13 +96,13 @@
 
   <div class="form-actions">
     <button type="button" class="btn-secondary" on:click={() => dispatch('cancel')} disabled={isSaving}>
-      Cancel
+      Отмена
     </button>
     <button type="submit" class="btn-primary" disabled={isSaving}>
       {#if isSaving}
-        Saving...
+        Сохранение...
       {:else}
-        {keg ? 'Save Changes' : 'Add Keg'}
+        {keg ? 'Сохранить изменения' : 'Добавить кегу'}
       {/if}
     </button>
   </div>

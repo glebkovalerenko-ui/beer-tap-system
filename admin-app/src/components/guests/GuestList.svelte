@@ -6,7 +6,7 @@
 </script>
 
 {#if guests.length === 0}
-  <p>No guests match your search.</p>
+  <p>Гостей, соответствующих вашему поиску, не найдено.</p>
 {:else}
   <ul class="guest-list">
     {#each guests as guest (guest.guest_id)}

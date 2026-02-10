@@ -30,16 +30,16 @@
 </script>
 
 <div class="assign-keg-modal">
-  <h3>Assign Keg to <span class="tap-name">{tap.display_name}</span></h3>
+  <h3>Назначить кегу на <span class="tap-name">{tap.display_name}</span></h3>
 
   {#if availableKegs.length === 0}
     <div class="no-kegs-placeholder">
-      <p>There are no 'full' kegs available in the inventory.</p>
-      <p>Please add a new keg first.</p>
+      <p>В инвентаре нет кег со статусом "полная".</p>
+      <p>Сначала добавьте новую кегу.</p>
     </div>
   {:else}
     <div class="form-group">
-      <label for="keg-select">Select an available keg:</label>
+      <label for="keg-select">Выберите доступную кегу:</label>
       <select id="keg-select" bind:value={selectedKegId} disabled={isSaving}>
         {#each availableKegs as keg (keg.keg_id)}
           <option value={keg.keg_id}>
@@ -52,7 +52,7 @@
 
   <div class="form-actions">
     <button class="btn-secondary" on:click={() => dispatch('cancel')} disabled={isSaving}>
-      Cancel
+      Отмена
     </button>
     <button 
       class="btn-primary" 
@@ -60,9 +60,9 @@
       disabled={isSaving || availableKegs.length === 0}
     >
       {#if isSaving}
-        Assigning...
+        Назначение...
       {:else}
-        Assign Keg
+        Назначить кегу
       {/if}
     </button>
   </div>
