@@ -60,6 +60,13 @@ pip install -r requirements.txt
 deactivate
 
 echo ""
+echo "=== Шаг 3: Установка зависимостей для GPIO ==="
+sudo apt-get install -y python3-gpiozero
+
+echo "=== Шаг 4: Настройка pigpiod ==="
+sudo systemctl enable pigpiod && sudo systemctl start pigpiod
+
+echo ""
 echo "=============================================================================="
 echo "✅ Настройка успешно завершена!"
 echo "ВАЖНО: Для применения всех изменений, особенно членства в группе, "
