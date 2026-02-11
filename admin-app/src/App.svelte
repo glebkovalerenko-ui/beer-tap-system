@@ -52,11 +52,12 @@
   <!-- Если пользователь залогинен -->
   <div class="app-layout" class:emergency-active={$systemStore.emergencyStop}>
     {#if $systemStore.emergencyStop}
-    <div class-="emergency-banner">
-      ВНИМАНИЕ: СИСТЕМА В РЕЖИМЕ ЭКСТРЕННОЙ ОСТАНОВКИ. ВСЕ КРАНЫ ЗАБЛОКИРОВАНЫ.
-    </div>
+      <div class="emergency-banner">
+        ВНИМАНИЕ: СИСТЕМА В РЕЖИМЕ ЭКСТРЕННОЙ ОСТАНОВКИ. ВСЕ КРАНЫ ЗАБЛОКИРОВАНЫ.
+      </div>
     {/if}
-    <nav class="sidebar">
+
+    <nav class="sidebar" aria-label="Главная навигация">
       <h1>Админ-панель</h1>
       <ul>
         <li><a href="#/">Дашборд</a></li>
@@ -67,7 +68,10 @@
     </nav>
 
     <main class="main-content">
-      <Router {routes} />
+      <!-- Внутри main оставляем шапку/панель и добавляем специально скроллящийся контейнер для страниц -->
+      <div class="page-scroll">
+        <Router {routes} />
+      </div>
     </main>
   </div>
 {:else}
@@ -76,14 +80,47 @@
 {/if}
 
 <style>
+  /* Global layout reset required by the UX spec */
+  :global(html, body) {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden; /* prevent body scrolling, app will control scroll inside */
+    font-size: 16px; /* base font size */
+  }
+
   .app-layout { display: flex; height: 100vh; }
-  .sidebar { width: 200px; background-color: #f4f4f4; padding: 1rem; border-right: 1px solid #ddd; position: relative; }
+  .sidebar {
+    width: 240px;
+    flex: 0 0 240px; /* fixed width sidebar */
+    background-color: #f4f4f4;
+    padding: 1rem;
+    border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
   .sidebar h1 { font-size: 1.5rem; margin-top: 0; }
   .sidebar ul { list-style-type: none; padding: 0; }
   .sidebar ul li a { display: block; padding: 0.5rem 0; text-decoration: none; color: #333; }
   .sidebar ul li a:hover { color: #007bff; }
-  .main-content { flex-grow: 1; padding: 1rem; }
-  .logout-button { position: absolute; bottom: 1rem; left: 1rem; right: 1rem; width: calc(100% - 2rem); }
+  .main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* main itself never scrolls; inner container scrolls */
+  }
+
+  /* Scrolling container for page content per requirements */
+  .page-scroll {
+    overflow-y: auto;
+    padding: 2rem;
+    flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+  }
+
+  .logout-button { margin-top: auto; /* sticks to bottom of sidebar */ width: 100%; }
   .emergency-banner {
     background-color: #d9534f;
     color: white;
@@ -103,5 +140,37 @@
   }
   .app-layout.emergency-active {
     padding-top: 2.5rem;
+  }
+
+  /* Global interactive styles (buttons / inputs) */
+  :global(button) {
+    font-size: 1rem;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.06s ease, filter 0.06s ease, box-shadow 0.06s ease;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  }
+  :global(button:hover:not(:disabled)) {
+    filter: brightness(0.95);
+  }
+  :global(button:active:not(:disabled)) {
+    transform: scale(0.98);
+  }
+  :global(button:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    filter: none;
+  }
+
+  :global(input, textarea, select) {
+    font-size: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid #dcdcdc;
+    box-sizing: border-box;
   }
 </style>

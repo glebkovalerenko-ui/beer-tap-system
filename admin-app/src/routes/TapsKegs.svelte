@@ -4,6 +4,8 @@
   import { kegStore } from '../stores/kegStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { beverageStore } from '../stores/beverageStore.js';
+  import { get } from 'svelte/store';
+  import { onMount } from 'svelte';
 
   import TapGrid from '../components/taps/TapGrid.svelte';
   import KegList from '../components/kegs/KegList.svelte';
@@ -35,15 +37,44 @@
     }
   }
 
+  // Дополнительно: при монтировании попробуем загрузить справочник напитков
+  // если токен уже доступен — это помогает на старте приложения и в dev-mode
+  onMount(() => {
+    try {
+      const token = get(sessionStore).token;
+      if (token && !initialLoadAttempted) {
+        // Повторный вызов безопасен, т.к. fetchBeverages проверяет токен
+        tapStore.fetchTaps();
+        kegStore.fetchKegs();
+        beverageStore.fetchBeverages();
+        initialLoadAttempted = true;
+      }
+    } catch (err) {
+      console.error('Ошибка при onMount загрузке данных TapsKegs:', err);
+    }
+  });
+
   // --- Обработчики для CRUD кег (без изменений) ---
   function handleOpenCreateModal() {
-    if ($beverageStore.beverages.length === 0) {
-      alert("Сначала добавьте напиток в справочник, прежде чем создавать кегу.");
-      return;
+    // Логируем нажатие в самом начале — поможет отследить, доходит ли событие
+    console.log('Open modal clicked');
+    try {
+      // Безопасно читаем текущее состояние справочника напитков
+      const current = get(beverageStore);
+      if (!current || !Array.isArray(current.beverages) || current.beverages.length === 0) {
+        // Явно объясняем пользователю причину недоступности действия
+        alert("Сначала добавьте напиток в справочник, прежде чем создавать кегу.");
+        return;
+      }
+
+      kegToEdit = null;
+      kegFormError = '';
+      isKegFormModalOpen = true;
+    } catch (err) {
+      console.error('Ошибка в handleOpenCreateModal:', err);
+      // Показываем пользователю простое сообщение об ошибке
+      alert('Не удалось открыть форму создания кеги. Подробности в консоли.');
     }
-    kegToEdit = null;
-    kegFormError = '';
-    isKegFormModalOpen = true;
   }
   // ... (остальные обработчики CRUD без изменений)
 
@@ -76,6 +107,23 @@
     }
   }
 
+  // Обработчик сохранения кеги из формы
+  async function handleSaveKeg(event) {
+    const payload = event.detail;
+    kegFormError = '';
+    try {
+      await kegStore.createKeg(payload);
+      // успешное создание — закрываем модальное окно и показываем подтверждение
+      isKegFormModalOpen = false;
+      kegToEdit = null;
+      alert('Кега успешно добавлена!');
+    } catch (error) {
+      const message = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
+      kegFormError = `Ошибка при сохранении кеги: ${message}`;
+      console.error('handleSaveKeg error:', error);
+    }
+  }
+
 </script>
 
 <div class="page-header">
@@ -100,8 +148,20 @@
     <section class="kegs-section">
       <div class="section-header">
         <h2>Инвентарь кег</h2>
-        <button on:click={handleOpenCreateModal}>+ Добавить кегу</button>
+        <!-- Кнопка визуально становится неактивной, но не использует html disabled
+             чтобы обработчик клика мог показать поясняющее сообщение. -->
+        <button
+          class:disabled={$beverageStore.beverages.length === 0}
+          aria-disabled={$beverageStore.beverages.length === 0}
+          title={$beverageStore.beverages.length === 0 ? 'Сначала добавьте напиток' : 'Добавить кегу'}
+          on:click={handleOpenCreateModal}
+        >
+          + Добавить кегу
+        </button>
       </div>
+      {#if $beverageStore.beverages.length === 0}
+        <p class="hint">Справочник напитков пуст. Добавьте напиток в справочник, прежде чем создавать кегу.</p>
+      {/if}
       {#if $kegStore.loading && $kegStore.kegs.length === 0}
         <p>Загрузка кег...</p>
       {:else if $kegStore.error}
@@ -130,7 +190,7 @@
     <KegForm
       keg={kegToEdit}
       isSaving={$kegStore.loading}
-      on:save={(e) => { /* логика сохранения */ }}
+      on:save={handleSaveKeg}
       on:cancel={() => { isKegFormModalOpen = false; kegToEdit = null; }}
     />
     {#if kegFormError}<p class="error" style="margin-top: 1rem;">{kegFormError}</p>{/if}
@@ -186,10 +246,20 @@
   .section-header h2 {
     margin: 0;
   }
+  .section-header button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    /* сохраняем pointer-events, чтобы обработчик клика мог показать alert */
+  }
   .beverages-section {
     /* Эта секция будет растягиваться по высоте вместе с kegs-section */
     display: flex;
     flex-direction: column;
     height: 100%;
+  }
+  .hint {
+    margin: 0.5rem 0 1rem 0;
+    color: #666;
+    font-size: 0.95rem;
   }
 </style>

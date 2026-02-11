@@ -1,104 +1,132 @@
 <!-- src/components/guests/GuestListItem.svelte -->
-
 <script>
   import { createEventDispatcher } from 'svelte';
-
-  // Получаем одного гостя как prop
   export let guest;
-
-  // +++ ИЗМЕНЕНИЕ: Добавляем пропс для отслеживания выбранного элемента +++
-  // Это нужно, чтобы правильно применять стили, когда кнопка внутри li
   export let isSelected = false;
 
-  // Создаем диспетчер для отправки событий родителю
   const dispatch = createEventDispatcher();
 
   function selectGuest() {
-    // Отправляем событие 'select' с ID гостя в payload
     dispatch('select', { guestId: guest.guest_id });
   }
 </script>
 
-<!-- 
-  Элемент <li> теперь отвечает только за структуру списка. 
-  Мы убрали с него обработчик on:click.
--->
 <li class:selected={isSelected}>
-  <!-- 
-    +++ НАЧАЛО ИЗМЕНЕНИЙ: Вся интерактивность перенесена на <button> +++
-    Это решает все проблемы доступности (a11y).
-    Кнопка является "фокусируемым" элементом по умолчанию.
-  -->
-  <button type="button" on:click={selectGuest} class="guest-item-button">
-    <div class="guest-info">
-      <span class="status-indicator" class:active={guest.is_active} title={guest.is_active ? 'Активен' : 'Неактивен'}></span>
-      <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
+  <button type="button" on:click={selectGuest} class="guest-card">
+    <div class="guest-main">
+      <!-- Индикатор статуса: Зеленая точка если активен -->
+      <div class="status-dot" class:active={guest.is_active} title={guest.is_active ? 'Активен' : 'Неактивен'}></div>
+      
+      <div class="info-block">
+        <span class="guest-name">{guest.last_name} {guest.first_name}</span>
+        {#if guest.phone_number}
+          <span class="guest-meta">{guest.phone_number}</span>
+        {/if}
+      </div>
     </div>
-    <span>Баланс: {(Number(guest.balance) || 0).toFixed(2)}</span>
+
+    <div class="guest-balance">
+      <span class="currency">₽</span>
+      <span class="amount">{(Number(guest.balance) || 0).toFixed(2)}</span>
+    </div>
   </button>
-  <!-- +++ КОНЕЦ ИЗМЕНЕНИЙ +++ -->
 </li>
 
 <style>
   li {
-    /* Убираем все стили с li, он теперь просто контейнер */
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
+    list-style: none;
+    margin-bottom: 0.75rem;
   }
 
-  /* +++ НАЧАЛО ИЗМЕНЕНИЙ: Новые стили для кнопки +++ */
-  .guest-item-button {
-    /* Сбрасываем стандартные стили кнопки, чтобы она не выглядела как кнопка */
-    background: none;
-    color: inherit;
-    border: none;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-    text-align: left;
-    outline: inherit;
-    
-    /* Применяем стили, которые раньше были у .guest-item */
+  .guest-card {
     width: 100%;
+    background: white;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    padding: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem;
-    border-bottom: 1px solid #eee;
-    transition: background-color 0.2s;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   }
 
-  .guest-item-button:hover {
-    background-color: #f0f8ff;
+  .guest-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    border-color: #e0e0e0;
   }
 
-  /* Для выбранного элемента подсвечиваем фон через родительский li */
-  li.selected .guest-item-button {
-    background-color: #e6f3ff;
+  li.selected .guest-card {
+    border-color: #1a73e8;
+    background-color: #f8fbff;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
   }
-  
-  /* Добавляем видимый контур фокуса для пользователей клавиатуры */
-  .guest-item-button:focus-visible {
-    outline: 2px solid #007bff;
-    outline-offset: -2px;
-    border-radius: 2px;
-  }
-  /* +++ КОНЕЦ ИЗМЕНЕНИЙ +++ */
 
-  .guest-info {
+  .guest-main {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
   }
-  .status-indicator {
-    display: block;
+
+  .status-dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background-color: #e76f51; /* Цвет для неактивного статуса по умолчанию */
+    background-color: #dadce0; /* Серый по умолчанию */
+    flex-shrink: 0;
   }
-  .status-indicator.active {
-    background-color: #2a9d8f; /* Цвет для активного статуса */
+  .status-dot.active {
+    background-color: #34a853; /* Зеленый активный */
+    box-shadow: 0 0 0 2px rgba(52, 168, 83, 0.1);
+  }
+
+  .info-block {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .guest-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #202124;
+  }
+
+  .guest-meta {
+    font-size: 0.8rem;
+    color: #80868b;
+    margin-top: 2px;
+  }
+
+  .guest-balance {
+    text-align: right;
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+
+  .currency {
+    font-size: 0.9rem;
+    color: #9aa0a6;
+    margin-right: 2px;
+  }
+
+  .amount {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #1a73e8;
+  }
+  
+  /* Убираем дефолтные стили кнопки */
+  button {
+    background: none;
+    border: none;
+    font: inherit;
+    outline: none;
+  }
+  button:focus-visible {
+    outline: 2px solid #1a73e8;
+    border-radius: 12px;
   }
 </style>

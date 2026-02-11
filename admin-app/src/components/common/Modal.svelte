@@ -16,12 +16,11 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown}/>
+<svelte:window on:keydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-<div class="modal-backdrop" on:click={() => dispatch('close')} role="document">
-  
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- Overlay/backdrop -->
+<!-- click on backdrop closes modal; content click stops propagation -->
+<div class="modal-backdrop" on:click={() => dispatch('close')} role="presentation">
   <div
     class="modal-content"
     on:click|stopPropagation
@@ -30,25 +29,21 @@
     tabindex="-1"
     use:focusOnMount
   >
-    <!-- Секция для заголовка -->
+    <!-- Секция для заголовка (фиксирована) -->
     <header class="modal-header">
-      <slot name="header">
-        <!-- Сюда попадет контент с атрибутом slot="header" -->
-        <!-- Можно добавить дефолтный заголовок, если нужно -->
-        <!-- <h2>Default Title</h2> -->
-      </slot>
+      <slot name="header" />
     </header>
 
-    <!-- Секция для основного контента (дефолтный слот) -->
-    <main class="modal-body">
-      <slot />
-    </main>
+    <!-- Основное тело должно быть скроллируемым внутри окна -->
+    <div class="modal-body">
+      <main>
+        <slot />
+      </main>
+    </div>
 
-    <!-- Секция для кнопок (футер) -->
+    <!-- Футер (фиксирован внутри модального окна) -->
     <footer class="modal-footer">
-      <slot name="footer">
-        <!-- Сюда попадет контент с атрибутом slot="footer" -->
-      </slot>
+      <slot name="footer" />
     </footer>
   </div>
 </div>
@@ -56,49 +51,59 @@
 <style>
   .modal-backdrop {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background-color: rgba(0, 0, 0, 0.5);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 100;
+    z-index: 1000; /* per requirement */
+    padding: 1.5rem; /* small gap on mobile */
+    box-sizing: border-box;
   }
+
   .modal-content {
     background-color: white;
-    padding: 0; /* Убираем главный padding, чтобы секции могли управлять своими */
-    border-radius: 8px;
-    min-width: 450px;
-    max-width: 90%;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    padding: 0;
+    border-radius: 10px;
+    width: min(95%, 720px);
+    max-width: 100%;
+    max-height: 85vh; /* per requirement */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
     display: flex;
     flex-direction: column;
+    overflow: hidden; /* ensure internal regions control scroll */
   }
-  .modal-content:focus {
-    outline: none;
-  }
+  .modal-content:focus { outline: none; }
 
   .modal-header {
-    padding: 1.5rem;
+    padding: 1rem 1.25rem;
     border-bottom: 1px solid #eee;
+    flex: 0 0 auto; /* fixed area */
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.95));
   }
-  /* Убираем дефолтный margin у h2 внутри слота */
-  .modal-header :global(h2) {
-      margin: 0;
-  }
+  .modal-header :global(h2) { margin: 0; }
 
   .modal-body {
-    padding: 1.5rem;
-    max-height: 60vh; /* Ограничиваем высоту, если контента много */
-    overflow-y: auto;
+    padding: 1rem 1.25rem;
+    overflow-y: auto; /* body scrolls if content is long */
+    flex: 1 1 auto; /* takes available space */
   }
 
+  .modal-body main { min-width: 0; }
+
   .modal-footer {
-    padding: 1rem 1.5rem;
+    padding: 0.75rem 1.25rem;
     border-top: 1px solid #eee;
     display: flex;
-    justify-content: flex-end; /* Кнопки по умолчанию справа */
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex: 0 0 auto; /* fixed footer -> always visible */
+    background: linear-gradient(0deg, rgba(255,255,255,0.98), rgba(255,255,255,0.95));
+  }
+
+  /* Ensure action buttons in footer are visible and responsive */
+  .modal-footer :global(button) {
+    min-width: 88px;
+    padding: 0.6rem 0.9rem;
   }
 </style>

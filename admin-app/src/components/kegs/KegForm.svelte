@@ -27,6 +27,7 @@
   }
 
   function handleSubmit() {
+    console.log('KegForm handleSubmit called. Payload:', formData);
     if (!formData.beverage_id) {
       alert("Выберите напиток. Если список пуст, сначала добавьте напиток в 'Справочник напитков'.");
       return;
