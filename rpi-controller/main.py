@@ -1,11 +1,14 @@
 import threading
 import time
+import logging
 from hardware import HardwareHandler
 from database import DatabaseHandler
 from sync_manager import SyncManager
 from flow_manager import FlowManager
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     # Инициализация компонентов
     db_handler = DatabaseHandler()
     hardware = HardwareHandler()

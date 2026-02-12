@@ -33,3 +33,16 @@ class SyncManager:
                 logging.error(f"Sync failed with status code {response.status_code}")
         except requests.RequestException as e:
             logging.error(f"Error during sync: {e}")
+
+    def check_card_auth(self, card_uid):
+        try:
+            response = requests.get(f"{self.server_url}/api/guests/")
+            if response.status_code == 200:
+                guests = response.json()
+                for guest in guests:
+                    cards = guest.get("cards", [])
+                    if any(card.get("card_uid") == card_uid for card in cards):
+                        return True
+        except requests.RequestException as e:
+            logging.error(f"Error checking card authorization: {e}")
+        return False

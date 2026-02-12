@@ -22,6 +22,12 @@ class FlowManager:
 
         logging.info(f"Авторизация карты {card_uid}...")
 
+        if not self.sync_manager.check_card_auth(card_uid):
+            logging.info(f"КАРТА {card_uid} НЕ ЗАРЕГИСТРИРОВАНА. ДОСТУП ЗАПРЕЩЕН")
+            while self.hardware.is_card_present():
+                time.sleep(0.5)
+            return
+
         if self.sync_manager.check_emergency_stop():
             while self.hardware.is_card_present():
                 time.sleep(0.5)
@@ -58,11 +64,12 @@ class FlowManager:
         finally:
             self.hardware.valve_close()
             logging.info("КЛАПАН ЗАКРЫТ (КАРТА УБРАНА)")
+            logging.info(f"Сессия завершена. Налито: {total_volume_ml} мл")
 
         # Завершение
-        if total_volume_ml > 10:  # Минимальный объем 10 мл
+        if total_volume_ml > 1:  # Минимальный объем 1 мл
             end_ts = datetime.now(timezone.utc).isoformat()
-            price_cents = (total_volume_ml / 100) * PRICE_PER_100ML_CENTS
+            price_cents = int((total_volume_ml / 100.0) * PRICE_PER_100ML_CENTS)
             pour_data = {
                 "client_tx_id": client_tx_id,
                 "card_uid": card_uid,
@@ -70,7 +77,7 @@ class FlowManager:
                 "start_ts": start_ts,
                 "end_ts": end_ts,
                 "volume_ml": total_volume_ml,
-                "price_cents": int(price_cents)
+                "price_cents": price_cents
             }
             self.db_handler.add_pour(pour_data)
             logging.info("ЗАПИСЬ В БД: УСПЕХ")
