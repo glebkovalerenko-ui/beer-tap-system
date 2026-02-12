@@ -88,7 +88,7 @@ def assign_or_register_card_to_guest(
             )
         card_crud.assign_card_to_guest(db, db_card=db_card, guest_id=guest_id)
     else:
-        new_card_schema = schemas.CardCreate(card_uid=card_assign.card_ud)
+        new_card_schema = schemas.CardCreate(card_uid=card_assign.card_uid)
         card_crud.create_and_assign_card(db, card=new_card_schema, guest_id=guest_id)
 
     db.refresh(db_guest)
