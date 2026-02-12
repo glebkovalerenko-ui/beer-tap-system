@@ -8,9 +8,10 @@ class SyncManager:
 
     def check_emergency_stop(self):
         try:
-            response = requests.get(f"{self.server_url}/emergency-stop")
+            response = requests.get(f"{self.server_url}/api/system/status")
             if response.status_code == 200:
-                return response.json().get("stop", False)
+                data = response.json()
+                return str(data.get("value", "")).lower() == "true"
         except requests.RequestException as e:
             logging.error(f"Error checking emergency stop: {e}")
         return False
@@ -22,10 +23,12 @@ class SyncManager:
 
         payload = {"pours": [dict(row) for row in pours]}
         try:
-            response = requests.post(f"{self.server_url}/sync", json=payload)
+            response = requests.post(f"{self.server_url}/api/sync/pours/", json=payload)
             if response.status_code == 200:
-                for pour in pours:
-                    db_handler.update_status(pour["client_tx_id"], "confirmed")
+                results = response.json().get("results", [])
+                for res in results:
+                    if res.get("status") == "accepted":
+                        db_handler.update_status(res["client_tx_id"], "confirmed")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
         except requests.RequestException as e:

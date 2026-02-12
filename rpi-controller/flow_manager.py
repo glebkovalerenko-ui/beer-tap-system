@@ -2,6 +2,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from config import PRICE_PER_100ML_CENTS, TAP_ID
+import logging
 
 class FlowManager:
     def __init__(self, hardware, db_handler, sync_manager):
@@ -19,6 +20,8 @@ class FlowManager:
         if not card_uid:
             return
 
+        logging.info(f"Авторизация карты {card_uid}...")
+
         if self.sync_manager.check_emergency_stop():
             while self.hardware.is_card_present():
                 time.sleep(0.5)
@@ -26,6 +29,7 @@ class FlowManager:
 
         # Налив (Активная сессия)
         self.hardware.valve_open()
+        logging.info("КЛАПАН ОТКРЫТ")
         start_ts = datetime.now(timezone.utc).isoformat()
         total_volume_ml = 0
         last_volume_ml = 0
@@ -35,6 +39,7 @@ class FlowManager:
         try:
             while self.hardware.is_card_present():
                 if self.sync_manager.check_emergency_stop():
+                    logging.info("Emergency stop активирован. Закрытие клапана.")
                     break
 
                 current_volume_ml = int(self.hardware.get_volume_liters() * 1000)
@@ -46,11 +51,13 @@ class FlowManager:
                     timeout_counter += 1
 
                 if timeout_counter >= 30:  # 15 секунд (30 итераций по 0.5 сек)
+                    logging.info("КЛАПАН ЗАКРЫТ (ТАЙМАУТ)")
                     break
 
                 time.sleep(0.5)
         finally:
             self.hardware.valve_close()
+            logging.info("КЛАПАН ЗАКРЫТ (КАРТА УБРАНА)")
 
         # Завершение
         if total_volume_ml > 10:  # Минимальный объем 10 мл
@@ -66,5 +73,10 @@ class FlowManager:
                 "price_cents": int(price_cents)
             }
             self.db_handler.add_pour(pour_data)
+            logging.info("ЗАПИСЬ В БД: УСПЕХ")
 
         self.hardware.reset_pulses()
+
+        # Ожидание удаления карты
+        while self.hardware.is_card_present():
+            time.sleep(0.5)
