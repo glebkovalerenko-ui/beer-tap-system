@@ -34,19 +34,14 @@ def create_guest(
 def read_guests(
     skip: int = 0, 
     limit: int = 100, 
-    db: Session = Depends(get_db),
-    # --- ИЗМЕНЕНИЕ: Для GET-запросов, не меняющих данные, аудит не нужен,
-    # но авторизация всё ещё нужна. Можно использовать более простую зависимость,
-    # но для консистентности оставим полную. ---
-    current_user: Annotated[dict, Depends(security.get_current_user)] = None
+    db: Session = Depends(get_db)
 ):
     return guest_crud.get_guests(db, skip=skip, limit=limit)
 
 @router.get("/{guest_id}", response_model=schemas.Guest, summary="Получить гостя по ID")
 def read_guest(
     guest_id: uuid.UUID, 
-    db: Session = Depends(get_db),
-    current_user: Annotated[dict, Depends(security.get_current_user)] = None
+    db: Session = Depends(get_db)
 ):
     db_guest = guest_crud.get_guest(db, guest_id=guest_id)
     if db_guest is None:
