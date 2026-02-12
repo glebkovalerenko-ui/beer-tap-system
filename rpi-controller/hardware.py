@@ -65,3 +65,7 @@ class HardwareHandler:
             self.pulse_count = 0
         # Расчет объема в литрах
         return (pulses / FLOW_SENSOR_K_FACTOR) / 1000
+
+    def reset_pulses(self):
+        with self.lock:
+            self.pulse_count = 0
