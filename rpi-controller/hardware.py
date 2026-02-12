@@ -1,9 +1,14 @@
+from gpiozero.pins.lgpio import LGPIOFactory
+from gpiozero import Device
 from gpiozero import DigitalInputDevice, OutputDevice
 from threading import Lock
 import time
 from config import PIN_RELAY, PIN_FLOW_SENSOR, FLOW_SENSOR_K_FACTOR
 from smartcard.System import readers
 from smartcard.util import toHexString
+
+# Установка LGPIOFactory для gpiozero
+Device.pin_factory = LGPIOFactory()
 
 class HardwareHandler:
     def __init__(self):
