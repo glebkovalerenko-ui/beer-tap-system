@@ -28,8 +28,13 @@ class SyncManager:
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 for res in results:
+                    client_tx_id = res.get("client_tx_id")
                     if res.get("status") == "accepted":
-                        db_handler.update_status(res["client_tx_id"], "confirmed")
+                        db_handler.update_status(client_tx_id, "confirmed")
+                    else:
+                        reason = res.get("reason", "Не указана")
+                        db_handler.update_status(client_tx_id, "failed")
+                        logging.warning(f"Транзакция {client_tx_id} ОТКЛОНЕНА сервером. Причина: {reason}")
                 logging.info("Синхронизация завершена успешно.")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
@@ -48,6 +53,8 @@ class SyncManager:
                     cards = guest.get("cards", [])
                     if any(card.get("card_uid", "").replace(" ", "").lower() == clean_uid for card in cards):
                         return True
+            else:
+                logging.error(f"Authorization check failed with status code {response.status_code}")
         except requests.RequestException as e:
             logging.error(f"Error checking card authorization: {e}")
         return False
