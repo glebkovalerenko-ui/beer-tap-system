@@ -158,6 +158,7 @@ class Pour(Base):
     volume_ml = Column(Integer, nullable=False)
     # --- ИЗМЕНЕНИЕ: Убрал price_per_ml_at_pour, т.к. amount_charged достаточно. Можно вернуть при необходимости. ---
     amount_charged = Column(Numeric(10, 2), nullable=False, comment="Списанная сумма")
+    price_per_ml_at_pour = Column(Numeric(10, 4), nullable=False, comment="Цена за мл на момент налива")
     
     # Временные метки
     poured_at = Column(DateTime(timezone=True), nullable=False)
