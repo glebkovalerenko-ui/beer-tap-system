@@ -170,6 +170,10 @@ class Pour(Base):
     tap = relationship("Tap", back_populates="pours")
     keg = relationship("Keg", back_populates="pours")
 
+    @property
+    def beverage(self):
+        return self.keg.beverage if self.keg else None
+
 
 class Transaction(Base):
     """
