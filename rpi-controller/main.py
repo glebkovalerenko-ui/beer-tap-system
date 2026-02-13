@@ -6,6 +6,11 @@ from database import DatabaseHandler
 from sync_manager import SyncManager
 from flow_manager import FlowManager
 
+def start_sync_worker(db, sm):
+    while True:
+        sm.sync_cycle(db)
+        time.sleep(10)  # Опрос базы каждые 10 секунд
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -16,8 +21,7 @@ def main():
     flow_manager = FlowManager(hardware, db_handler, sync_manager)
 
     # Запуск фонового потока для синхронизации
-    sync_thread = threading.Thread(target=sync_manager.sync_cycle, args=(db_handler,), daemon=True)
-    sync_thread.start()
+    threading.Thread(target=start_sync_worker, args=(db_handler, sync_manager), daemon=True).start()
 
     try:
         # Основной цикл

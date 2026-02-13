@@ -21,6 +21,7 @@ class SyncManager:
         if not pours:
             return
 
+        logging.info(f"Найдено {len(pours)} записей для синхронизации...")
         payload = {"pours": [dict(row) for row in pours]}
         try:
             response = requests.post(f"{self.server_url}/api/sync/pours/", json=payload)
@@ -29,6 +30,7 @@ class SyncManager:
                 for res in results:
                     if res.get("status") == "accepted":
                         db_handler.update_status(res["client_tx_id"], "confirmed")
+                logging.info("Синхронизация завершена успешно.")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
         except requests.RequestException as e:
