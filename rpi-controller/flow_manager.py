@@ -20,6 +20,9 @@ class FlowManager:
         if not card_uid:
             return
 
+        # Normalize card_uid
+        card_uid = card_uid.replace(" ", "").lower()
+
         logging.info(f"Авторизация карты {card_uid}...")
 
         if not self.sync_manager.check_card_auth(card_uid):
