@@ -1,6 +1,6 @@
 import requests
 import logging
-from config import SERVER_URL
+from config import SERVER_URL, INTERNAL_TOKEN
 
 class SyncManager:
     def __init__(self):
@@ -8,7 +8,8 @@ class SyncManager:
 
     def check_emergency_stop(self):
         try:
-            response = requests.get(f"{self.server_url}/api/system/status")
+            headers = {"X-Internal-Token": INTERNAL_TOKEN}
+            response = requests.get(f"{self.server_url}/api/system/status", headers=headers)
             if response.status_code == 200:
                 data = response.json()
                 return str(data.get("value", "")).lower() == "true"
@@ -21,10 +22,11 @@ class SyncManager:
         if not pours:
             return
 
-        logging.info(f"Найдено {len(pours)} записей для синхронизации...")
+        logging.info(f"Found {len(pours)} records for synchronization...")
         payload = {"pours": [dict(row) for row in pours]}
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
         try:
-            response = requests.post(f"{self.server_url}/api/sync/pours/", json=payload)
+            response = requests.post(f"{self.server_url}/api/sync/pours/", json=payload, headers=headers)
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 for res in results:
@@ -32,10 +34,10 @@ class SyncManager:
                     if res.get("status") == "accepted":
                         db_handler.update_status(client_tx_id, "confirmed")
                     else:
-                        reason = res.get("reason", "Не указана")
+                        reason = res.get("reason", "Not specified")
                         db_handler.update_status(client_tx_id, "failed")
-                        logging.warning(f"Транзакция {client_tx_id} ОТКЛОНЕНА сервером. Причина: {reason}")
-                logging.info("Синхронизация завершена успешно.")
+                        logging.warning(f"Transaction {client_tx_id} REJECTED by server. Reason: {reason}")
+                logging.info("Synchronization completed successfully.")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
         except requests.RequestException as e:
@@ -44,9 +46,10 @@ class SyncManager:
     def check_card_auth(self, card_uid):
         try:
             clean_uid = card_uid.replace(" ", "").lower()
-            logging.info(f"Сравниваю чистый UID {clean_uid} с базой...")
+            logging.info(f"Comparing clean UID {clean_uid} with database...")
 
-            response = requests.get(f"{self.server_url}/api/guests/")
+            headers = {"X-Internal-Token": INTERNAL_TOKEN}
+            response = requests.get(f"{self.server_url}/api/guests/", headers=headers)
             if response.status_code == 200:
                 guests = response.json()
                 for guest in guests:

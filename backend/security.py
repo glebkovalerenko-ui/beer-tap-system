@@ -41,6 +41,8 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+INTERNAL_API_KEY = "demo-secret-key"
+
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
     actor_id: str,
@@ -65,9 +67,11 @@ async def get_current_user(
     request: Request,
     background_tasks: BackgroundTasks,
     token: Annotated[str, Depends(oauth2_scheme)],
-    # --- ИЗМЕНЕНИЕ: db больше не требуется для этой функции, но оставим для совместимости ---
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
+    if request.headers.get("X-Internal-Token") == INTERNAL_API_KEY:
+        return {"username": "internal_rpi"}
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -80,7 +84,7 @@ async def get_current_user(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
+
     user = get_user(username)
     if user is None:
         raise credentials_exception
