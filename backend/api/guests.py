@@ -34,7 +34,8 @@ def create_guest(
 def read_guests(
     skip: int = 0, 
     limit: int = 100, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None
 ):
     return guest_crud.get_guests(db, skip=skip, limit=limit)
 

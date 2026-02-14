@@ -20,7 +20,9 @@ class DatabaseHandler:
                     end_ts TEXT,
                     volume_ml INTEGER,
                     price_cents INTEGER,
-                    status TEXT DEFAULT 'new'
+                    status TEXT DEFAULT 'new',
+                    attempts INTEGER DEFAULT 0,
+                    price_per_ml_at_pour REAL
                 );
             """)
             conn.close()
@@ -30,8 +32,8 @@ class DatabaseHandler:
             conn = sqlite3.connect(self.db_name)
             conn.execute(
                 """
-                INSERT INTO pours (client_tx_id, card_uid, tap_id, start_ts, end_ts, volume_ml, price_cents, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'new');
+                INSERT INTO pours (client_tx_id, card_uid, tap_id, start_ts, end_ts, volume_ml, price_cents, status, attempts, price_per_ml_at_pour)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?);
                 """,
                 (
                     pour_data["client_tx_id"],
@@ -40,7 +42,9 @@ class DatabaseHandler:
                     pour_data["start_ts"],
                     pour_data["end_ts"],
                     pour_data["volume_ml"],
-                    pour_data["price_cents"]
+                    pour_data["price_cents"],
+                    pour_data.get("attempts", 0),
+                    pour_data["price_per_ml_at_pour"]
                 )
             )
             conn.commit()
