@@ -70,7 +70,11 @@ async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    if request.headers.get("X-Internal-Token") == INTERNAL_API_KEY:
+    print(f"DEBUG: All headers: {dict(request.headers)}")
+    received_token = request.headers.get("x-internal-token")
+    print(f"DEBUG: Extracted x-internal-token: '{received_token}'")
+
+    if received_token and received_token.strip() == INTERNAL_API_KEY.strip():
         return {"username": "internal_rpi"}
 
     credentials_exception = HTTPException(
@@ -94,15 +98,12 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
-    # --- ФИНАЛЬНАЯ ЛОГИКА АУДИТА С BACKGROUND TASKS ---
     if request.method in ["POST", "PUT", "DELETE"]:
         action = f"{request.method}_{request.url.path}"
-        
-        # Добавляем в фон нашу функцию-обертку, которая сама управляет сессией
         background_tasks.add_task(
             audit_log_task_wrapper,
             actor_id=user["username"],
             action=action
         )
-    
+
     return user

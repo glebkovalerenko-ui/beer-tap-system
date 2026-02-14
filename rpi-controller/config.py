@@ -29,3 +29,6 @@ PIN_FLOW_SENSOR = 17
 
 # K-фактор для датчика потока YF-S201
 FLOW_SENSOR_K_FACTOR = 7.5
+
+# Токен для внутренней аутентификации
+INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "demo-secret-key").strip()

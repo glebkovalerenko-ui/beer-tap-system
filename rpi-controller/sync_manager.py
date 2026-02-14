@@ -26,7 +26,7 @@ class SyncManager:
         payload = {"pours": [dict(row) for row in pours]}
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
         try:
-            response = requests.post(f"{self.server_url}/api/sync/pours/", json=payload, headers=headers)
+            response = requests.post(f"{self.server_url}/api/sync/pours", json=payload, headers=headers)
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 for res in results:
@@ -48,8 +48,9 @@ class SyncManager:
             clean_uid = card_uid.replace(" ", "").lower()
             logging.info(f"Comparing clean UID {clean_uid} with database...")
 
+            logging.info(f"DEBUG: Sending token '{INTERNAL_TOKEN}' to URL: {self.server_url}/api/guests")
             headers = {"X-Internal-Token": INTERNAL_TOKEN}
-            response = requests.get(f"{self.server_url}/api/guests/", headers=headers)
+            response = requests.get(f"{self.server_url}/api/guests", headers=headers)
             if response.status_code == 200:
                 guests = response.json()
                 for guest in guests:
