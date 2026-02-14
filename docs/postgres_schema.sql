@@ -112,7 +112,7 @@ CREATE TABLE pours (
     -- --- Детали транзакции ---
     client_tx_id VARCHAR(100) UNIQUE NOT NULL, -- Уникальный ID от контроллера (Raspberry Pi). Защищает от записи дублей при сбоях сети.
     volume_ml INTEGER NOT NULL, -- Объем налитого напитка в миллилитрах.
-    price_per_ml_at_pour DECIMAL(10, 4) NOT NULL, -- Цена за мл на момент налива. Сохраняется для исторической точности.
+    price_per_ml_at_pour DECIMAL(10, 4) NOT NULL DEFAULT 0.0000, -- Цена за мл на момент налива. Сохраняется для исторической точности.
     amount_charged DECIMAL(10, 2) NOT NULL, -- Итоговая списанная сумма (volume_ml * price_per_ml_at_pour).
     
     -- --- Временные метки ---
