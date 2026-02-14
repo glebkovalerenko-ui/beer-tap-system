@@ -27,7 +27,8 @@ FAKE_USERS_DB = {
 }
 
 # --- ОСНОВНАЯ ЛОГИКА (без изменений) ---
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
+# Изменение параметра auto_error для OAuth2PasswordBearer
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token", auto_error=False)
 
 def get_user(username: str):
     if username in FAKE_USERS_DB:
@@ -66,7 +67,7 @@ def audit_log_task_wrapper(
 async def get_current_user(
     request: Request,
     background_tasks: BackgroundTasks,
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
     if request.headers.get("X-Internal-Token") == INTERNAL_API_KEY:
@@ -77,6 +78,10 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if token is None:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
