@@ -21,6 +21,7 @@ router = APIRouter(
 # --- ВАЖНО: Теперь мы добавляем зависимость в КАЖДЫЙ эндпоинт, который меняет данные. ---
 
 @router.post("", response_model=schemas.Guest, status_code=status.HTTP_201_CREATED, summary="Создать нового гостя")
+@router.post("/", response_model=schemas.Guest, status_code=status.HTTP_201_CREATED, summary="Создать нового гостя")
 def create_guest(
     guest: schemas.GuestCreate, 
     db: Session = Depends(get_db),
@@ -31,6 +32,7 @@ def create_guest(
     return guest_crud.create_guest(db=db, guest=guest)
 
 @router.get("", response_model=List[schemas.Guest], summary="Получить список гостей")
+@router.get("/", response_model=List[schemas.Guest], summary="Получить список гостей")
 def read_guests(
     skip: int = 0, 
     limit: int = 100, 

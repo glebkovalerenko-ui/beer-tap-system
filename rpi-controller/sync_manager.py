@@ -4,15 +4,18 @@ from config import SERVER_URL, INTERNAL_TOKEN
 
 class SyncManager:
     def __init__(self):
-        self.server_url = SERVER_URL.rstrip('/')
-        # Мы по-прежнему можем использовать сессию для переиспользования соединений,
-        # но теперь будем передавать заголовки ЯВНО в каждом вызове.
+        # 1. Жестко очищаем базовый URL от любых слешей в конце
+        base = SERVER_URL.strip().rstrip('/')
+        self.server_url = base
         self.session = requests.Session()
+        # 2. Логируем сформированный базовый URL для проверки
+        logging.info(f"СИСТЕМА: Базовый URL сервера установлен как: {self.server_url}")
 
     def check_emergency_stop(self):
-        url = f"{self.server_url}/api/system/status"
+        # 3. Формируем путь БЕЗ использования f-строк со слешами в середине
+        url = "/".join([self.server_url, "api", "system", "status"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Request to {url} with headers {headers}")
+        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             response = self.session.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
@@ -31,9 +34,9 @@ class SyncManager:
 
         logging.info(f"Found {len(pours)} records for synchronization...")
         payload = {"pours": [dict(row) for row in pours]}
-        url = f"{self.server_url}/api/sync/pours"
+        url = "/".join([self.server_url, "api", "sync", "pours"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Request to {url} with headers {headers}")
+        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             response = self.session.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code == 200:
@@ -53,9 +56,10 @@ class SyncManager:
             logging.error(f"Error during sync: {e}")
 
     def check_card_auth(self, card_uid):
-        url = f"{self.server_url}/api/guests" # СТРОГО БЕЗ СЛЕША
+        # 3. Формируем путь БЕЗ использования f-строк со слешами в середине
+        url = "/".join([self.server_url, "api", "guests"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Request to {url} with headers {headers}")
+        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             clean_uid = card_uid.replace(" ", "").lower()
             logging.info(f"Comparing clean UID {clean_uid} with database...")
