@@ -143,11 +143,14 @@ if current_payload_json != last_payload_json {
 | `/api/token` | POST | Аутентификация | Получение JWT токена |
 | `/api/system/status` | GET | Статус экстренной остановки | Опрос RPi контроллерами |
 | `/api/guests/{id}` | GET | Получение гостя по ID | RPi для проверки баланса |
+| `/api/controllers/register` | POST | Регистрация контроллера | Check-in RPi контроллеров |
+| `/api/sync/pours` | POST | Синхронизация наливов | Отправка данных о наливах |
 
 **Особенности:**
 - Не требуют JWT аутентификации
 - Оптимизированы для частого опроса
 - Возвращают минимально необходимые данные
+- **Требование заголовка `X-Internal-Token`** для эндпоинтов контроллеров (см. раздел 7)
 
 ### Эндпоинты требующие JWT (для Admin App)
 
@@ -254,6 +257,57 @@ localStorage.setItem('jwt_token', token);
 ### NFC опрос:
 ```rust
 thread::sleep(Duration::from_millis(500));
+```
+
+## 7. Аутентификация контроллеров (X-Internal-Token)
+
+### Требование для эндпоинтов контроллеров
+
+Следующие публичные эндпоинты требуют заголовок `X-Internal-Token` для аутентификации RPi контроллеров:
+
+- `POST /api/controllers/register` - Регистрация контроллера
+- `POST /api/sync/pours` - Синхронизация наливов
+
+### Формат заголовка
+
+```http
+X-Internal-Token: <secret_token_string>
+```
+
+### Механизм проверки
+
+1. **Серверная валидация:** Токен проверяется на соответствие предопределенному значению
+2. **Безопасность:** Токен хранится в переменных окружения сервера
+3. **Цель:** Предотвращение несанкционированного доступа к эндпоинтам контроллеров
+
+### Пример запроса
+
+```http
+POST /api/sync/pours
+Content-Type: application/json
+X-Internal-Token: rpi_controller_secret_2024
+
+{
+  "pours": [
+    {
+      "client_tx_id": "tx_12345",
+      "card_uid": "04AB7815CD6B80",
+      "tap_id": 1,
+      "start_ts": "2026-02-17T12:00:00Z",
+      "end_ts": "2026-02-17T12:00:05Z",
+      "volume_ml": 500,
+      "price_cents": 350,
+      "price_per_ml_at_pour": 0.0070
+    }
+  ]
+}
+```
+
+### Переменные окружения
+
+```bash
+# На сервере backend
+INTERNAL_CONTROLLER_TOKEN=rpi_controller_secret_2024
 ```
 
 ---

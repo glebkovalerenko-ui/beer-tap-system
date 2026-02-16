@@ -143,7 +143,7 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `keg_id` | UUID (FK) | Source keg |
 | `volume_ml` | INTEGER | Dispensed volume in milliliters |
 | `amount_charged` | DECIMAL(10,2) | Total amount deducted from customer balance |
-| `price_per_ml_at_pour` | DECIMAL(10,4) | **CRITICAL FINANCIAL FIELD**. Price per ml at moment of pour for historical accuracy |
+| `price_per_ml_at_pour` | DECIMAL(10,4) | **CRITICAL FINANCIAL FIELD**. Price per ml at moment of pour with 4-decimal precision for historical accuracy and financial integrity |
 | `poured_at` | TIMESTAMPTZ | Actual time of dispense (from controller) |
 | `created_at` | TIMESTAMPTZ | Database insertion timestamp |
 
@@ -265,12 +265,13 @@ This document provides a comprehensive description of the Beer Tap System databa
 
 ### SQLite (RPi Controller) - Local Database
 
-**Additional Fields in `pours` table (NOT in PostgreSQL):**
+**SQLite-specific Fields (NOT in PostgreSQL):**
 - `attempts` INTEGER DEFAULT 0 - **Sync retry counter for network resilience**
 - `status` TEXT DEFAULT 'new' - **Synchronization state**: `new`, `sent`, `confirmed`, `failed`
 - `start_ts` TEXT - Pour start time (ISO string)
-- `end_ts` TEXT - Pour end time (ISO string)
+- `end_ts` TEXT - Pour end time (ISO string)  
 - `price_cents` INTEGER - Price in cents (integer arithmetic for precision)
+- `price_per_ml_at_pour` REAL - **SQLite REAL type** (floating-point) for price per ml
 
 **Key Differences from PostgreSQL:**
 - **No UUID primary key** - uses `client_tx_id` as PRIMARY KEY
@@ -278,6 +279,7 @@ This document provides a comprehensive description of the Beer Tap System databa
 - **No guest_id** - customer identification deferred to server sync
 - **No keg_id** - keg identification deferred to server sync
 - **SQLite-specific field types**: TEXT for timestamps, INTEGER for price
+- **Sync-specific fields**: `attempts` and `status` for offline resilience
 
 **Purpose:**
 - **Offline resilience** during network outages

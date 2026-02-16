@@ -16,14 +16,15 @@
 - **JWT Authentication** - Token-based security with OAuth2PasswordRequestForm
 
 **Frontend Admin Application:**
-- **Svelte 5** - Modern reactive UI framework (latest version 5.0.0)
-- **Tauri 2** - Rust-based desktop application framework (version 2.8.5)
+- **Svelte 5 + Tauri 2** - Modern reactive UI framework with Rust-based desktop application framework
 - **Vite 6** - Fast build tool and development server
 - **TypeScript 5.6** - Type-safe JavaScript development
+- **Rust** - Low-level NFC access through Tauri backend
 
 **RPi Controller:**
 - **SQLite with WAL mode** - Local database for offline operation
 - **Python 3** - Controller logic with modular architecture
+- **gpiozero with LGPIOFactory** - GPIO pin management for hardware control
 - **Hardware Integration** - Direct NFC and flow sensor control
 
 **Infrastructure:**
@@ -63,7 +64,7 @@ The Raspberry Pi controller implements a layered modular design:
 **Hardware Abstraction Layer:**
 - Direct interface with NFC readers (PC/SC protocol)
 - Flow sensor integration (YF-S201 or compatible)
-- Valve control mechanisms
+- Valve control mechanisms via gpiozero and LGPIOFactory
 - Hardware state management and error handling
 
 **Flow Manager (`flow_manager.py`):**
