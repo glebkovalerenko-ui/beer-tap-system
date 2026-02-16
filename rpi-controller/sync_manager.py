@@ -5,17 +5,21 @@ from config import SERVER_URL, INTERNAL_TOKEN
 class SyncManager:
     def __init__(self):
         self.server_url = SERVER_URL.rstrip('/')
+        # Мы по-прежнему можем использовать сессию для переиспользования соединений,
+        # но теперь будем передавать заголовки ЯВНО в каждом вызове.
         self.session = requests.Session()
-        self.session.headers.update({"X-Internal-Token": INTERNAL_TOKEN})
 
     def check_emergency_stop(self):
         url = f"{self.server_url}/api/system/status"
-        logging.debug(f"Request to: {url}")
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        logging.info(f"DEBUG: Request to {url} with headers {headers}")
         try:
-            response = self.session.get(url)
+            response = self.session.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 return str(data.get("value", "")).lower() == "true"
+            else:
+                logging.error(f"Emergency stop check failed with status code {response.status_code}")
         except requests.RequestException as e:
             logging.error(f"Error checking emergency stop: {e}")
         return False
@@ -28,9 +32,10 @@ class SyncManager:
         logging.info(f"Found {len(pours)} records for synchronization...")
         payload = {"pours": [dict(row) for row in pours]}
         url = f"{self.server_url}/api/sync/pours"
-        logging.debug(f"Request to: {url}")
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        logging.info(f"DEBUG: Request to {url} with headers {headers}")
         try:
-            response = self.session.post(url, json=payload)
+            response = self.session.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 for res in results:
@@ -48,13 +53,14 @@ class SyncManager:
             logging.error(f"Error during sync: {e}")
 
     def check_card_auth(self, card_uid):
-        url = f"{self.server_url}/api/guests"
-        logging.debug(f"Request to: {url}")
+        url = f"{self.server_url}/api/guests" # СТРОГО БЕЗ СЛЕША
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        logging.info(f"DEBUG: Request to {url} with headers {headers}")
         try:
             clean_uid = card_uid.replace(" ", "").lower()
             logging.info(f"Comparing clean UID {clean_uid} with database...")
 
-            response = self.session.get(url)
+            response = self.session.get(url, headers=headers, timeout=5)
             logging.info(f"DEBUG: Статус ответа: {response.status_code}, URL: {response.url}")
             if response.status_code == 200:
                 guests = response.json()
