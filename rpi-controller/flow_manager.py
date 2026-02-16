@@ -84,7 +84,7 @@ class FlowManager:
                 "price_per_ml_at_pour": float(PRICE_PER_100ML_CENTS / 100.0)
             }
             self.db_handler.add_pour(pour_data)
-            logging.info("ЗАПИСЬ В БД: УСПЕХ")
+            logging.info("Запись о наливе добавлена в базу данных")
 
         self.hardware.reset_pulses()
 

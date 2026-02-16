@@ -70,7 +70,6 @@ async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    print(f"DEBUG AUTH: Path: {request.url.path} | Headers: {dict(request.headers)}")
     received_token = request.headers.get("x-internal-token")
 
     if received_token and received_token.strip() == INTERNAL_API_KEY.strip():

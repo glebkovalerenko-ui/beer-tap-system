@@ -4,18 +4,13 @@ from config import SERVER_URL, INTERNAL_TOKEN
 
 class SyncManager:
     def __init__(self):
-        # 1. Жестко очищаем базовый URL от любых слешей в конце
         base = SERVER_URL.strip().rstrip('/')
         self.server_url = base
         self.session = requests.Session()
-        # 2. Логируем сформированный базовый URL для проверки
-        logging.info(f"СИСТЕМА: Базовый URL сервера установлен как: {self.server_url}")
 
     def check_emergency_stop(self):
-        # 3. Формируем путь БЕЗ использования f-строк со слешами в середине
         url = "/".join([self.server_url, "api", "system", "status"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             response = self.session.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
@@ -36,7 +31,6 @@ class SyncManager:
         payload = {"pours": [dict(row) for row in pours]}
         url = "/".join([self.server_url, "api", "sync", "pours"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             response = self.session.post(url, json=payload, headers=headers, timeout=10)
             if response.status_code == 200:
@@ -48,24 +42,20 @@ class SyncManager:
                     else:
                         reason = res.get("reason", "Not specified")
                         db_handler.update_status(client_tx_id, "failed")
-                        logging.warning(f"Transaction {client_tx_id} REJECTED by server. Reason: {reason}")
-                logging.info("Synchronization completed successfully.")
+                        logging.warning(f"Transaction {client_tx_id} rejected by server. Reason: {reason}")
+                logging.info("Синхронизация завершена успешно")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
         except requests.RequestException as e:
             logging.error(f"Error during sync: {e}")
 
     def check_card_auth(self, card_uid):
-        # 3. Формируем путь БЕЗ использования f-строк со слешами в середине
         url = "/".join([self.server_url, "api", "guests"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
-        logging.info(f"DEBUG: Отправка запроса на СТРОГИЙ URL: {url}")
         try:
             clean_uid = card_uid.replace(" ", "").lower()
-            logging.info(f"Comparing clean UID {clean_uid} with database...")
 
             response = self.session.get(url, headers=headers, timeout=5)
-            logging.info(f"DEBUG: Статус ответа: {response.status_code}, URL: {response.url}")
             if response.status_code == 200:
                 guests = response.json()
                 for guest in guests:
