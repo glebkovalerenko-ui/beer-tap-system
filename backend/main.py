@@ -40,7 +40,8 @@ app = FastAPI(
     title="Beer Tap System API",
     description="API для управления системой автоматизации пивных кранов",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False
 )
 
 # --- Middleware ---
