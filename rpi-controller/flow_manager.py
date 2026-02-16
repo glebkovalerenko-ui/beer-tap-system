@@ -80,7 +80,8 @@ class FlowManager:
                 "start_ts": start_ts,
                 "end_ts": end_ts,
                 "volume_ml": total_volume_ml,
-                "price_cents": price_cents
+                "price_cents": price_cents,
+                "price_per_ml_at_pour": float(PRICE_PER_100ML_CENTS / 100.0)
             }
             self.db_handler.add_pour(pour_data)
             logging.info("ЗАПИСЬ В БД: УСПЕХ")
