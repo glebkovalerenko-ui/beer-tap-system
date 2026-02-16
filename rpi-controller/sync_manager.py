@@ -5,11 +5,12 @@ from config import SERVER_URL, INTERNAL_TOKEN
 class SyncManager:
     def __init__(self):
         self.server_url = SERVER_URL
+        self.session = requests.Session()
+        self.session.headers.update({"X-Internal-Token": INTERNAL_TOKEN})
 
     def check_emergency_stop(self):
         try:
-            headers = {"X-Internal-Token": INTERNAL_TOKEN}
-            response = requests.get(f"{self.server_url}/api/system/status", headers=headers)
+            response = self.session.get(f"{self.server_url}/api/system/status")
             if response.status_code == 200:
                 data = response.json()
                 return str(data.get("value", "")).lower() == "true"
@@ -24,9 +25,8 @@ class SyncManager:
 
         logging.info(f"Found {len(pours)} records for synchronization...")
         payload = {"pours": [dict(row) for row in pours]}
-        headers = {"X-Internal-Token": INTERNAL_TOKEN}
         try:
-            response = requests.post(f"{self.server_url}/api/sync/pours", json=payload, headers=headers)
+            response = self.session.post(f"{self.server_url}/api/sync/pours", json=payload)
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 for res in results:
@@ -49,8 +49,8 @@ class SyncManager:
             logging.info(f"Comparing clean UID {clean_uid} with database...")
 
             logging.info(f"DEBUG: Sending token '{INTERNAL_TOKEN}' to URL: {self.server_url}/api/guests")
-            headers = {"X-Internal-Token": INTERNAL_TOKEN}
-            response = requests.get(f"{self.server_url}/api/guests", headers=headers)
+            response = self.session.get(f"{self.server_url}/api/guests")
+            logging.info(f"DEBUG: Статус ответа: {response.status_code}, URL: {response.url}")
             if response.status_code == 200:
                 guests = response.json()
                 for guest in guests:
