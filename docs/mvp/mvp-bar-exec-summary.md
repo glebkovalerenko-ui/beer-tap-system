@@ -3,7 +3,7 @@
 ### **Артефакт №2: `mvp-bar-exec-summary.md`**
 
 ```markdown
-# Executive Summary: Проект "Бар самообслуживания" (MVP v1.0)
+# [DEPRECATED/ARCHIVE] Executive Summary: Проект "Бар самообслуживания" (MVP v1.0)
 
 **Дата:** 14 октября 2025 г.
 

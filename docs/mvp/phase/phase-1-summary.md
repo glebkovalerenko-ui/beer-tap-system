@@ -1,4 +1,4 @@
-# Feature Reference & Implementation Summary
+# [DEPRECATED/ARCHIVE] Feature Reference & Implementation Summary
 **Phase 1: Фундамент и управление гостями**
 *Дата завершения: 2025-10-17*
 

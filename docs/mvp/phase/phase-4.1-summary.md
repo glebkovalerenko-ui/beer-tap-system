@@ -1,4 +1,4 @@
-# Executive Summary: Phase 4.1 Completion
+# [DEPRECATED/ARCHIVE] Executive Summary: Phase 4.1 Completion
 
 **Phase 4.1 of the Beer Tap System project is successfully complete.** This critical phase focused on implementing foundational security and control features, resulting in the delivery of two key functions: **Emergency Stop** and a system-wide **Audit Log**.
 
@@ -93,7 +93,7 @@ sequenceDiagram
     *   **Отказоустойчивость:** Если `emergency_stop == true` ИЛИ происходит **любая сетевая ошибка** (таймаут, недоступность сервера), функция возвращает `True`, и операция налива немедленно блокируется. Это fail-safe механизм, prioritizing safety.
 
 *   **Frontend (Admin App):**
-    *   **UI:** На странице "Dashboard" добавлена заметная кнопка "Activate/Deactivate Emergency Stop", цвет и текст которой меняются в зависимости от текущего состояния. Для предотвращения случайных нажатий реализовано модальное окно с подтверждением.
+    *   **UI:** На странице "Дашборд" добавлена заметная кнопка "Activate/Deactivate Emergency Stop", цвет и текст которой меняются в зависимости от текущего состояния. Для предотвращения случайных нажатий реализовано модальное окно с подтверждением.
     *   **Состояние:** Создан новый Svelte Store `systemStore.js`, который реализует механизм **Polling**. Он каждые 10 секунд опрашивает `GET /api/system/status` для получения актуального состояния флага.
     *   **Визуализация:** В корневом компоненте `App.svelte` добавлен глобальный, неотключаемый баннер, который появляется на всех страницах, если система находится в режиме экстренной остановки.
 

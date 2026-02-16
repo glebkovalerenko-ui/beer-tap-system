@@ -1,4 +1,4 @@
-# Протокол системного тестирования: System Core & Services (v1.0.0)
+# [DEPRECATED/ARCHIVE] Протокол системного тестирования: System Core & Services (v1.0.0)
 
 ## 1. Введение и мета-информация
 

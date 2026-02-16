@@ -1,4 +1,4 @@
-# Phase 4: Hardware Integration & UI Polish
+# [DEPRECATED/ARCHIVE] Phase 4: Hardware Integration & UI Polish
 
 **Date:** 2026-02-14
 

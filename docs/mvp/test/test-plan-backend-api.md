@@ -1,4 +1,4 @@
-# Протокол тестирования API: Backend API (v1.0.0)
+# [DEPRECATED/ARCHIVE] Протокол тестирования API: Backend API (v1.0.0)
 
 ## 1. Введение и мета-информация
 

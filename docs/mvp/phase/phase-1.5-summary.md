@@ -1,4 +1,4 @@
-### **Основной документ**
+### **[DEPRECATED/ARCHIVE] Основной документ**
 
 #### `docs/phase-1.5-summary.md`
 

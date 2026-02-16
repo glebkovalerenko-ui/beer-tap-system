@@ -1,4 +1,4 @@
-# Протокол тестирования: Hardware Integration Layer (v1.0.0)
+# [DEPRECATED/ARCHIVE] Протокол тестирования: Hardware Integration Layer (v1.0.0)
 
 ## **Раздел 1: Введение и мета-информация**
 

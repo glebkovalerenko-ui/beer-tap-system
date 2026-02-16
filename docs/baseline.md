@@ -33,7 +33,7 @@
 4.  **Современный технологический стек:**
     *   **Сервер:** Python/FastAPI, PostgreSQL, SQLAlchemy.
     *   **Контроллер:** Python, SQLite, Pyscard.
-    *   **Интерфейс:** React, Vite, Nginx.
+    *   **Интерфейс:** Svelte 5, Tauri 2.0, Vite, Nginx.
 5.  **Готовый к пилоту функционал:** Реализован полный цикл: регистрация гостя, эмуляция налива на контроллере, автоматическая синхронизация транзакций с сервером и отображение данных в административной панели.
 
 ### **Текущий статус проекта**
@@ -91,7 +91,7 @@
 ```mermaid
 graph TD
     subgraph "Рабочее место бармена"
-        AdminUI[Веб-интерфейс <br> (React, в браузере)]
+        AdminUI[Веб-интерфейс <br> (Svelte 5, в браузере)]
     end
 
     subgraph "Локальный сервер (Мини-ПК в баре)"
@@ -159,7 +159,7 @@ graph TD
 **Ключевые файлы конфигурации:**
 *   `docker-compose.yml` (см. Приложение)
 *   `backend/Dockerfile` (см. Приложение)
-*   `admin-ui/Dockerfile` (см. Приложение)
+*   `admin-app/Dockerfile` (см. Приложение)
 *   `nginx/nginx.conf` (см. Приложение)
 *   `.env` (см. Приложение)
 
@@ -176,10 +176,10 @@ graph TD
 *   `config.py` (конфигурация)
 
 ### Клиентское приложение (Админ-панель)
-*   **Стек:** Node.js v22, React, Vite, Axios.
-*   **Поведение:** Single Page Application (SPA) с маршрутизацией через `react-router-dom`.
+*   **Стек:** Node.js v22, Svelte 5, Tauri 2.0, Vite, Axios.
+*   **Поведение:** Single Page Application (SPA) с встроенной маршрутизацией Svelte.
 
-> **[ИСТОЧНИК]** Финальная версия инструкции Этапа 5: "С помощью nvm установите и активируйте Node.js версии 22... npm create vite@latest admin-ui -- --template react".
+> **[ИСТОЧНИК]** Финальная версия инструкции Этапа 5: "С помощью nvm установите и активируйте Node.js версии 22... npm create vite@latest admin-app -- --template svelte".
 
 ## E. Безопасность и устойчивость
 *   **Сетевая безопасность:** Вся система работает в изолированной локальной сети. Данные не выходят в интернет.
@@ -280,7 +280,7 @@ Bartender Workstation,"Any modern PC/Laptop",Admin UI access,""
   "source_chat_summary": "Based on a continuous conversation covering project inception, a 6-stage development roadmap, and iterative implementation with user feedback and corrections.",
   "key_technologies": {
     "backend": "Python, FastAPI, PostgreSQL, SQLAlchemy",
-    "frontend": "React, Vite, Nginx",
+    "frontend": "Svelte 5, Tauri 2.0, Vite, Nginx",
     "controller": "Python, SQLite, Pyscard",
     "deployment": "Docker, Docker Compose"
   }
@@ -292,7 +292,7 @@ Bartender Workstation,"Any modern PC/Laptop",Admin UI access,""
 # Changelog решений проекта "Бар самообслуживания"
 
 ### **Этап 1: Фундамент**
-*   **Решение:** Принята структура проекта с разделением на `backend`, `admin-ui`, `rpi-controller`.
+*   **Решение:** Принята структура проекта с разделением на `backend`, `admin-app`, `rpi-controller`.
 *   **Решение:** Выбраны PostgreSQL для сервера и SQLite для контроллера.
 *   **Решение:** Схемы данных доработаны для атомарности (`full_name` -> `first_name`, `last_name`) и аналитики (`purchase_price` в кегах).
 
@@ -312,7 +312,7 @@ Bartender Workstation,"Any modern PC/Laptop",Admin UI access,""
 *   **Решение:** На сервере реализован идемпотентный эндпоинт, проверяющий уникальность `client_tx_id`.
 
 ### **Этап 5: Админ-панель**
-*   **Решение:** Выбран стек React + Vite + Node.js v22 за современность и скорость разработки.
+*   **Решение:** Выбран стек Svelte 5 + Tauri 2.0 + Node.js v22 за современность и скорость разработки.
 *   **Проблема/Решение:** Решены проблемы с путями и импортами при сборке в Docker. `Dockerfile` и `docker-compose.yml` были полностью переработаны до рабочей версии.
 *   **Решение:** Nginx используется как единая точка входа, проксирующая запросы к API и раздающая статику фронтенда.
 

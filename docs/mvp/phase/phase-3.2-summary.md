@@ -1,6 +1,6 @@
 ### `docs/phase-3.2-summary.md`
 
-# Feature Reference & Implementation Summary — Phase 3: Inventory & Operations UI
+# [DEPRECATED/ARCHIVE] Feature Reference & Implementation Summary — Phase 3: Inventory & Operations UI
 *Дата завершения: 2025-10-23*
 
 ## 1. Общее описание Фазы 3
