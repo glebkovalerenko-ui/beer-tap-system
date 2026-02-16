@@ -31,11 +31,6 @@ class FlowManager:
                 time.sleep(0.5)
             return
 
-        if self.sync_manager.check_emergency_stop():
-            while self.hardware.is_card_present():
-                time.sleep(0.5)
-            return
-
         # Налив (Активная сессия)
         self.hardware.valve_open()
         logging.info("КЛАПАН ОТКРЫТ")
@@ -43,13 +38,20 @@ class FlowManager:
         total_volume_ml = 0
         last_volume_ml = 0
         timeout_counter = 0
+        emergency_check_counter = 0
         client_tx_id = str(uuid.uuid4())
+        card_removed_by_timeout = False
 
         try:
             while self.hardware.is_card_present():
-                if self.sync_manager.check_emergency_stop():
-                    logging.info("Emergency stop активирован. Закрытие клапана.")
-                    break
+                emergency_check_counter += 1
+                
+                # Проверяем Emergency Stop раз в 3 секунды (каждые 6 итераций)
+                if emergency_check_counter >= 6:
+                    if self.sync_manager.check_emergency_stop():
+                        logging.info("Emergency stop активирован. Закрытие клапана.")
+                        break
+                    emergency_check_counter = 0
 
                 current_volume_ml = int(self.hardware.get_volume_liters() * 1000)
                 if current_volume_ml > last_volume_ml:
@@ -61,12 +63,14 @@ class FlowManager:
 
                 if timeout_counter >= 30:  # 15 секунд (30 итераций по 0.5 сек)
                     logging.info("КЛАПАН ЗАКРЫТ (ТАЙМАУТ)")
+                    card_removed_by_timeout = True
                     break
 
                 time.sleep(0.5)
         finally:
             self.hardware.valve_close()
-            logging.info("КЛАПАН ЗАКРЫТ (КАРТА УБРАНА)")
+            if not card_removed_by_timeout:
+                logging.info("КЛАПАН ЗАКРЫТ (КАРТА УБРАНА)")
             logging.info(f"Сессия завершена. Налито: {total_volume_ml} мл")
 
         # Завершение

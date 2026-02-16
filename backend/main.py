@@ -83,6 +83,7 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
     access_token = security.create_access_token(data={"sub": user["username"]})
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/api/sync/pours", response_model=schemas.SyncResponse, tags=["Controllers"])
 @app.post("/api/sync/pours/", response_model=schemas.SyncResponse, tags=["Controllers"])
 def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
     """
