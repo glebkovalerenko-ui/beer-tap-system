@@ -2,206 +2,426 @@
 
 ## Overview
 
-The RPi Controller implements a modular architecture for managing beer tap operations with offline-first capabilities. The system consists of four main components: FlowManager, DatabaseHandler, HardwareHandler, and SyncManager.
+Контроллер RPi реализует модульную архитектуру для управления операциями пивного крана с возможностью автономной работы. Система состоит из четырех основных компонентов: FlowManager, DatabaseHandler, HardwareHandler и SyncManager.
 
-## Architecture Components
+## 1. Конечный автомат FlowManager
 
-### 1. FlowManager State Machine
+Класс `FlowManager` реализует ядро конечного автомата для операций разлива пива. Автомат работает в одном методе `process()` с линейной прогрессией состояний.
 
-The `FlowManager` class implements the core state machine for beer dispensing operations. It follows a linear state progression:
-
-#### State Diagram
+### Диаграмма состояний
 
 ```mermaid
 stateDiagram-v2
     [*] --> Wait
-    Wait --> Auth : Card Detected
-    Auth --> Pour : Card Authorized
-    Auth --> Wait : Card Rejected
-    Pour --> Sync : Session Complete
-    Pour --> Wait : Emergency Stop
-    Sync --> Wait : Data Stored
+    Wait --> Auth : Карта обнаружена
+    Auth --> Pour : Карта авторизована
+    Auth --> Wait : Карта отклонена
+    Pour --> Sync : Сессия завершена
+    Pour --> Wait : Аварийная остановка
+    Sync --> Wait : Данные сохранены
     
     state Wait {
-        [*] --> Monitoring
-        Monitoring --> Card_Detected : is_card_present()
+        [*] --> Мониторинг
+        Мониторинг --> Карта_обнаружена : is_card_present()
     }
     
     state Auth {
-        [*] --> Check_Card
-        Check_Card --> Authorized : check_card_auth() = true
-        Check_Card --> Rejected : check_card_auth() = false
+        [*] --> Проверка_карты
+        Проверка_карты --> Авторизована : check_card_auth() = true
+        Проверка_карты --> Отклонена : check_card_auth() = false
     }
     
     state Pour {
-        [*] --> Valve_Open
-        Valve_Open --> Monitoring_Flow
-        Monitoring_Flow --> Volume_Tracking : Flow Detected
-        Monitoring_Flow --> Timeout_Check : No Flow (15s)
-        Monitoring_Flow --> Emergency_Check : Every 3s
-        Volume_Tracking --> Monitoring_Flow
-        Timeout_Check --> Session_End
-        Emergency_Check --> Session_End : Emergency Stop
-        Session_End --> Valve_Close
+        [*] --> Клапан_открыт
+        Клапан_открыт --> Мониторинг_потока
+        Мониторинг_потока --> Отслеживание_объема : Поток обнаружен
+        Мониторинг_потока --> Проверка_таймаута : Нет потока (15с)
+        Мониторинг_потока --> Проверка_аварии : Каждые 3с
+        Отслеживание_объема --> Мониторинг_потока
+        Проверка_таймаута --> Конец_сессии
+        Проверка_аварии --> Конец_сессии : Аварийная остановка
+        Конец_сессии --> Клапан_закрыт
     }
     
     state Sync {
-        [*] --> Store_Pour
-        Store_Pour --> [*]
+        [*] --> Сохранение_налива
+        Сохранение_налива --> [*]
     }
 ```
 
-#### State Transitions
+### Реализация состояний
 
-1. **Wait State**: System continuously monitors for card presence using `hardware.is_card_present()`
-2. **Auth State**: 
-   - Extracts card UID using `hardware.get_card_uid()`
-   - Normalizes UID (removes spaces, converts to lowercase)
-   - Validates card against backend via `sync_manager.check_card_auth()`
-   - If rejected, waits for card removal before returning to Wait
-3. **Pour State**:
-   - Opens valve via `hardware.valve_open()`
-   - Monitors flow sensor every 500ms
-   - Tracks volume accumulation
-   - Implements 15-second timeout for no flow
-   - Checks emergency stop every 3 seconds
-   - Closes valve on card removal, timeout, or emergency stop
-4. **Sync State**:
-   - Records pour session data if volume > 1ml
-   - Stores transaction in local database with 'new' status
-   - Resets flow sensor pulses
-
-### 2. SQLite Database Schema
-
-The system uses SQLite with WAL (Write-Ahead Logging) mode for concurrent access safety.
-
-#### Database Configuration
+#### 1. Состояние Wait (Ожидание)
 ```python
-PRAGMA journal_mode=WAL;
+if not self.hardware.is_card_present():
+    return
 ```
+Система непрерывно мониторит наличие карты через `hardware.is_card_present()`
 
-#### 'pours' Table Schema
-
-| Column | Type | Description | Default |
-|--------|------|-------------|---------|
-| client_tx_id | TEXT (PRIMARY KEY) | Unique transaction identifier | - |
-| card_uid | TEXT | NFC card UID | - |
-| tap_id | INTEGER | Tap identifier | - |
-| start_ts | TEXT | ISO format start timestamp | - |
-| end_ts | TEXT | ISO format end timestamp | - |
-| volume_ml | INTEGER | Dispensed volume in milliliters | - |
-| price_cents | INTEGER | Cost in cents | - |
-| status | TEXT | Transaction status | 'new' |
-| attempts | INTEGER | Sync retry count | 0 |
-| price_per_ml_at_pour | REAL | Price per ml at pour time | - |
-
-#### Status Lifecycle
-
-1. **new**: Initial status when pour is recorded locally
-2. **confirmed**: Successfully synced with backend
-3. **failed**: Sync rejected by backend (with reason logged)
-
-#### Thread Safety
-All database operations use threading.Lock() to ensure atomic access in the multi-threaded environment.
-
-### 3. Hardware Abstraction Layer
-
-The `HardwareHandler` class provides a unified interface to physical components using two main libraries:
-
-#### gpiozero Integration
-- **Pin Factory**: Uses `LGPIOFactory` for Raspberry Pi GPIO control
-- **Relay Control**: `DigitalOutputDevice` for valve actuation
-- **Flow Sensor**: `DigitalInputDevice` with interrupt-driven pulse counting
-
-#### pyscard Integration
-- **Card Detection**: `smartcard.System.readers()` for NFC reader access
-- **UID Extraction**: APDU command `[0xFF, 0xCA, 0x00, 0x00, 0x00]` for card identification
-- **Error Handling**: Graceful fallback when no card or reader is present
-
-#### Key Methods
-
+#### 2. Состояние Auth (Авторизация)
 ```python
-def valve_open() / valve_close()    # Relay control
-def get_volume_liters()             # Pulse-to-volume conversion
-def is_card_present()               # Card detection
-def get_card_uid()                  # UID extraction
-def reset_pulses()                  # Flow sensor reset
+card_uid = self.hardware.get_card_uid()
+card_uid = card_uid.replace(" ", "").lower()
+if not self.sync_manager.check_card_auth(card_uid):
+    # Ожидание удаления карты перед возвратом в Wait
+    while self.hardware.is_card_present():
+        time.sleep(0.5)
+    return
 ```
+- Извлечение UID карты с нормализацией
+- Проверка авторизации через backend
+- При отклонении - ожидание удаления карты
 
-#### Flow Calculation
+#### 3. Состояние Pour (Налив)
 ```python
-volume_liters = (pulse_count / FLOW_SENSOR_K_FACTOR) / 1000
+self.hardware.valve_open()
+while self.hardware.is_card_present():
+    # Проверка аварийной остановки каждые 3 секунды
+    if emergency_check_counter >= 6:
+        if self.sync_manager.check_emergency_stop():
+            break
+    
+    # Мониторинг потока каждые 0.5 секунды
+    current_volume_ml = int(self.hardware.get_volume_liters() * 1000)
+    if current_volume_ml > last_volume_ml:
+        total_volume_ml = current_volume_ml
+        timeout_counter = 0
+    else:
+        timeout_counter += 1
+    
+    # Таймаут 15 секунд при отсутствии потока
+    if timeout_counter >= 30:
+        break
 ```
-Where `FLOW_SENSOR_K_FACTOR = 7.5` for YF-S201 sensor.
+- Открытие клапана
+- Мониторинг потока каждые 500мс
+- Отслеживание накопленного объема
+- Таймаут 15 секунд при отсутствии потока
+- Проверка аварийной остановки каждые 3 секунды
+- Автоматическое закрытие при удалении карты
 
-### 4. X-Internal-Token Authentication Mechanism
+#### 4. Состояние Sync (Синхронизация)
+```python
+if total_volume_ml > 1:  # Минимальный объем 1 мл
+    pour_data = {
+        "client_tx_id": str(uuid.uuid4()),
+        "card_uid": card_uid,
+        "tap_id": TAP_ID,
+        "start_ts": start_ts,
+        "end_ts": end_ts,
+        "volume_ml": total_volume_ml,
+        "price_cents": int((total_volume_ml / 100.0) * PRICE_PER_100ML_CENTS),
+        "price_per_ml_at_pour": float(PRICE_PER_100ML_CENTS / 100.0)
+    }
+    self.db_handler.add_pour(pour_data)
+self.hardware.reset_pulses()
+```
+- Сохранение данных о наливе при объеме > 1мл
+- Генерация уникального `client_tx_id`
+- Расчет стоимости на основе `PRICE_PER_100ML_CENTS`
+- Сброс счетчика импульсов датчика потока
 
-The `SyncManager` implements secure communication with the backend using a shared secret token.
+## 2. Механизм аутентификации X-Internal-Token
 
-#### Token Usage
+Класс `SyncManager` реализует безопасную коммуникацию с backend используя общий секретный токен.
 
-All API requests to the backend include the `X-Internal-Token` header:
+### Использование токена
+
+Все API запросы к backend включают заголовок `X-Internal-Token`:
 
 ```python
 headers = {"X-Internal-Token": INTERNAL_TOKEN}
 ```
 
-#### Configuration
+### Конфигурация в config.py
 ```python
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "demo-secret-key").strip()
 ```
 
-#### API Endpoints
+### API эндпоинты с токеном
 
-| Endpoint | Method | Purpose | Token Required |
-|----------|--------|---------|----------------|
-| `/api/system/status` | GET | Emergency stop check | Yes |
-| `/api/sync/pours` | POST | Pour data synchronization | Yes |
-| `/api/guests` | GET | Card authorization check | Yes |
+| Эндпоинт | Метод | Назначение | Требуется токен |
+|----------|--------|------------|-----------------|
+| `/api/system/status` | GET | Проверка аварийной остановки | Да |
+| `/api/sync/pours` | POST | Синхронизация данных наливов | Да |
+| `/api/guests` | GET | Проверка авторизации карты | Да |
 
-#### Security Considerations
-- Token is configurable via environment variable
-- Default fallback for development (should be changed in production)
-- All inter-service communication requires valid token
-- Token validation happens on backend before processing requests
+### Реализация в sync_manager.py
 
-## Configuration Parameters
-
-Key configuration values in `config.py`:
-
+#### Проверка аварийной остановки
 ```python
-SERVER_URL = "http://192.168.0.106:8000"  # Backend endpoint
-TAP_ID = 1                                # Unique tap identifier
-PRICE_PER_100ML_CENTS = 150               # Pricing (1.50 currency units per 100ml)
-SYNC_INTERVAL_SECONDS = 15                # Background sync frequency
-PIN_RELAY = 18                            # GPIO pin for relay
-PIN_FLOW_SENSOR = 17                      # GPIO pin for flow sensor
-FLOW_SENSOR_K_FACTOR = 7.5                # Flow sensor calibration
-INTERNAL_TOKEN = "demo-secret-key"        # Authentication token
+def check_emergency_stop(self):
+    url = "/".join([self.server_url, "api", "system", "status"])
+    headers = {"X-Internal-Token": INTERNAL_TOKEN}
+    response = self.session.get(url, headers=headers, timeout=5)
+    if response.status_code == 200:
+        data = response.json()
+        return str(data.get("value", "")).lower() == "true"
 ```
 
-## Error Handling and Resilience
+#### Проверка авторизации карты
+```python
+def check_card_auth(self, card_uid):
+    url = "/".join([self.server_url, "api", "guests"])
+    headers = {"X-Internal-Token": INTERNAL_TOKEN}
+    response = self.session.get(url, headers=headers, timeout=5)
+    if response.status_code == 200:
+        guests = response.json()
+        for guest in guests:
+            cards = guest.get("cards", [])
+            if any(card.get("card_uid", "").replace(" ", "").lower() == clean_uid for card in cards):
+                return True
+```
 
-### Network Resilience
-- All HTTP requests include timeouts (5-10 seconds)
-- Failed sync attempts are logged but don't interrupt operations
-- Local database ensures no data loss during network outages
+#### Синхронизация данных
+```python
+def sync_cycle(self, db_handler):
+    payload = {"pours": [dict(row) for row in pours]}
+    url = "/".join([self.server_url, "api", "sync", "pours"])
+    headers = {"X-Internal-Token": INTERNAL_TOKEN}
+    response = self.session.post(url, json=payload, headers=headers, timeout=10)
+```
 
-### Hardware Safety
-- Emergency stop check every 3 seconds during pour
-- Automatic valve closure on any error condition
-- Flow sensor timeout prevents infinite pouring
+### Соображения безопасности
+- Токен настраивается через переменную окружения
+- Значение по умолчанию для разработки (в production должен быть изменен)
+- Вся межсервисная коммуникация требует валидный токен
+- Валидация токена происходит на backend перед обработкой запросов
 
-### Data Integrity
-- Thread-safe database operations
-- Unique transaction IDs prevent duplicates
-- Status tracking enables retry logic for failed syncs
+## 3. Аппаратный уровень абстракции с gpiozero и LGPIOFactory
 
-## Operational Flow
+Класс `HardwareHandler` предоставляет унифицированный интерфейс к физическим компонентам используя современные библиотеки.
 
-1. **Startup**: Initialize hardware, database, and network connections
-2. **Main Loop**: Continuously call `flow_manager.process()`
-3. **Background Sync**: Separate thread periodically calls `sync_manager.sync_cycle()`
-4. **Logging**: Comprehensive logging for debugging and monitoring
+### Интеграция с gpiozero
 
-This architecture ensures reliable offline operation with eventual consistency when network connectivity is restored.
+#### Настройка LGPIOFactory
+```python
+from gpiozero.pins.lgpio import LGPIOFactory
+from gpiozero import Device
+
+# Установка LGPIOFactory для gpiozero
+Device.pin_factory = LGPIOFactory()
+```
+
+#### Управление компонентами
+```python
+from gpiozero import DigitalInputDevice, OutputDevice
+
+class HardwareHandler:
+    def __init__(self):
+        # Инициализация реле и датчика потока
+        self.relay = OutputDevice(PIN_RELAY)           # Управление клапаном
+        self.flow_sensor = DigitalInputDevice(PIN_FLOW_SENSOR)  # Датчик потока
+        
+        # Установка обработчика прерываний для датчика потока
+        self.flow_sensor.when_activated = self._pulse_detected
+```
+
+### Преимущества LGPIOFactory над устаревшими библиотеками
+
+| Характеристика | LGPIOFactory | RPi.GPIO (устарел) |
+|----------------|-------------|-------------------|
+| Совместимость | Raspberry Pi 4/5 | Только старые модели |
+| Производительность | Высокая | Низкая |
+| Безопасность потоков | Встроенная | Требует ручной реализации |
+| Поддержка | Активная | Ограниченная |
+
+### Интеграция с pyscard для NFC
+
+#### Обнаружение карты
+```python
+from smartcard.System import readers
+
+def is_card_present(self):
+    r = readers()
+    if not r:
+        return False
+    connection = r[0].createConnection()
+    try:
+        connection.connect()
+        return True
+    except Exception:
+        return False
+```
+
+#### Извлечение UID
+```python
+from smartcard.util import toHexString
+
+def get_card_uid(self):
+    r = readers()
+    if not r:
+        return None
+    connection = r[0].createConnection()
+    try:
+        connection.connect()
+        apdu = [0xFF, 0xCA, 0x00, 0x00, 0x00]  # Команда для получения UID
+        response, sw1, sw2 = connection.transmit(apdu)
+        if sw1 == 0x90 and sw2 == 0x00:
+            return toHexString(response)
+    except Exception:
+        pass
+    return None
+```
+
+### Ключевые методы HardwareHandler
+
+```python
+def valve_open() / valve_close()    # Управление реле клапана
+def get_volume_liters()             # Конвертация импульсов в объем
+def is_card_present()               # Обнаружение NFC карты
+def get_card_uid()                  # Извлечение UID карты
+def reset_pulses()                  # Сброс счетчика импульсов
+```
+
+### Расчет объема потока
+```python
+def get_volume_liters(self):
+    with self.lock:
+        pulses = self.pulse_count
+        self.pulse_count = 0
+    # Расчет объема в литрах
+    return (pulses / FLOW_SENSOR_K_FACTOR) / 1000
+```
+Где `FLOW_SENSOR_K_FACTOR = 7.5` для датчика YF-S201.
+
+### Потокобезопасность
+```python
+from threading import Lock
+
+def _pulse_detected(self):
+    with self.lock:
+        self.pulse_count += 1
+```
+Все операции с импульсами защищены `threading.Lock()` для атомарного доступа в многопоточной среде.
+
+## 4. Процесс установки через setup.sh
+
+Скрипт `setup.sh` выполняет полную автоматическую настройку системы на Raspberry Pi.
+
+### Шаг 1: Установка системных пакетов
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    pcscd \
+    libccid \
+    python3-pyscard \
+    python3-gpiozero \
+    python3-lgpio \
+    build-essential \
+    swig \
+    libpcsclite-dev \
+    pkg-config
+```
+
+#### Ключевые зависимости:
+- **pcscd**: PC/SC Smart Card daemon для NFC ридеров
+- **libccid**: USB Chip/Smart Card Interface Devices драйвер
+- **python3-pyscard**: Python библиотека для работы с смарт-картами
+- **python3-gpiozero**: Современная библиотека для GPIO
+- **python3-lgpio**: Low-level GPIO библиотека для LGPIOFactory
+- **build-essential/swig**: Инструменты для компиляции расширений
+
+### Шаг 2: Настройка прав и групп
+```bash
+sudo usermod -aG plugdev $USER    # Доступ к USB устройствам
+sudo usermod -aG lp $USER         # Доступ к принтерам (NFC ридеры)
+sudo usermod -aG gpio $USER       # Доступ к GPIO пинам
+```
+
+### Шаг 3: Настройка Polkit для pcscd
+Создание правил для доступа к NFC ридерам без прав суперпользователя:
+```bash
+cat <<EOF | sudo tee /etc/polkit-1/rules.d/45-pcscd.rules
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.debian.pcsc-lite.access_pcsc" || 
+         action.id == "org.debian.pcsc-lite.access_card") &&
+        subject.isInGroup("plugdev")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+```
+
+### Шаг 4: Настройка служб
+```bash
+sudo systemctl enable pcscd && sudo systemctl start pcscd
+```
+Автоматический запуск и активация PC/SC демона для NFC ридеров.
+
+### Шаг 5: Настройка виртуального окружения
+```bash
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+pip install gpiozero pyscard requests
+```
+
+#### Особенности `--system-site-packages`:
+- Использует системные пакеты (python3-pyscard, python3-gpiozero)
+- Устанавливает только недостающие зависимости (requests)
+- Обеспечивает совместимость с системными драйверами NFC
+
+### Шаг 6: Финализация
+```bash
+sudo chown -R $USER:$USER .
+echo "Настройка завершена! Перезагрузите систему: sudo reboot"
+```
+
+### Требования к перезагрузке
+После установки требуется перезагрузка для:
+- Применения групп пользователей
+- Загрузки модулей ядра
+- Активации Polkit правил
+- Запуска всех служб в правильном порядке
+
+## 5. Параметры конфигурации
+
+Ключевые значения конфигурации в `config.py`:
+
+```python
+# Сетевые настройки
+SERVER_URL = "http://192.168.0.106:8000"  # Эндпоинт backend
+INTERNAL_TOKEN = "demo-secret-key"        # Токен аутентификации
+
+# Идентификация крана
+TAP_ID = 1                                # Уникальный ID крана
+
+# Ценообразование
+PRICE_PER_100ML_CENTS = 150               # Цена за 100мл в копейках
+
+# Синхронизация
+SYNC_INTERVAL_SECONDS = 15                # Частота фоновой синхронизации
+
+# Аппаратные пины
+PIN_RELAY = 18                            # GPIO пин для реле клапана
+PIN_FLOW_SENSOR = 17                      # GPIO пин для датчика потока
+
+# Калибровка датчика
+FLOW_SENSOR_K_FACTOR = 7.5                # K-фактор для YF-S201
+```
+
+## 6. Обработка ошибок и устойчивость
+
+### Сетевая устойчивость
+- Все HTTP запросы включают таймауты (5-10 секунд)
+- Неудачные попытки синхронизации логируются но не прерывают операции
+- Локальная база данных обеспечивает сохранность данных при сетевых сбоях
+
+### Аппаратная безопасность
+- Проверка аварийной остановки каждые 3 секунды во время налива
+- Автоматическое закрытие клапана при любой ошибочной ситуации
+- Таймаут датчика потока предотвращает бесконечный налив
+
+### Целостность данных
+- Потокобезопасные операции с базой данных
+- Уникальные ID транзакций предотвращают дублирование
+- Отслеживание статусов позволяет реализовать логику повторных попыток
+
+## 7. Операционный поток
+
+1. **Запуск**: Инициализация аппаратных компонентов, базы данных, сетевых соединений
+2. **Основной цикл**: Непрерывный вызов `flow_manager.process()`
+3. **Фоновая синхронизация**: Отдельный поток периодически вызывает `sync_manager.sync_cycle()`
+4. **Логирование**: Комплексное логирование для отладки и мониторинга
+
+Эта архитектура обеспечивает надежную автономную работу с последующей консистентностью при восстановлении сетевого подключения.

@@ -1,62 +1,152 @@
-# Project Context: Beer Tap System (Demo-Ready)
+# Project Context: Beer Tap System
 
-*Last Updated: 2026-02-14*
-
-**Bilingual Edition (EN / RU)**
+*Last Updated: 2026-02-17*
 
 **Repository:** `glebkovalerenko-ui/beer-tap-system` (public) — canonical source for this document.
-**Prepared for:** Gleb Kovalerenko — based on a full code review of the repository.
+**Prepared for:** Gleb Kovalerenko — based on analysis of `backend/main.py`, `admin-app/package.json`, `rpi-controller/flow_manager.py`, `docker-compose.yml`.
 
 ---
 
-### ✦ **IMPORTANT — Scope and source of truth / ВАЖНО — границы и источник правды**
+### **1. Technology Stack**
 
-**EN (short):**
-This `project_context.md` is constructed from a direct analysis of the repository's source code. It reflects the *actual implemented state* of the project. Treat this file as the canonical project summary when interacting with AI assistants and team members. Any functionality not described here should be considered unimplemented.
+**Backend Server:**
+- **FastAPI** - Modern Python web framework with automatic OpenAPI documentation
+- **PostgreSQL 15** - Primary database server running in Docker container
+- **SQLAlchemy** - ORM for database operations
+- **JWT Authentication** - Token-based security with OAuth2PasswordRequestForm
 
-**RU (коротко):**
-Этот файл составлен на основе прямого анализа исходного кода репозитория и отражает *фактическое состояние* проекта. Используйте его как единый и достоверный источник правды. Все предположения, которые были в предыдущих документах, были проверены и либо подтверждены, либо удалены.
+**Frontend Admin Application:**
+- **Svelte 5** - Modern reactive UI framework (latest version 5.0.0)
+- **Tauri 2** - Rust-based desktop application framework (version 2.8.5)
+- **Vite 6** - Fast build tool and development server
+- **TypeScript 5.6** - Type-safe JavaScript development
 
----
+**RPi Controller:**
+- **SQLite with WAL mode** - Local database for offline operation
+- **Python 3** - Controller logic with modular architecture
+- **Hardware Integration** - Direct NFC and flow sensor control
 
-### **1. Short overview / Краткое описание**
-
-**EN:**
-Beer Tap System is a Demo-Ready hardware+software stack for a self-pour beer tap system designed to operate **local-first** (offline-capable). It features Raspberry Pi controllers that record pours locally (SQLite) and periodically synchronize to a central local server (FastAPI, PostgreSQL). A frontend admin UI (Svelte / Vite) provides bartender/admin functionality. The entire system is packaged for reproducible deployment via Docker Compose.
-
-**RU:**
-Beer Tap System — это Demo-Ready аппаратно-программный комплекс для бара самообслуживания, построенный по принципу **локальной работы** (offline-capable). RPi-контроллеры с локальным журналом (SQLite) фиксируют наливы и периодически синхронизируют их с центральным локальным сервером (FastAPI + PostgreSQL). Админ-панель на Svelte/Vite предоставляет интерфейс для бармена. Вся система развёртывается через `docker-compose` для полной воспроизводимости.
-
----
-
-### **2. Confirmed technical facts / Подтверждённые технические факты**
-
-*   **Repository structure (confirmed):** `backend/`, `admin-app/`, `rpi-controller/`, `nginx/`, `docs/`, `docker-compose.yml`, `README.md`.
-*   **Primary server:** Python 3.11+ with FastAPI (`backend/`).
-*   **Database:** PostgreSQL 15 (server) + SQLite with WAL mode (controller local DB).
-*   **ORM / DB Layer:** SQLAlchemy (`backend/models.py`).
-*   **Frontend:** Svelte with Vite; `admin-app/` contains Svelte source and a multi-stage `Dockerfile`.
-*   **Controller:** Python on Raspberry Pi (`rpi-controller/`), includes modular components:
-    - `hardware.py`: Interfaces with YF-S201 flow sensor and ACR122U NFC reader.
-    - `flow_manager.py`: Manages valve operations based on card presence.
-    - `sync_manager.py`: Handles synchronization with the central server.
-    - `database.py`: Local SQLite database with WAL mode.
-*   **Packaging / Deployment:** Docker Compose orchestrates all services. Nginx (`nginx/nginx.conf`) acts as a reverse proxy and serves the Svelte static build.
+**Infrastructure:**
+- **Docker Compose** - Container orchestration for reproducible deployment
+- **Nginx** - Reverse proxy and static file serving
 
 ---
 
-### **3. API Security / Безопасность API**
+### **2. Offline-First Architecture**
 
-**EN:**
-- **Temporary Open Endpoints:**
-  - `GET /api/guests/` and `POST /api/sync/pours/` are open for demo purposes (no JWT required).
-- **Planned Security:**
-  - All endpoints will require JWT authentication in production.
-  - Role-based access control (RBAC) is partially implemented.
+The system operates on a **thick client** model where Raspberry Pi controllers function as independent offline-capable units:
 
-**RU:**
-- **Временно открытые эндпоинты:**
-  - `GET /api/guests/` и `POST /api/sync/pours/` открыты для демонстрации (без JWT).
-- **Планируемая безопасность:**
-  - Все эндпоинты будут требовать JWT-аутентификацию в продакшене.
-  - Ролевое управление доступом (RBAC) частично реализовано.
+**RPi Controller (Thick Client):**
+- Maintains local SQLite database with WAL mode for concurrent access
+- Processes NFC card authentication and pour operations without network dependency
+- Stores all pour data locally with unique transaction IDs
+- Synchronizes with central server when connectivity is available
+
+**Central Server (Source of Truth):**
+- FastAPI backend serves as the authoritative data source
+- PostgreSQL database maintains the complete system state
+- Provides sync endpoints for batch data reconciliation
+- Handles authentication and business logic validation
+
+**Data Flow:**
+1. RPi processes pours locally in real-time
+2. Batch synchronization occurs via `/api/sync/pours` endpoint
+3. Server validates and deduplicates using client transaction IDs
+4. Conflict resolution prioritizes server as source of truth
+
+---
+
+### **3. RPi Controller Modular Architecture**
+
+The Raspberry Pi controller implements a layered modular design:
+
+**Hardware Abstraction Layer:**
+- Direct interface with NFC readers (PC/SC protocol)
+- Flow sensor integration (YF-S201 or compatible)
+- Valve control mechanisms
+- Hardware state management and error handling
+
+**Flow Manager (`flow_manager.py`):**
+- Orchestrates the complete pour session lifecycle
+- Manages card authentication and authorization
+- Controls valve operations with safety timeouts
+- Implements emergency stop functionality
+- Calculates pricing and volume metrics
+- Handles session cleanup and error recovery
+
+**Database Layer:**
+- Local SQLite with WAL mode for concurrent access
+- Atomic transaction handling for data integrity
+- Offline storage of pour records and system state
+- Query optimization for sync operations
+
+**Sync Manager:**
+- Batch data transmission to central server
+- Network connectivity monitoring
+- Retry logic with exponential backoff
+- Conflict detection and resolution
+- Authentication token management
+
+---
+
+### **4. Localization Features**
+
+**Russian Language UI:**
+- The entire admin application interface is implemented in Russian
+- All user-facing text, labels, and messages are localized
+- System logs and error messages include Russian descriptions
+- Documentation and API responses maintain Russian language support where applicable
+
+**Implementation Details:**
+- Svelte components contain hardcoded Russian text
+- Backend error messages and logging in Russian
+- NFC card authentication feedback in Russian
+- Pour session status messages localized for Russian-speaking users
+
+---
+
+### **5. System Integration**
+
+**API Architecture:**
+- Modular router structure with separate endpoints for each domain
+- RESTful design with proper HTTP status codes
+- Comprehensive error handling and logging
+- OpenAPI documentation automatically generated
+
+**Security Model:**
+- JWT-based authentication with bearer tokens
+- Role-based access control framework
+- CORS middleware for cross-origin requests
+- Input validation and sanitization
+
+**Deployment Model:**
+- Docker Compose orchestrates all services
+- PostgreSQL container with health checks
+- FastAPI backend with hot reload for development
+- Static file serving through Nginx reverse proxy
+
+---
+
+### **6. Key Technical Features**
+
+**Real-time Processing:**
+- Sub-second response times for NFC authentication
+- Continuous flow monitoring during pour sessions
+- Emergency stop capability with 3-second check intervals
+- Timeout protection for valve operations
+
+**Data Integrity:**
+- Atomic database transactions
+- Unique client transaction IDs for deduplication
+- Comprehensive audit logging
+- Rollback capabilities for failed operations
+
+**Scalability:**
+- Modular controller architecture supports multiple taps
+- Horizontal scaling of backend services
+- Efficient batch synchronization
+- Resource-optimized SQLite operations
+
+---
+
+*This document reflects the current implementation state as of the source code analysis. All architectural decisions are based on the actual codebase structure and implementation patterns observed in the specified files.*

@@ -1,9 +1,10 @@
 # Data Dictionary / Словарь данных
 
 **Beer Tap System** - Database Architecture Documentation  
-**Version:** 2.0  
+**Version:** 2.1  
 **Database Architect:** System Documentation  
-**Date:** 2026-02-17
+**Date:** 2026-02-17  
+**Updated:** Enhanced SQLite vs PostgreSQL comparison, critical financial field documentation, and relationship mappings
 
 ---
 
@@ -38,7 +39,8 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `sell_price_per_liter` | DECIMAL(10,2) | Retail price per liter for customer billing |
 
 **Relationships:**
-- One-to-many with `kegs` (one beverage type can be in many kegs)
+- **One-to-many** with `kegs` (one beverage type can be in many kegs)
+- **Implemented via:** `kegs = relationship("Keg", back_populates="beverage")`
 
 ---
 
@@ -59,9 +61,9 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `created_at` | TIMESTAMPTZ | Database server timestamp |
 
 **Relationships:**
-- Many-to-one with `beverages`
-- One-to-one with `taps`
-- One-to-many with `pours`
+- **Many-to-one** with `beverages` (`beverage = relationship("Beverage", back_populates="kegs")`)
+- **One-to-one** with `taps` (`tap = relationship("Tap", back_populates="keg", uselist=False)`)
+- **One-to-many** with `pours` (`pours = relationship("Pour", back_populates="keg")`)
 
 ---
 
@@ -78,8 +80,8 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `last_cleaned_at` | TIMESTAMPTZ | Maintenance timestamp |
 
 **Relationships:**
-- One-to-one with `kegs`
-- One-to-many with `pours`
+- **One-to-one** with `kegs` (`keg = relationship("Keg", back_populates="tap")`)
+- **One-to-many** with `pours` (`pours = relationship("Pour", back_populates="tap")`)
 
 ---
 
@@ -102,7 +104,9 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `updated_at` | TIMESTAMPTZ | Last modification timestamp |
 
 **Relationships:**
-- One-to-many with `cards`, `transactions`, `pours`
+- **One-to-many** with `cards` (`cards = relationship("Card", back_populates="guest")`)
+- **One-to-many** with `transactions` (`transactions = relationship("Transaction", back_populates="guest")`)
+- **One-to-many** with `pours` (`pours = relationship("Pour", back_populates="guest")`)
 
 ---
 
@@ -118,8 +122,8 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `created_at` | TIMESTAMPTZ | Card registration timestamp |
 
 **Relationships:**
-- Many-to-one with `guests`
-- One-to-many with `pours`
+- **Many-to-one** with `guests` (`guest = relationship("Guest", back_populates="cards")`)
+- **One-to-many** with `pours` (`pours = relationship("Pour", back_populates="card")`)
 
 ---
 
@@ -139,9 +143,16 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `keg_id` | UUID (FK) | Source keg |
 | `volume_ml` | INTEGER | Dispensed volume in milliliters |
 | `amount_charged` | DECIMAL(10,2) | Total amount deducted from customer balance |
-| `price_per_ml_at_pour` | DECIMAL(10,4) | **Financial snapshot**. Price per ml at moment of pour for historical accuracy |
+| `price_per_ml_at_pour` | DECIMAL(10,4) | **CRITICAL FINANCIAL FIELD**. Price per ml at moment of pour for historical accuracy |
 | `poured_at` | TIMESTAMPTZ | Actual time of dispense (from controller) |
 | `created_at` | TIMESTAMPTZ | Database insertion timestamp |
+
+**Relationships:**
+- **Many-to-one** with `guests` (`guest = relationship("Guest", back_populates="pours")`)
+- **Many-to-one** with `cards` (`card = relationship("Card", back_populates="pours")`)
+- **Many-to-one** with `taps` (`tap = relationship("Tap", back_populates="pours")`)
+- **Many-to-one** with `kegs` (`keg = relationship("Keg", back_populates="pours")`)
+- **Derived relationship:** `beverage` property accesses `keg.beverage`
 
 #### Key Field Explanations:
 
@@ -151,17 +162,25 @@ This document provides a comprehensive description of the Beer Tap System databa
 - Ensures "exactly-once" delivery semantics
 - If same `client_tx_id` is received twice, second attempt is rejected
 
-**`price_per_ml_at_pour` (Financial Snapshot):**
-- Captures the exact price at time of pour
-- Essential for historical financial reporting
-- Allows price changes without affecting past transactions
-- High precision (4 decimal places) for accurate calculations
+**`price_per_ml_at_pour` (CRITICAL FINANCIAL FIELD):**
+- **Mandatory field** for financial history integrity
+- Captures exact price at time of pour with 4-decimal precision
+- **Essential for historical financial reporting** - prevents retroactive price changes from affecting past transactions
+- Enables accurate revenue calculations even when beverage prices are updated
+- Used for financial analytics, profit margin calculations, and audit trails
+- **Present in both PostgreSQL and SQLite schemas**
 
 **`attempts` (SQLite only):**
 - **Exists only in SQLite database on RPi controller**
 - Counts sync retry attempts to central server
 - Prevents infinite retry loops for "poisoned messages"
 - Not present in PostgreSQL schema
+
+**`status` (SQLite only):**
+- **Exists only in SQLite database on RPi controller**
+- Tracks synchronization state: `new`, `sent`, `confirmed`, `failed`
+- Enables offline resilience and retry logic
+- Not present in PostgreSQL schema (transactions are final)
 
 ---
 
@@ -177,6 +196,9 @@ This document provides a comprehensive description of the Beer Tap System databa
 | `type` | VARCHAR(20) | Operation type: `top-up`, `refund`, `correction` |
 | `payment_method` | VARCHAR(20) | Payment method: `cash`, `card` |
 | `created_at` | TIMESTAMPTZ | Transaction timestamp |
+
+**Relationships:**
+- **Many-to-one** with `guests` (`guest = relationship("Guest", back_populates="transactions")`)
 
 ---
 
@@ -243,30 +265,48 @@ This document provides a comprehensive description of the Beer Tap System databa
 
 ### SQLite (RPi Controller) - Local Database
 
-**Additional Fields in `pours` table:**
-- `attempts` INTEGER DEFAULT 0 - Sync retry counter
-- `status` TEXT DEFAULT 'new' - Sync status: `new`, `sent`, `confirmed`, `failed`
-- `start_ts` TEXT - Pour start time
-- `end_ts` TEXT - Pour end time
-- `price_cents` INTEGER - Price in cents (integer arithmetic)
+**Additional Fields in `pours` table (NOT in PostgreSQL):**
+- `attempts` INTEGER DEFAULT 0 - **Sync retry counter for network resilience**
+- `status` TEXT DEFAULT 'new' - **Synchronization state**: `new`, `sent`, `confirmed`, `failed`
+- `start_ts` TEXT - Pour start time (ISO string)
+- `end_ts` TEXT - Pour end time (ISO string)
+- `price_cents` INTEGER - Price in cents (integer arithmetic for precision)
+
+**Key Differences from PostgreSQL:**
+- **No UUID primary key** - uses `client_tx_id` as PRIMARY KEY
+- **No foreign key relationships** - stores raw IDs (card_uid, tap_id)
+- **No guest_id** - customer identification deferred to server sync
+- **No keg_id** - keg identification deferred to server sync
+- **SQLite-specific field types**: TEXT for timestamps, INTEGER for price
 
 **Purpose:**
-- Offline resilience during network outages
-- Local queue for synchronization
-- Retry logic with attempt counting
+- **Offline resilience** during network outages
+- **Local queue** for synchronization with central server
+- **Retry logic** with attempt counting and status tracking
+- **Minimal footprint** for embedded device constraints
 
 ### PostgreSQL (Central Server) - Production Database
 
+**Fields NOT in SQLite:**
+- `pour_id` UUID (PK) - **Application-generated UUID primary key**
+- `guest_id` UUID (FK) - **Direct customer relationship**
+- `keg_id` UUID (FK) - **Direct keg relationship**  
+- `amount_charged` DECIMAL(10,2) - **Financial amount in currency format**
+- `poured_at` TIMESTAMPTZ - **Proper timezone-aware timestamp**
+- `created_at` TIMESTAMPTZ - **Database insertion timestamp**
+
 **Missing SQLite fields:**
 - No `attempts` field (not needed server-side)
-- No `status` field (transactions are final)
-- No `start_ts`/`end_ts` (only `poured_at`)
-- Uses `amount_charged` instead of `price_cents`
+- No `status` field (transactions are final once received)
+- No `start_ts`/`end_ts` (consolidated into `poured_at`)
+- No `price_cents` (uses `amount_charged` and `price_per_ml_at_pour`)
 
 **Purpose:**
-- Single source of truth for all business data
-- Financial reporting and analytics
-- Customer account management
+- **Single source of truth** for all business data
+- **Complete relational integrity** with proper foreign keys
+- **Financial reporting** and analytics with full customer context
+- **Customer account management** with balance tracking
+- **Audit trail** with immutable transaction records
 
 ---
 
