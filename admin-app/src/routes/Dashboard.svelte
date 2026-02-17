@@ -10,13 +10,13 @@
   import TapGrid from '../components/taps/TapGrid.svelte';
   import PourFeed from '../components/pours/PourFeed.svelte';
   import Modal from '../components/common/Modal.svelte'; // <-- Импорт модального окна
+  import { uiStore } from '../stores/uiStore.js';
 
   let initialLoadAttempted = false;
   let showConfirmModal = false; // <-- Состояние для модального окна
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
-      console.log("Dashboard: токен доступен, инициируем загрузку данных для кранов.");
       tapStore.fetchTaps();
       initialLoadAttempted = true;
     }
@@ -30,7 +30,7 @@
       showConfirmModal = false; // Закрываем модальное окно при успехе
     } catch (error) {
       // Ошибки уже логируются в сторе, можно добавить alert
-      alert(`Ошибка изменения состояния: ${error}`);
+      uiStore.notifyError(`Ошибка изменения состояния: ${error}`);
     }
   }
 </script>

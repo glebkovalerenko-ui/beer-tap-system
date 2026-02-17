@@ -3,6 +3,7 @@
 <script>
   import { sessionStore } from '../stores/sessionStore.js';
   import { invoke } from '@tauri-apps/api/core';
+  import { API_BASE_URL } from '../lib/config.js';
 
   let username = '';
   let password = '';
@@ -10,7 +11,7 @@
   let isLoading = false;
 
   async function loginViaHttp() {
-    const response = await fetch('http://localhost:8000/api/token', {
+    const response = await fetch(`${API_BASE_URL}/api/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ username, password })

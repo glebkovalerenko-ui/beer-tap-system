@@ -12,6 +12,8 @@
   import Guests from './routes/Guests.svelte';
   import TapsKegs from './routes/TapsKegs.svelte'; 
   import Login from './routes/Login.svelte';
+  import ToastContainer from './components/feedback/ToastContainer.svelte';
+  import ConfirmDialog from './components/feedback/ConfirmDialog.svelte';
 
   const routes = {
     '/': Dashboard,
@@ -78,6 +80,9 @@
   <!-- Если пользователь НЕ залогинен -->
   <Login />
 {/if}
+
+<ToastContainer />
+<ConfirmDialog />
 
 <style>
   /* Global layout reset required by the UX spec */

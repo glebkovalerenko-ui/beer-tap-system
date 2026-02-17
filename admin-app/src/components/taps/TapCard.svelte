@@ -3,6 +3,7 @@
   import { createEventDispatcher } from 'svelte';
   import { tapStore } from '../../stores/tapStore.js';
   import { kegStore } from '../../stores/kegStore.js';
+  import { uiStore } from '../../stores/uiStore.js';
 
   export let tap;
 
@@ -17,13 +18,21 @@
 
   async function handleUnassign() {
     if (!keg) return;
-    if (confirm(`Отключить кегу "${keg.beverage.name}" с ${tap.display_name}?`)) {
+    const approved = await uiStore.confirm({
+      title: 'Подтвердите действие',
+      message: `Отключить кегу "${keg.beverage.name}" с ${tap.display_name}?`,
+      confirmText: 'Да, снять',
+      cancelText: 'Отмена',
+      danger: true
+    });
+
+    if (approved) {
       isLoading = true;
       try {
         await tapStore.unassignKegFromTap(tap.tap_id);
         kegStore.markKegAsAvailable(keg.keg_id);
       } catch (error) {
-        alert(`Ошибка: ${error}`);
+        uiStore.notifyError(`Ошибка: ${error}`);
       } finally {
         isLoading = false;
       }
@@ -33,12 +42,19 @@
   async function handleStatusChange(newStatus) {
     // Перевод статусов для confirm
     const statusMap = { 'locked': 'Заблокирован', 'active': 'Активен', 'cleaning': 'Чистка' };
-    if (confirm(`Изменить статус ${tap.display_name} на "${statusMap[newStatus] || newStatus}"?`)) {
+    const approved = await uiStore.confirm({
+      title: 'Изменение статуса крана',
+      message: `Изменить статус ${tap.display_name} на "${statusMap[newStatus] || newStatus}"?`,
+      confirmText: 'Подтвердить',
+      cancelText: 'Отмена'
+    });
+
+    if (approved) {
       isLoading = true;
       try {
         await tapStore.updateTapStatus(tap.tap_id, newStatus);
       } catch (error) {
-        alert(`Ошибка: ${error}`);
+        uiStore.notifyError(`Ошибка: ${error}`);
       } finally {
         isLoading = false;
       }

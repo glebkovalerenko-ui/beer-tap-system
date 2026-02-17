@@ -14,6 +14,7 @@
   import GuestForm from '../components/guests/GuestForm.svelte';
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
+  import { uiStore } from '../stores/uiStore.js';
 
   // --- Управление состоянием (без изменений) ---
   let searchTerm = '';
@@ -32,7 +33,6 @@
   // 1. Токен появился (мы аутентифицированы).
   // 2. И мы еще НЕ ПЫТАЛИСЬ выполнить первоначальную загрузку.
   if ($sessionStore.token && !initialLoadAttempted) {
-    console.log("Токен доступен, первая попытка загрузки гостей...");
     guestStore.fetchGuests();
     initialLoadAttempted = true; // <-- Устанавливаем флаг, что попытка была.
   }
@@ -70,14 +70,13 @@
   }
 
   function handleBindCard() {
-    if (!selectedGuest) { alert("Сначала выберите гостя."); return; }
+    if (!selectedGuest) { uiStore.notifyWarning("Сначала выберите гостя."); return; }
     nfcError = ''; 
     isNFCModalOpen = true;
   }
 
   async function handleUidRead(event) {
     const uid = event.detail.uid;
-    console.log(`✅ UID ${uid} получен. Привязываем к гостю ID: ${selectedGuestId}`);
     nfcError = ''; 
     try {
       await guestStore.bindCardToGuest(selectedGuestId, uid);
@@ -89,7 +88,7 @@
   }
   
   function handleOpenTopUpModal() {
-    if (!selectedGuest) { alert("Сначала выберите гостя."); return; }
+    if (!selectedGuest) { uiStore.notifyWarning("Сначала выберите гостя."); return; }
     topUpError = '';
     isTopUpModalOpen = true;
   }
