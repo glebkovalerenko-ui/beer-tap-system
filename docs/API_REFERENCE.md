@@ -54,12 +54,11 @@ Health check endpoint to verify API is running.
 #### POST `/api/token`
 Authenticate and receive JWT token for admin operations.
 
-**Request Body:**
-```json
-{
-  "username": "string",
-  "password": "string"
-}
+**Request Format:** `application/x-www-form-urlencoded`
+
+**Form fields:**
+```text
+username=<string>&password=<string>
 ```
 
 **Response:**

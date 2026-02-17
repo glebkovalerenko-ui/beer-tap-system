@@ -14,6 +14,7 @@
   import BeverageManager from '../components/beverages/BeverageManager.svelte';
   // +++ НОВЫЙ ИМПОРТ +++
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
+  import { uiStore } from '../stores/uiStore.js';
 
   // --- Локальное состояние для управления UI ---
   let initialLoadAttempted = false;
@@ -29,7 +30,6 @@
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
-      console.log("Токен доступен, загружаем все данные для модуля Taps & Kegs...");
       tapStore.fetchTaps();
       kegStore.fetchKegs();
       beverageStore.fetchBeverages();
@@ -56,14 +56,12 @@
 
   // --- Обработчики для CRUD кег (без изменений) ---
   function handleOpenCreateModal() {
-    // Логируем нажатие в самом начале — поможет отследить, доходит ли событие
-    console.log('Open modal clicked');
     try {
       // Безопасно читаем текущее состояние справочника напитков
       const current = get(beverageStore);
       if (!current || !Array.isArray(current.beverages) || current.beverages.length === 0) {
         // Явно объясняем пользователю причину недоступности действия
-        alert("Сначала добавьте напиток в справочник, прежде чем создавать кегу.");
+        uiStore.notifyWarning("Сначала добавьте напиток в справочник, прежде чем создавать кегу.");
         return;
       }
 
@@ -73,7 +71,7 @@
     } catch (err) {
       console.error('Ошибка в handleOpenCreateModal:', err);
       // Показываем пользователю простое сообщение об ошибке
-      alert('Не удалось открыть форму создания кеги. Подробности в консоли.');
+      uiStore.notifyError('Не удалось открыть форму создания кеги. Проверьте состояние API и справочника напитков.');
     }
   }
   // ... (остальные обработчики CRUD без изменений)
@@ -87,7 +85,7 @@
   async function handleSaveAssign(event) {
     const { kegId } = event.detail;
     if (!kegId) {
-      alert("Выберите кегу.");
+      uiStore.notifyWarning("Выберите кегу перед назначением.");
       return;
     }
     
@@ -101,7 +99,7 @@
       tapToAssign = null;
     } catch (error) {
       const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
-      alert(`Ошибка назначения кеги: ${errorMessage}`);
+      uiStore.notifyError(`Ошибка назначения кеги: ${errorMessage}`);
     } finally {
       isAssigning = false;
     }
@@ -116,7 +114,7 @@
       // успешное создание — закрываем модальное окно и показываем подтверждение
       isKegFormModalOpen = false;
       kegToEdit = null;
-      alert('Кега успешно добавлена!');
+      uiStore.notifySuccess('Кега успешно добавлена.');
     } catch (error) {
       const message = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
       kegFormError = `Ошибка при сохранении кеги: ${message}`;
