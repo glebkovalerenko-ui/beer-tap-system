@@ -73,6 +73,7 @@
 
   <!-- Боковая секция -->
   <aside class="sidebar-section">
+    <h2>Лента наливов</h2>
     {#if $pourStore.loading && $pourStore.pours.length === 0}
       <p>Загрузка ленты наливов...</p>
     {:else if $pourStore.error}
