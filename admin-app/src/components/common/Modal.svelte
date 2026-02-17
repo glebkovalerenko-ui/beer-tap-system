@@ -20,10 +20,18 @@
 
 <!-- Overlay/backdrop -->
 <!-- click on backdrop closes modal; content click stops propagation -->
-<div class="modal-backdrop" on:click={() => dispatch('close')} role="presentation">
+<div
+  class="modal-backdrop"
+  on:click={() => dispatch('close')}
+  on:keydown={(event) => (event.key === "Escape" ? dispatch('close') : null)}
+  role="button"
+  aria-label="Закрыть модальное окно"
+  tabindex="0"
+>
   <div
     class="modal-content"
     on:click|stopPropagation
+    on:keydown|stopPropagation={() => {}}
     role="dialog"
     aria-modal="true"
     tabindex="-1"

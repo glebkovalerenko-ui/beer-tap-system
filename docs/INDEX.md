@@ -7,6 +7,7 @@
 - `docs/INTERFACE_CONTRACT.md` — контракт между Svelte/Tauri/FastAPI (частично устарел, см. `docs/REPO_AUDIT.md`).
 - `docs/RPI_INTERNALS.md` — внутренняя логика контроллера Raspberry Pi.
 - `docs/REPO_AUDIT.md` — технический аудит соответствия код ↔ документация ↔ тесты.
+- `docs/ADMIN_APP_AUDIT.md` — продуктовый и UX/QX/QI аудит admin-app с приоритетным планом улучшений.
 
 ## Исторические / потенциально устаревшие документы
 
