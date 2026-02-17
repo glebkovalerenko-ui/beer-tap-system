@@ -1,6 +1,8 @@
 # backend/security.py
 
 from datetime import datetime, timedelta, timezone
+import os
+import logging
 from jose import JWTError, jwt
 from typing import Annotated
 from sqlalchemy.orm import Session
@@ -13,9 +15,12 @@ from crud import audit_crud
 import schemas
 
 # --- НАСТРОЙКИ (без изменений) ---
-SECRET_KEY = "your-very-secret-key-that-should-be-in-env-file"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+if SECRET_KEY == "dev-only-secret-key-change-in-production":
+    logging.warning("SECRET_KEY is not set. Using development fallback value; do not use in production.")
 
 # --- ВРЕМЕННАЯ БАЗА ДАННЫХ ПОЛЬЗОВАТЕЛЕЙ (без изменений) ---
 FAKE_USERS_DB = {
@@ -42,7 +47,7 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-INTERNAL_API_KEY = "demo-secret-key"
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "demo-secret-key")
 
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
