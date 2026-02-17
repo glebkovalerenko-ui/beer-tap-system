@@ -47,7 +47,6 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-<<<<<<< codex/conduct-full-repository-audit-1z5eur
 def _get_internal_api_keys() -> set[str]:
     """
     Возвращает набор допустимых internal API токенов.
@@ -79,9 +78,6 @@ def _get_internal_api_keys() -> set[str]:
         keys.add("demo-secret-key")
 
     return keys
-=======
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "demo-secret-key")
->>>>>>> master
 
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
