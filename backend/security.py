@@ -47,7 +47,41 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+<<<<<<< codex/conduct-full-repository-audit-1z5eur
+def _get_internal_api_keys() -> set[str]:
+    """
+    Возвращает набор допустимых internal API токенов.
+
+    Поддерживает:
+    - INTERNAL_API_KEY (основной ключ)
+    - INTERNAL_API_KEYS (список ключей через запятую для безопасной ротации)
+    - INTERNAL_TOKEN (legacy-переменная для совместимости с rpi-controller)
+    """
+    keys: set[str] = set()
+
+    primary = os.getenv("INTERNAL_API_KEY", "").strip()
+    if primary:
+        keys.add(primary)
+
+    multi = os.getenv("INTERNAL_API_KEYS", "").strip()
+    if multi:
+        for raw in multi.split(","):
+            token = raw.strip()
+            if token:
+                keys.add(token)
+
+    legacy = os.getenv("INTERNAL_TOKEN", "").strip()
+    if legacy:
+        keys.add(legacy)
+
+    # Fallback для локального demo-режима и обратной совместимости.
+    if not keys:
+        keys.add("demo-secret-key")
+
+    return keys
+=======
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "demo-secret-key")
+>>>>>>> master
 
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
@@ -77,7 +111,7 @@ async def get_current_user(
 ) -> dict:
     received_token = request.headers.get("x-internal-token")
 
-    if received_token and received_token.strip() == INTERNAL_API_KEY.strip():
+    if received_token and received_token.strip() in _get_internal_api_keys():
         return {"username": "internal_rpi"}
 
     credentials_exception = HTTPException(

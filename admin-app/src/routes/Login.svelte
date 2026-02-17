@@ -5,8 +5,8 @@
   import { invoke } from '@tauri-apps/api/core';
   import { API_BASE_URL } from '../lib/config.js';
 
-  let username = 'admin';
-  let password = 'fake_password'; // Используйте ваш реальный пароль для теста
+  let username = '';
+  let password = '';
   let error = '';
   let isLoading = false;
 
