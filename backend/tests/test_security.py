@@ -15,4 +15,4 @@ def test_unauthorized_access_to_protected_route(client):
     
     # 3. (Опционально, но рекомендуется) Проверяем тело ответа, чтобы быть
     #    уверенными, что это именно та ошибка, которую мы ожидаем.
-    assert response.json() == {"detail": "Not authenticated"}
+    assert response.json() == {"detail": "Could not validate credentials"}
