@@ -6,6 +6,7 @@
   import { sessionStore } from '../stores/sessionStore.js';
   import { systemStore } from '../stores/systemStore.js'; // <-- Импорт системного стора
   import { kegStore } from '../stores/kegStore.js';
+  import { roleStore } from '../stores/roleStore.js';
 
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
@@ -41,6 +42,7 @@
 <div class="page-header">
   <h1>Дашборд</h1>
   <!-- Кнопка управления режимом ЧС -->
+  {#if $roleStore.permissions.emergency}
   <button 
     class="emergency-button" 
     class:active={$systemStore.emergencyStop}
@@ -55,14 +57,19 @@
       Активировать экстренную остановку
     {/if}
   </button>
+  {:else}
+    <p class="emergency-note">Роль не позволяет управлять экстренной остановкой.</p>
+  {/if}
 </div>
 
-<InvestorValuePanel
-  taps={$tapStore.taps}
-  kegs={$kegStore.kegs}
-  pours={$pourStore.pours}
-  emergencyStop={$systemStore.emergencyStop}
-/>
+{#if $roleStore.permissions.investorPanel}
+  <InvestorValuePanel
+    taps={$tapStore.taps}
+    kegs={$kegStore.kegs}
+    pours={$pourStore.pours}
+    emergencyStop={$systemStore.emergencyStop}
+  />
+{/if}
 
 <div class="dashboard-layout">
   <!-- Основная секция -->
@@ -151,6 +158,7 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+  .emergency-note { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
 
   /* Остальные стили без изменений */
   .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; height: calc(100vh - 8rem); }

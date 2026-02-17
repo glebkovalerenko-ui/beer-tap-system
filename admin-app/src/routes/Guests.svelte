@@ -1,11 +1,9 @@
 <!-- src/routes/Guests.svelte -->
 
 <script>
-  // --- ИЗМЕНЕНИЕ: onMount больше не нужен для загрузки, убираем его из импорта ---
   import { guestStore } from '../stores/guestStore.js';
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Импортируем sessionStore, чтобы следить за токеном +++
   import { sessionStore } from '../stores/sessionStore.js';
-  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+  import { roleStore } from '../stores/roleStore.js';
 
   import GuestSearch from '../components/guests/GuestSearch.svelte';
   import GuestList from '../components/guests/GuestList.svelte';
@@ -16,39 +14,31 @@
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import { uiStore } from '../stores/uiStore.js';
 
-  // --- Управление состоянием (без изменений) ---
   let searchTerm = '';
   let selectedGuestId = null;
   let isModalOpen = false;
   let formError = '';
-  let guestToEdit = null; 
+  let guestToEdit = null;
   let isNFCModalOpen = false;
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
   let initialLoadAttempted = false;
 
- $: {
-  // Мы запускаем загрузку, только если:
-  // 1. Токен появился (мы аутентифицированы).
-  // 2. И мы еще НЕ ПЫТАЛИСЬ выполнить первоначальную загрузку.
-  if ($sessionStore.token && !initialLoadAttempted) {
-    guestStore.fetchGuests();
-    initialLoadAttempted = true; // <-- Устанавливаем флаг, что попытка была.
+  $: {
+    if ($sessionStore.token && !initialLoadAttempted) {
+      guestStore.fetchGuests();
+      initialLoadAttempted = true;
+    }
   }
-}
 
-  // --- Производные данные (без изменений) ---
-  $: filteredGuests = $guestStore.guests.filter(guest => {
+  $: filteredGuests = $guestStore.guests.filter((guest) => {
     const fullName = `${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`.toLowerCase();
     return fullName.includes(searchTerm.toLowerCase());
   });
 
-  $: selectedGuest = selectedGuestId 
-    ? $guestStore.guests.find(g => g.guest_id === selectedGuestId) 
-    : null;
+  $: selectedGuest = selectedGuestId ? $guestStore.guests.find((g) => g.guest_id === selectedGuestId) : null;
 
-  // --- Обработчики событий (остаются без изменений) ---
   function handleSelectGuest(event) { selectedGuestId = event.detail.guestId; }
   function handleCloseDetail() { selectedGuestId = null; }
   function handleOpenCreateModal() { guestToEdit = null; formError = ''; isModalOpen = true; }
@@ -70,114 +60,113 @@
   }
 
   function handleBindCard() {
-    if (!selectedGuest) { uiStore.notifyWarning("Сначала выберите гостя."); return; }
-    nfcError = ''; 
+    if (!selectedGuest) { uiStore.notifyWarning('Сначала выберите гостя.'); return; }
+    nfcError = '';
     isNFCModalOpen = true;
   }
 
   async function handleUidRead(event) {
-    const uid = event.detail.uid;
-    nfcError = ''; 
+    nfcError = '';
     try {
-      await guestStore.bindCardToGuest(selectedGuestId, uid);
+      await guestStore.bindCardToGuest(selectedGuestId, event.detail.uid);
     } catch (error) {
-      const errorMessage = error.message || error.toString();
-      console.error('Ошибка привязки карты:', errorMessage);
-      nfcError = errorMessage;
+      nfcError = error.message || error.toString();
     }
   }
-  
+
   function handleOpenTopUpModal() {
-    if (!selectedGuest) { uiStore.notifyWarning("Сначала выберите гостя."); return; }
+    if (!selectedGuest) { uiStore.notifyWarning('Сначала выберите гостя.'); return; }
     topUpError = '';
     isTopUpModalOpen = true;
   }
 
   async function handleSaveTopUp(event) {
-    const topUpData = event.detail;
     topUpError = '';
     try {
-      await guestStore.topUpBalance(selectedGuestId, topUpData);
+      await guestStore.topUpBalance(selectedGuestId, event.detail);
       isTopUpModalOpen = false;
     } catch (error) {
       topUpError = error.message || error.toString();
     }
   }
-
 </script>
 
-<div class="guests-page-layout">
-  <div class="list-panel">
-    <div class="panel-header">
-      <h2>Гости</h2>
-      <button on:click={handleOpenCreateModal}>+ Новый гость</button>
+{#if !$roleStore.permissions.guests}
+  <section class="access-denied ui-card">
+    <h2>Доступ ограничен</h2>
+    <p>Текущая роль не предусматривает управление гостями.</p>
+  </section>
+{:else}
+  <div class="guests-page-layout">
+    <div class="list-panel">
+      <div class="panel-header">
+        <h2>Гости</h2>
+        <button on:click={handleOpenCreateModal}>+ Новый гость</button>
+      </div>
+      <GuestSearch bind:searchTerm />
+      <div class="button-group">
+        <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
+          {#if $guestStore.loading}Обновление...{:else}Обновить список{/if}
+        </button>
+      </div>
+
+      {#if $guestStore.loading && $guestStore.guests.length === 0}
+        <p>Загрузка гостей...</p>
+      {:else if $guestStore.error}
+        <p class="error">Ошибка: {$guestStore.error}</p>
+      {:else if filteredGuests.length === 0}
+        <p>Гостей, соответствующих вашему поиску, не найдено.</p>
+      {:else}
+        <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
+      {/if}
     </div>
-    <GuestSearch bind:searchTerm />
-    <div class="button-group">
-      <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
-        {#if $guestStore.loading}Обновление...{:else}Обновить список{/if}
-      </button>
-    </div>
-    
-    <!-- +++ ИЗМЕНЕНИЕ: Улучшаем отображение состояния загрузки и пустого списка +++ -->
-    {#if $guestStore.loading && $guestStore.guests.length === 0}
-      <p>Загрузка гостей...</p>
-    {:else if $guestStore.error}
-      <p class="error">Ошибка: {$guestStore.error}</p>
-    {:else if filteredGuests.length === 0}
-      <!-- КОММЕНТАРИЙ: Это сообщение теперь будет показываться и когда список пуст,
-           и когда поиск ничего не нашел, что является корректным UX. -->
-      <p>Гостей, соответствующих вашему поиску, не найдено.</p>
-    {:else}
-      <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
+
+    {#if selectedGuest}
+      <div class="detail-panel">
+        <GuestDetail
+          guest={selectedGuest}
+          on:close={handleCloseDetail}
+          on:edit={handleOpenEditModal}
+          on:bind-card={handleBindCard}
+          on:top-up={handleOpenTopUpModal}
+        />
+      </div>
     {/if}
   </div>
 
-  {#if selectedGuest}
-    <div class="detail-panel">
-      <GuestDetail 
-        guest={selectedGuest} 
-        on:close={handleCloseDetail}
-        on:edit={handleOpenEditModal}
-        on:bind-card={handleBindCard}
-        on:top-up={handleOpenTopUpModal}
+  {#if isModalOpen}
+    <Modal on:close={() => { isModalOpen = false; guestToEdit = null; }}>
+      <GuestForm
+        guest={guestToEdit}
+        on:save={handleSave}
+        on:cancel={() => { isModalOpen = false; guestToEdit = null; }}
+        isSaving={$guestStore.loading}
       />
-    </div>
+      {#if formError}<p class="error" style="margin-top: 1rem;">{formError}</p>{/if}
+    </Modal>
   {/if}
-</div>
 
-{#if isModalOpen}
-  <Modal on:close={() => { isModalOpen = false; guestToEdit = null; }}>
-    <GuestForm 
-      guest={guestToEdit}
-      on:save={handleSave} 
-      on:cancel={() => { isModalOpen = false; guestToEdit = null; }}
-      isSaving={$guestStore.loading}
+  {#if isNFCModalOpen}
+    <NFCModal
+      on:close={() => { isNFCModalOpen = false; }}
+      on:uid-read={handleUidRead}
+      externalError={nfcError}
     />
-    {#if formError}<p class="error" style="margin-top: 1rem;">{formError}</p>{/if}
-  </Modal>
-{/if}
+  {/if}
 
-{#if isNFCModalOpen}
-  <NFCModal 
-    on:close={() => { isNFCModalOpen = false; }}
-    on:uid-read={handleUidRead}
-    externalError={nfcError}
-  />
-{/if}
-
-{#if isTopUpModalOpen}
-  <TopUpModal 
-    guestName={`${selectedGuest.first_name} ${selectedGuest.last_name}`}
-    isSaving={$guestStore.loading}
-    on:close={() => { isTopUpModalOpen = false; }}
-    on:save={handleSaveTopUp}
-  />
-  {#if topUpError}<p class="error">{topUpError}</p>{/if}
+  {#if isTopUpModalOpen}
+    <TopUpModal
+      guestName={`${selectedGuest.first_name} ${selectedGuest.last_name}`}
+      isSaving={$guestStore.loading}
+      on:close={() => { isTopUpModalOpen = false; }}
+      on:save={handleSaveTopUp}
+    />
+    {#if topUpError}<p class="error">{topUpError}</p>{/if}
+  {/if}
 {/if}
 
 <style>
-  /* Стили остаются без изменений */
+  .access-denied { padding: 1rem; }
   .guests-page-layout { display: flex; gap: 1rem; height: calc(100vh - 4rem); }
   .list-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
   .detail-panel { flex: 1; border-left: 1px solid #ddd; padding-left: 1rem; overflow-y: auto; }
