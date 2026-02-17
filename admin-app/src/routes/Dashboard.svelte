@@ -5,10 +5,12 @@
   import { pourStore } from '../stores/pourStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { systemStore } from '../stores/systemStore.js'; // <-- Импорт системного стора
+  import { kegStore } from '../stores/kegStore.js';
 
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
   import PourFeed from '../components/pours/PourFeed.svelte';
+  import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte'; // <-- Импорт модального окна
   import { uiStore } from '../stores/uiStore.js';
 
@@ -18,6 +20,7 @@
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
       tapStore.fetchTaps();
+      kegStore.fetchKegs();
       initialLoadAttempted = true;
     }
   }
@@ -53,6 +56,13 @@
     {/if}
   </button>
 </div>
+
+<InvestorValuePanel
+  taps={$tapStore.taps}
+  kegs={$kegStore.kegs}
+  pours={$pourStore.pours}
+  emergencyStop={$systemStore.emergencyStop}
+/>
 
 <div class="dashboard-layout">
   <!-- Основная секция -->
