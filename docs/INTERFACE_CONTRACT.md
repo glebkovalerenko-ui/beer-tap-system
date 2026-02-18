@@ -1,9 +1,9 @@
 # Interface Contract
 
-**Источник правды:** `admin-app/src-tauri/src/lib.rs`, `admin-app/src-tauri/src/main.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
+**Источник правды:** `admin-app/src-tauri/src/main.rs`, `admin-app/src-tauri/src/api_client.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
 
 **Версия:** 1.0  
-**Дата:** 2026-02-17
+**Дата последней верификации:** 2026-02-18
 
 ## Архитектура взаимодействия
 

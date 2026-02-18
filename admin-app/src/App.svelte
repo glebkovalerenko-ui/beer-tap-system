@@ -1,55 +1,49 @@
 <!-- admin-app/src/App.svelte -->
 
 <script>
-  import { onMount, onDestroy } from 'svelte'; // <-- ИЗМЕНЕНО: Добавлены хуки жизненного цикла
+  import { onMount, onDestroy } from 'svelte';
   import Router from 'svelte-spa-router';
-  
+
   import { sessionStore } from './stores/sessionStore.js';
   import { guestStore } from './stores/guestStore.js';
-  import { systemStore } from './stores/systemStore.js'; 
+  import { systemStore } from './stores/systemStore.js';
+  import { roleStore } from './stores/roleStore.js';
+  import { demoGuideStore } from './stores/demoGuideStore.js';
 
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
-  import TapsKegs from './routes/TapsKegs.svelte'; 
+  import TapsKegs from './routes/TapsKegs.svelte';
   import Login from './routes/Login.svelte';
+
+  import ToastContainer from './components/feedback/ToastContainer.svelte';
+  import ConfirmDialog from './components/feedback/ConfirmDialog.svelte';
+  import DemoGuide from './components/demo/DemoGuide.svelte';
+  import ActivityTrail from './components/system/ActivityTrail.svelte';
 
   const routes = {
     '/': Dashboard,
     '/guests': Guests,
     '/taps-kegs': TapsKegs,
-    '*': Dashboard
+    '*': Dashboard,
   };
-  
-  // --- ИЗМЕНЕНО: Явно управляем жизненным циклом фоновых процессов ---
-  onMount(() => {
-    console.log('[App.svelte] Компонент смонтирован, запускаем фоновые процессы.');
-    // Запускаем опрос статуса системы
-    systemStore.startPolling();
 
-    // Здесь же можно инициализировать и другие сторы, которым нужно загрузить данные
-    // Это более надежно, чем реактивный блок.
+  onMount(() => {
+    systemStore.startPolling();
     if ($guestStore.guests.length === 0 && !$guestStore.loading) {
       guestStore.fetchGuests();
     }
   });
 
   onDestroy(() => {
-    console.log('[App.svelte] Компонент уничтожен, останавливаем фоновые процессы.');
-    // Останавливаем опрос статуса системы, чтобы избежать утечек памяти
     systemStore.stopPolling();
   });
 
-  /* <-- ИЗМЕНЕНО: Старый реактивный блок закомментирован в пользу onMount
-  $: if ($sessionStore.token && $guestStore.guests.length === 0 && !$guestStore.loading) {
-    guestStore.fetchGuests();
+  function changeRole(event) {
+    roleStore.setRole(event.target.value);
   }
-  */
-
 </script>
 
-<!-- Реактивно показываем либо страницу входа, либо основное приложение -->
 {#if $sessionStore.token}
-  <!-- Если пользователь залогинен -->
   <div class="app-layout" class:emergency-active={$systemStore.emergencyStop}>
     {#if $systemStore.emergencyStop}
       <div class="emergency-banner">
@@ -59,70 +53,105 @@
 
     <nav class="sidebar" aria-label="Главная навигация">
       <h1>Админ-панель</h1>
+
+      <div class="role-box ui-card">
+        <label for="role">Роль интерфейса</label>
+        <select id="role" on:change={changeRole} value={$roleStore.key}>
+          {#each Object.entries(roleStore.roles) as [key, role]}
+            <option value={key}>{role.label}</option>
+          {/each}
+        </select>
+      </div>
+
       <ul>
         <li><a href="#/">Дашборд</a></li>
-        <li><a href="#/guests">Гости</a></li>
-        <li><a href="#/taps-kegs">Краны и Кеги</a></li>
+        {#if $roleStore.permissions.guests}
+          <li><a href="#/guests">Гости</a></li>
+        {/if}
+        {#if $roleStore.permissions.taps}
+          <li><a href="#/taps-kegs">Краны и Кеги</a></li>
+        {/if}
       </ul>
+
+      <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Guided demo mode</button>
+      <ActivityTrail />
+
       <button on:click={() => sessionStore.logout()} class="logout-button">Выход</button>
     </nav>
 
     <main class="main-content">
-      <!-- Внутри main оставляем шапку/панель и добавляем специально скроллящийся контейнер для страниц -->
       <div class="page-scroll">
         <Router {routes} />
       </div>
     </main>
   </div>
 {:else}
-  <!-- Если пользователь НЕ залогинен -->
   <Login />
 {/if}
 
+<ToastContainer />
+<ConfirmDialog />
+<DemoGuide />
+
 <style>
-  /* Global layout reset required by the UX spec */
   :global(html, body) {
     margin: 0;
     padding: 0;
     height: 100vh;
-    overflow: hidden; /* prevent body scrolling, app will control scroll inside */
-    font-size: 16px; /* base font size */
+    overflow: hidden;
+    font-size: 16px;
+    background: var(--bg-app);
+    color: var(--text-primary);
   }
 
   .app-layout { display: flex; height: 100vh; }
+
   .sidebar {
-    width: 240px;
-    flex: 0 0 240px; /* fixed width sidebar */
-    background-color: #f4f4f4;
-    padding: 1rem;
-    border-right: 1px solid #ddd;
+    width: 280px;
+    flex: 0 0 280px;
+    background-color: var(--bg-surface-muted);
+    padding: var(--space-3);
+    border-right: 1px solid var(--border-soft);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
+    gap: var(--space-2);
   }
-  .sidebar h1 { font-size: 1.5rem; margin-top: 0; }
-  .sidebar ul { list-style-type: none; padding: 0; }
-  .sidebar ul li a { display: block; padding: 0.5rem 0; text-decoration: none; color: #333; }
-  .sidebar ul li a:hover { color: #007bff; }
+
+  .sidebar h1 { font-size: 1.35rem; margin: 0; }
+  .sidebar ul { list-style-type: none; padding: 0; margin: 0; }
+  .sidebar ul li a {
+    display: block;
+    padding: 0.55rem 0.35rem;
+    text-decoration: none;
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+  }
+  .sidebar ul li a:hover { background: #e9eef8; color: var(--brand-strong); }
+
+  .role-box { padding: 0.6rem; display: grid; gap: 0.35rem; }
+  .role-box label { font-size: 0.8rem; color: var(--text-secondary); }
+
   .main-content {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* main itself never scrolls; inner container scrolls */
+    overflow: hidden;
   }
 
-  /* Scrolling container for page content per requirements */
   .page-scroll {
     overflow-y: auto;
-    padding: 2rem;
+    padding: var(--space-4);
     flex: 1 1 auto;
     -webkit-overflow-scrolling: touch;
     box-sizing: border-box;
   }
 
-  .logout-button { margin-top: auto; /* sticks to bottom of sidebar */ width: 100%; }
+  .logout-button { margin-top: auto; width: 100%; }
+  .demo-button { width: 100%; background: #eef3ff; color: #1849a9; }
+
   .emergency-banner {
-    background-color: #d9534f;
+    background-color: var(--danger);
     color: white;
     text-align: center;
     padding: 0.5rem;
@@ -133,44 +162,31 @@
     left: 0;
     z-index: 1000;
   }
-  .app-layout { 
-    display: flex; 
-    height: 100vh;
-    padding-top: 0;
-  }
-  .app-layout.emergency-active {
-    padding-top: 2.5rem;
-  }
 
-  /* Global interactive styles (buttons / inputs) */
+  .app-layout.emergency-active { padding-top: 2.5rem; }
+
   :global(button) {
-    font-size: 1rem;
+    font-size: 0.95rem;
     padding: 0.6rem 1rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid rgba(0,0,0,0.08);
-    background: #007bff;
+    background: var(--brand);
     color: white;
     cursor: pointer;
     transition: transform 0.06s ease, filter 0.06s ease, box-shadow 0.06s ease;
     box-shadow: 0 1px 0 rgba(0,0,0,0.02);
   }
-  :global(button:hover:not(:disabled)) {
-    filter: brightness(0.95);
-  }
-  :global(button:active:not(:disabled)) {
-    transform: scale(0.98);
-  }
-  :global(button:disabled) {
-    opacity: 0.6;
-    cursor: not-allowed;
-    filter: none;
-  }
+
+  :global(button:hover:not(:disabled)) { filter: brightness(0.95); }
+  :global(button:active:not(:disabled)) { transform: scale(0.98); }
+  :global(button:disabled) { opacity: 0.6; cursor: not-allowed; filter: none; }
 
   :global(input, textarea, select) {
-    font-size: 1rem;
+    font-size: 0.95rem;
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
-    border: 1px solid #dcdcdc;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
     box-sizing: border-box;
+    background: #fff;
   }
 </style>

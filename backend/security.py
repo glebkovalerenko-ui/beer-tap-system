@@ -1,6 +1,8 @@
 # backend/security.py
 
 from datetime import datetime, timedelta, timezone
+import os
+import logging
 from jose import JWTError, jwt
 from typing import Annotated
 from sqlalchemy.orm import Session
@@ -13,9 +15,13 @@ from crud import audit_crud
 import schemas
 
 # --- НАСТРОЙКИ (без изменений) ---
-SECRET_KEY = "your-very-secret-key-that-should-be-in-env-file"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+ALLOW_LEGACY_DEMO_INTERNAL_TOKEN = os.getenv("ALLOW_LEGACY_DEMO_INTERNAL_TOKEN", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+if SECRET_KEY == "dev-only-secret-key-change-in-production":
+    logging.warning("SECRET_KEY is not set. Using development fallback value; do not use in production.")
 
 # --- ВРЕМЕННАЯ БАЗА ДАННЫХ ПОЛЬЗОВАТЕЛЕЙ (без изменений) ---
 FAKE_USERS_DB = {
@@ -42,7 +48,50 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-INTERNAL_API_KEY = "demo-secret-key"
+def _normalize_token(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = value.strip()
+    # Частая проблема: токен передается в кавычках из env/systemd/docker.
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
+def _get_internal_api_keys() -> set[str]:
+    """
+    Возвращает набор допустимых internal API токенов.
+
+    Поддерживает:
+    - INTERNAL_API_KEY (основной ключ)
+    - INTERNAL_API_KEYS (список ключей через запятую для безопасной ротации)
+    - INTERNAL_TOKEN (legacy-переменная для совместимости с rpi-controller)
+    """
+    keys: set[str] = set()
+
+    primary = _normalize_token(os.getenv("INTERNAL_API_KEY", ""))
+    if primary:
+        keys.add(primary)
+
+    multi = _normalize_token(os.getenv("INTERNAL_API_KEYS", ""))
+    if multi:
+        for raw in multi.split(","):
+            token = _normalize_token(raw)
+            if token:
+                keys.add(token)
+
+    legacy = _normalize_token(os.getenv("INTERNAL_TOKEN", ""))
+    if legacy:
+        keys.add(legacy)
+
+    # Для разработки/демо можно всегда держать legacy-ключ совместимости.
+    if ALLOW_LEGACY_DEMO_INTERNAL_TOKEN:
+        keys.add("demo-secret-key")
+
+    # Fallback, если никаких ключей не задано.
+    if not keys:
+        keys.add("demo-secret-key")
+
+    return keys
 
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
@@ -70,10 +119,17 @@ async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    received_token = request.headers.get("x-internal-token")
+    received_token = _normalize_token(request.headers.get("x-internal-token"))
 
-    if received_token and received_token.strip() == INTERNAL_API_KEY.strip():
+    allowed_internal_keys = _get_internal_api_keys()
+    if received_token and received_token in allowed_internal_keys:
         return {"username": "internal_rpi"}
+
+    if received_token and received_token not in allowed_internal_keys:
+        logging.warning(
+            "Internal token rejected for path %s. Check INTERNAL_API_KEY/INTERNAL_TOKEN alignment.",
+            request.url.path,
+        )
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
