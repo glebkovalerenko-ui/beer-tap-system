@@ -41,4 +41,6 @@ def normalize_token(value: str | None) -> str:
     return normalized
 
 # Токен для внутренней аутентификации
-INTERNAL_TOKEN = normalize_token(os.getenv("INTERNAL_TOKEN", "demo-secret-key"))
+INTERNAL_TOKEN = normalize_token(
+    os.getenv("INTERNAL_TOKEN") or os.getenv("INTERNAL_API_KEY") or "demo-secret-key"
+)
