@@ -18,6 +18,7 @@ import schemas
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+ALLOW_LEGACY_DEMO_INTERNAL_TOKEN = os.getenv("ALLOW_LEGACY_DEMO_INTERNAL_TOKEN", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 if SECRET_KEY == "dev-only-secret-key-change-in-production":
     logging.warning("SECRET_KEY is not set. Using development fallback value; do not use in production.")
@@ -82,7 +83,11 @@ def _get_internal_api_keys() -> set[str]:
     if legacy:
         keys.add(legacy)
 
-    # Fallback для локального demo-режима и обратной совместимости.
+    # Для разработки/демо можно всегда держать legacy-ключ совместимости.
+    if ALLOW_LEGACY_DEMO_INTERNAL_TOKEN:
+        keys.add("demo-secret-key")
+
+    # Fallback, если никаких ключей не задано.
     if not keys:
         keys.add("demo-secret-key")
 
