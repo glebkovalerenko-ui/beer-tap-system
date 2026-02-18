@@ -7,7 +7,6 @@ def test_unauthorized_access_to_protected_route(client):
     """
     response = client.get("/api/kegs/")
     assert response.status_code == 401
-<<<<<<< codex/conduct-full-repository-audit-1z5eur
     assert response.json() == {"detail": "Could not validate credentials"}
 
 
@@ -15,9 +14,10 @@ def test_internal_token_allows_guest_list_access(client):
     """RPi-контроллер должен иметь доступ к списку гостей по internal token."""
     response = client.get("/api/guests", headers={"X-Internal-Token": "demo-secret-key"})
     assert response.status_code == 200
-=======
-    
-    # 3. (Опционально, но рекомендуется) Проверяем тело ответа, чтобы быть
-    #    уверенными, что это именно та ошибка, которую мы ожидаем.
-    assert response.json() == {"detail": "Could not validate credentials"}
->>>>>>> master
+
+
+def test_internal_token_with_quotes_is_accepted(client, monkeypatch):
+    """Токен из env может прийти в кавычках — доступ должен работать."""
+    monkeypatch.setenv("INTERNAL_API_KEY", '"demo-secret-key"')
+    response = client.get("/api/guests", headers={"X-Internal-Token": "demo-secret-key"})
+    assert response.status_code == 200

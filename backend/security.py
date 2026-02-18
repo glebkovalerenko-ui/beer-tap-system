@@ -47,6 +47,15 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+def _normalize_token(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = value.strip()
+    # Частая проблема: токен передается в кавычках из env/systemd/docker.
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
 def _get_internal_api_keys() -> set[str]:
     """
     Возвращает набор допустимых internal API токенов.
@@ -58,18 +67,18 @@ def _get_internal_api_keys() -> set[str]:
     """
     keys: set[str] = set()
 
-    primary = os.getenv("INTERNAL_API_KEY", "").strip()
+    primary = _normalize_token(os.getenv("INTERNAL_API_KEY", ""))
     if primary:
         keys.add(primary)
 
-    multi = os.getenv("INTERNAL_API_KEYS", "").strip()
+    multi = _normalize_token(os.getenv("INTERNAL_API_KEYS", ""))
     if multi:
         for raw in multi.split(","):
-            token = raw.strip()
+            token = _normalize_token(raw)
             if token:
                 keys.add(token)
 
-    legacy = os.getenv("INTERNAL_TOKEN", "").strip()
+    legacy = _normalize_token(os.getenv("INTERNAL_TOKEN", ""))
     if legacy:
         keys.add(legacy)
 
@@ -105,10 +114,17 @@ async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)]
 ) -> dict:
-    received_token = request.headers.get("x-internal-token")
+    received_token = _normalize_token(request.headers.get("x-internal-token"))
 
-    if received_token and received_token.strip() in _get_internal_api_keys():
+    allowed_internal_keys = _get_internal_api_keys()
+    if received_token and received_token in allowed_internal_keys:
         return {"username": "internal_rpi"}
+
+    if received_token and received_token not in allowed_internal_keys:
+        logging.warning(
+            "Internal token rejected for path %s. Check INTERNAL_API_KEY/INTERNAL_TOKEN alignment.",
+            request.url.path,
+        )
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

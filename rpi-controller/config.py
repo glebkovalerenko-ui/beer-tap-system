@@ -30,5 +30,15 @@ PIN_FLOW_SENSOR = 17
 # K-фактор для датчика потока YF-S201
 FLOW_SENSOR_K_FACTOR = 7.5
 
+
+
+def normalize_token(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
 # Токен для внутренней аутентификации
-INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "demo-secret-key").strip()
+INTERNAL_TOKEN = normalize_token(os.getenv("INTERNAL_TOKEN", "demo-secret-key"))
