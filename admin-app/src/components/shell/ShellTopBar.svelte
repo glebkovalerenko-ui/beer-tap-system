@@ -4,6 +4,7 @@
   import { guestContextStore } from '../../stores/guestContextStore.js';
   import ShellStatusPills from './ShellStatusPills.svelte';
   import ShellGuestContextChip from './ShellGuestContextChip.svelte';
+  import DemoModeToggle from '../system/DemoModeToggle.svelte';
 
   export let title = 'POS Workspace';
 
@@ -24,6 +25,7 @@
 
   <div class="right">
     <ShellStatusPills />
+    <DemoModeToggle />
     <select on:change={changeRole} value={$roleStore.key} aria-label="Role">
       {#each Object.entries(roleStore.roles) as [key, role]}
         <option value={key}>{role.label}</option>

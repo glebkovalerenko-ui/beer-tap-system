@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   export let guest;
+  export let recentActivity = [];
 
   const dispatch = createEventDispatcher();
 
@@ -10,6 +11,7 @@
   }
 
   $: transactions = Array.isArray(guest?.transactions) ? guest.transactions.slice(0, 8) : [];
+  $: activity = Array.isArray(recentActivity) ? recentActivity : [];
 </script>
 
 <div class="detail-container">
@@ -59,6 +61,7 @@
 
   <div class="info-block">
     <h4>Последние операции</h4>
+
     {#if transactions.length > 0}
       <ul class="tx-list">
         {#each transactions as tx (tx.transaction_id)}
@@ -68,6 +71,18 @@
               <small>{formatDateTime(tx.created_at)}</small>
             </div>
             <span>{Number(tx.amount || 0).toFixed(2)}</span>
+          </li>
+        {/each}
+      </ul>
+    {:else if activity.length > 0}
+      <ul class="tx-list">
+        {#each activity as item (item.pour_id)}
+          <li>
+            <div>
+              <strong>Списание за налив</strong>
+              <small>{formatDateTime(item.poured_at)} · {item.beverage?.name || 'Напиток'}</small>
+            </div>
+            <span>-{Number(item.amount_charged || 0).toFixed(2)}</span>
           </li>
         {/each}
       </ul>

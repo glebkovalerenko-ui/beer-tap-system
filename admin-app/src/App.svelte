@@ -7,6 +7,8 @@
   import { systemStore } from './stores/systemStore.js';
   import { roleStore } from './stores/roleStore.js';
   import { demoGuideStore } from './stores/demoGuideStore.js';
+  import { demoModeStore } from './stores/demoModeStore.js';
+  import { nfcReaderStore } from './stores/nfcReaderStore.js';
 
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
@@ -18,6 +20,7 @@
   import DemoGuide from './components/demo/DemoGuide.svelte';
   import ActivityTrail from './components/system/ActivityTrail.svelte';
   import ShellTopBar from './components/shell/ShellTopBar.svelte';
+  import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
 
   const routes = {
     '/': Dashboard,
@@ -26,15 +29,26 @@
     '*': Dashboard,
   };
 
+  let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+  const updateOnline = () => {
+    online = navigator.onLine;
+  };
+
   onMount(() => {
     systemStore.startPolling();
     if ($guestStore.guests.length === 0 && !$guestStore.loading) {
       guestStore.fetchGuests();
     }
+
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
   });
 
   onDestroy(() => {
     systemStore.stopPolling();
+    window.removeEventListener('online', updateOnline);
+    window.removeEventListener('offline', updateOnline);
   });
 </script>
 
@@ -47,6 +61,7 @@
     {/if}
 
     <ShellTopBar title="Beer Tap POS" />
+    <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
 
     <div class="workspace-grid">
       <aside class="left-rail ui-card">

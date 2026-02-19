@@ -4,6 +4,7 @@
   import { roleStore } from '../stores/roleStore.js';
   import { guestContextStore } from '../stores/guestContextStore.js';
   import { shiftStore } from '../stores/shiftStore.js';
+  import { pourStore } from '../stores/pourStore.js';
 
   import GuestSearch from '../components/guests/GuestSearch.svelte';
   import GuestList from '../components/guests/GuestList.svelte';
@@ -39,6 +40,9 @@
 
   $: selectedGuest = selectedGuestId ? $guestStore.guests.find((g) => g.guest_id === selectedGuestId) : null;
   $: guestContextStore.setGuest(selectedGuest);
+  $: recentGuestPours = selectedGuest
+    ? $pourStore.pours.filter((p) => p?.guest?.guest_id === selectedGuest.guest_id).slice(0, 8)
+    : [];
 
   function handleSelectGuest(event) { selectedGuestId = event.detail.guestId; }
   function handleCloseDetail() { selectedGuestId = null; guestContextStore.clear(); }
@@ -133,6 +137,7 @@
       {#if selectedGuest}
         <GuestDetail
           guest={selectedGuest}
+          recentActivity={recentGuestPours}
           on:close={handleCloseDetail}
           on:edit={handleOpenEditModal}
           on:bind-card={handleBindCard}
