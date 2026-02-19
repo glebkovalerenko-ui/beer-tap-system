@@ -1,25 +1,37 @@
-<!-- src/components/modals/TopUpModal.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
   import Modal from '../common/Modal.svelte';
 
   const dispatch = createEventDispatcher();
-  
-  // --- Props ---
-  /**
-   * Имя гостя для отображения в заголовке
-   * @type {string}
-   */
   export let guestName = 'Гость';
-  /**
-   * Флаг, указывающий на процесс сохранения (для блокировки кнопки)
-   * @type {boolean}
-   */
   export let isSaving = false;
 
-  // --- Внутреннее состояние ---
+  const presets = [200, 500, 1000, 1500, 2000];
   let amount = '';
   let error = '';
+
+  function applyPreset(value) {
+    amount = value.toFixed(2);
+    error = '';
+  }
+
+  function appendDigit(value) {
+    const current = amount.replace(/[^\d.]/g, '');
+    if (value === 'backspace') {
+      amount = current.slice(0, -1);
+      return;
+    }
+
+    if (value === '.' && current.includes('.')) return;
+    const next = `${current}${value}`;
+    amount = next;
+  }
+
+  function formatPreview(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return '0.00';
+    return n.toFixed(2);
+  }
 
   function handleSave() {
     error = '';
@@ -30,108 +42,92 @@
       return;
     }
 
-    // Отправляем данные наверх. Сумму передаем как строку,
-    // так как бэкенд ожидает Decimal.
+    if (numericAmount > 50000) {
+      error = 'Сумма выше лимита для демо (50 000).';
+      return;
+    }
+
     dispatch('save', {
       amount: numericAmount.toFixed(2),
-      payment_method: 'cash' // Пока хардкодим 'cash' для MVP
+      payment_method: 'cash'
     });
   }
 </script>
 
 <Modal on:close={() => dispatch('close')}>
   <div class="top-up-modal">
-    <h2>Пополнить баланс гостя {guestName}</h2>
-    <p>Введите сумму для пополнения баланса.</p>
+    <h2>Пополнение баланса</h2>
+    <p class="subtitle">Гость: <strong>{guestName}</strong></p>
 
-    <form on:submit|preventDefault={handleSave}>
-      <div class="form-field">
-        <label for="amount">Сумма</label>
-        <input
-          type="number"
-          id="amount"
-          bind:value={amount}
-          step="0.01"
-          min="0.01"
-          placeholder="напр., 500.00"
-          required
-          disabled={isSaving}
-        />
-      </div>
+    <div class="preview">{formatPreview(amount)}</div>
 
-      {#if error}
-        <p class="error-message">{error}</p>
-      {/if}
+    <div class="presets">
+      {#each presets as preset}
+        <button type="button" class="preset" on:click={() => applyPreset(preset)} disabled={isSaving}>+{preset}</button>
+      {/each}
+    </div>
 
-      <div class="form-actions">
-        <button type="button" class="btn-cancel" on:click={() => dispatch('close')} disabled={isSaving}>
-          Отмена
-        </button>
-        <button type="submit" class="btn-save" disabled={isSaving}>
-          {#if isSaving}
-            Сохранение...
-          {:else}
-            Сохранить
-          {/if}
-        </button>
-      </div>
-    </form>
+    <div class="keypad">
+      {#each ['1','2','3','4','5','6','7','8','9','00','0','.'] as key}
+        <button type="button" on:click={() => appendDigit(key)} disabled={isSaving}>{key}</button>
+      {/each}
+      <button type="button" class="backspace" on:click={() => appendDigit('backspace')} disabled={isSaving}>⌫</button>
+    </div>
+
+    {#if error}
+      <p class="error-message">{error}</p>
+    {/if}
+
+    <div class="form-actions">
+      <button type="button" class="btn-cancel" on:click={() => dispatch('close')} disabled={isSaving}>Отмена</button>
+      <button type="button" class="btn-save" on:click={handleSave} disabled={isSaving || !amount}>
+        {#if isSaving}Сохранение...{:else}Подтвердить пополнение{/if}
+      </button>
+    </div>
   </div>
 </Modal>
 
 <style>
-  .top-up-modal {
-    padding: 1rem;
+  .top-up-modal { padding: 1rem; width: min(560px, 92vw); }
+  h2 { margin-top: 0; margin-bottom: 0.4rem; }
+  .subtitle { margin-top: 0; color: #4e627f; }
+
+  .preview {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    padding: 0.8rem 1rem;
+    border: 1px solid #dbe4f1;
+    border-radius: 10px;
+    background: #f8fbff;
+    margin-bottom: 0.8rem;
   }
-  h2 {
-    margin-top: 0;
-    font-size: 1.5rem;
+
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin-bottom: 0.8rem;
   }
-  p {
-    color: #555;
-    margin-bottom: 2rem;
+  .preset { background: #eaf1ff; color: #1d4f98; }
+
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
   }
-  .form-field {
-    display: flex;
-    flex-direction: column;
-  }
-  .form-field label {
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-  }
-  .form-field input {
-    font-size: 1.2rem;
-    padding: 0.75rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-  }
-  .error-message {
-    color: #d32f2f;
-    margin-top: 0.5rem;
-    font-size: 0.9rem;
-  }
+
+  .keypad button { min-height: 48px; font-weight: 700; }
+  .backspace { background: #f0f3f8; color: #243b5c; }
+
+  .error-message { color: #d32f2f; margin-top: 0.6rem; margin-bottom: 0; }
+
   .form-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 2rem;
+    gap: 0.8rem;
+    margin-top: 1.25rem;
   }
-  button {
-    padding: 0.75rem 1.5rem;
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    font-weight: bold;
-  }
-  .btn-cancel {
-    background-color: #eee;
-  }
-  .btn-save {
-    background-color: #2a9d8f;
-    color: white;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .btn-cancel { background: #eee; color: #243b5c; }
+  .btn-save { background: var(--brand); color: white; }
 </style>
