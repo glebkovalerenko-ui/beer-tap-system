@@ -1,9 +1,9 @@
-<!-- src/routes/Guests.svelte -->
-
 <script>
   import { guestStore } from '../stores/guestStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { roleStore } from '../stores/roleStore.js';
+  import { guestContextStore } from '../stores/guestContextStore.js';
+  import { shiftStore } from '../stores/shiftStore.js';
 
   import GuestSearch from '../components/guests/GuestSearch.svelte';
   import GuestList from '../components/guests/GuestList.svelte';
@@ -38,9 +38,10 @@
   });
 
   $: selectedGuest = selectedGuestId ? $guestStore.guests.find((g) => g.guest_id === selectedGuestId) : null;
+  $: guestContextStore.setGuest(selectedGuest);
 
   function handleSelectGuest(event) { selectedGuestId = event.detail.guestId; }
-  function handleCloseDetail() { selectedGuestId = null; }
+  function handleCloseDetail() { selectedGuestId = null; guestContextStore.clear(); }
   function handleOpenCreateModal() { guestToEdit = null; formError = ''; isModalOpen = true; }
   function handleOpenEditModal() { guestToEdit = selectedGuest; formError = ''; isModalOpen = true; }
 
@@ -69,6 +70,7 @@
     nfcError = '';
     try {
       await guestStore.bindCardToGuest(selectedGuestId, event.detail.uid);
+      uiStore.notifySuccess('Карта привязана. Можно перейти к пополнению.');
     } catch (error) {
       nfcError = error.message || error.toString();
     }
@@ -76,6 +78,10 @@
 
   function handleOpenTopUpModal() {
     if (!selectedGuest) { uiStore.notifyWarning('Сначала выберите гостя.'); return; }
+    if (!$shiftStore.isOpen) {
+      uiStore.notifyWarning('Сначала откройте смену на дашборде, затем выполните пополнение.');
+      return;
+    }
     topUpError = '';
     isTopUpModalOpen = true;
   }
@@ -84,7 +90,9 @@
     topUpError = '';
     try {
       await guestStore.topUpBalance(selectedGuestId, event.detail);
+      shiftStore.recordTopUp(event.detail.amount);
       isTopUpModalOpen = false;
+      uiStore.notifySuccess(`Баланс пополнен на ${event.detail.amount}`);
     } catch (error) {
       topUpError = error.message || error.toString();
     }
@@ -98,9 +106,9 @@
   </section>
 {:else}
   <div class="guests-page-layout">
-    <div class="list-panel">
+    <div class="list-panel ui-card">
       <div class="panel-header">
-        <h2>Гости</h2>
+        <h2>Операции с гостями</h2>
         <button on:click={handleOpenCreateModal}>+ Новый гость</button>
       </div>
       <GuestSearch bind:searchTerm />
@@ -115,14 +123,14 @@
       {:else if $guestStore.error}
         <p class="error">Ошибка: {$guestStore.error}</p>
       {:else if filteredGuests.length === 0}
-        <p>Гостей, соответствующих вашему поиску, не найдено.</p>
+        <p>Гостей по запросу не найдено. Создайте нового гостя для продолжения.</p>
       {:else}
         <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
       {/if}
     </div>
 
-    {#if selectedGuest}
-      <div class="detail-panel">
+    <div class="detail-panel ui-card">
+      {#if selectedGuest}
         <GuestDetail
           guest={selectedGuest}
           on:close={handleCloseDetail}
@@ -130,8 +138,14 @@
           on:bind-card={handleBindCard}
           on:top-up={handleOpenTopUpModal}
         />
-      </div>
-    {/if}
+      {:else}
+        <div class="empty-state">
+          <h3>Гость не выбран</h3>
+          <p>Выберите гостя слева или создайте нового, чтобы выполнить пополнение и операции по карте.</p>
+          <button on:click={handleOpenCreateModal}>Создать гостя</button>
+        </div>
+      {/if}
+    </div>
   </div>
 
   {#if isModalOpen}
@@ -167,11 +181,20 @@
 
 <style>
   .access-denied { padding: 1rem; }
-  .guests-page-layout { display: flex; gap: 1rem; height: calc(100vh - 4rem); }
-  .list-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-  .detail-panel { flex: 1; border-left: 1px solid #ddd; padding-left: 1rem; overflow-y: auto; }
-  .error { color: red; }
-  .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .guests-page-layout { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 1rem; min-height: 70vh; }
+  .list-panel, .detail-panel { padding: 1rem; overflow-y: auto; }
+  .error { color: #c61f35; }
+  .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
   .panel-header h2 { margin: 0; }
-  .button-group { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .button-group { margin-bottom: 0.75rem; }
+  .empty-state {
+    min-height: 320px;
+    display: grid;
+    align-content: center;
+    justify-items: start;
+    gap: 0.6rem;
+    padding: 1rem;
+  }
+  .empty-state h3 { margin: 0; }
+  .empty-state p { margin: 0; color: var(--text-secondary); max-width: 520px; }
 </style>

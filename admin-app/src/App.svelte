@@ -1,5 +1,3 @@
-<!-- admin-app/src/App.svelte -->
-
 <script>
   import { onMount, onDestroy } from 'svelte';
   import Router from 'svelte-spa-router';
@@ -19,6 +17,7 @@
   import ConfirmDialog from './components/feedback/ConfirmDialog.svelte';
   import DemoGuide from './components/demo/DemoGuide.svelte';
   import ActivityTrail from './components/system/ActivityTrail.svelte';
+  import ShellTopBar from './components/shell/ShellTopBar.svelte';
 
   const routes = {
     '/': Dashboard,
@@ -37,53 +36,36 @@
   onDestroy(() => {
     systemStore.stopPolling();
   });
-
-  function changeRole(event) {
-    roleStore.setRole(event.target.value);
-  }
 </script>
 
 {#if $sessionStore.token}
-  <div class="app-layout" class:emergency-active={$systemStore.emergencyStop}>
+  <div class="app-shell" class:emergency-active={$systemStore.emergencyStop}>
     {#if $systemStore.emergencyStop}
       <div class="emergency-banner">
-        ВНИМАНИЕ: СИСТЕМА В РЕЖИМЕ ЭКСТРЕННОЙ ОСТАНОВКИ. ВСЕ КРАНЫ ЗАБЛОКИРОВАНЫ.
+        ВНИМАНИЕ: АКТИВНА ЭКСТРЕННАЯ ОСТАНОВКА. НОВЫЕ НАЛИВЫ ЗАБЛОКИРОВАНЫ.
       </div>
     {/if}
 
-    <nav class="sidebar" aria-label="Главная навигация">
-      <h1>Админ-панель</h1>
+    <ShellTopBar title="Beer Tap POS" />
 
-      <div class="role-box ui-card">
-        <label for="role">Роль интерфейса</label>
-        <select id="role" on:change={changeRole} value={$roleStore.key}>
-          {#each Object.entries(roleStore.roles) as [key, role]}
-            <option value={key}>{role.label}</option>
-          {/each}
-        </select>
-      </div>
+    <div class="workspace-grid">
+      <aside class="left-rail ui-card">
+        <nav aria-label="Главная навигация">
+          <a href="#/">Дашборд</a>
+          {#if $roleStore.permissions.guests}<a href="#/guests">Гости и операции</a>{/if}
+          {#if $roleStore.permissions.taps}<a href="#/taps-kegs">Краны и кеги</a>{/if}
+        </nav>
 
-      <ul>
-        <li><a href="#/">Дашборд</a></li>
-        {#if $roleStore.permissions.guests}
-          <li><a href="#/guests">Гости</a></li>
-        {/if}
-        {#if $roleStore.permissions.taps}
-          <li><a href="#/taps-kegs">Краны и Кеги</a></li>
-        {/if}
-      </ul>
+        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Guided demo mode</button>
+        <ActivityTrail />
+      </aside>
 
-      <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Guided demo mode</button>
-      <ActivityTrail />
-
-      <button on:click={() => sessionStore.logout()} class="logout-button">Выход</button>
-    </nav>
-
-    <main class="main-content">
-      <div class="page-scroll">
-        <Router {routes} />
-      </div>
-    </main>
+      <main class="main-content ui-card">
+        <div class="page-scroll">
+          <Router {routes} />
+        </div>
+      </main>
+    </div>
   </div>
 {:else}
   <Login />
@@ -104,50 +86,56 @@
     color: var(--text-primary);
   }
 
-  .app-layout { display: flex; height: 100vh; }
-
-  .sidebar {
-    width: 280px;
-    flex: 0 0 280px;
-    background-color: var(--bg-surface-muted);
-    padding: var(--space-3);
-    border-right: 1px solid var(--border-soft);
+  .app-shell {
     display: flex;
     flex-direction: column;
+    height: 100vh;
+    gap: 10px;
+  }
+
+  .workspace-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 12px;
+    height: calc(100vh - 88px);
+    padding: 0 12px 12px;
     box-sizing: border-box;
-    gap: var(--space-2);
   }
 
-  .sidebar h1 { font-size: 1.35rem; margin: 0; }
-  .sidebar ul { list-style-type: none; padding: 0; margin: 0; }
-  .sidebar ul li a {
-    display: block;
-    padding: 0.55rem 0.35rem;
-    text-decoration: none;
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-  }
-  .sidebar ul li a:hover { background: #e9eef8; color: var(--brand-strong); }
-
-  .role-box { padding: 0.6rem; display: grid; gap: 0.35rem; }
-  .role-box label { font-size: 0.8rem; color: var(--text-secondary); }
-
-  .main-content {
-    flex-grow: 1;
+  .left-rail {
+    padding: var(--space-3);
     display: flex;
     flex-direction: column;
+    gap: var(--space-3);
     overflow: hidden;
   }
+
+  nav {
+    display: grid;
+    gap: 8px;
+  }
+
+  nav a {
+    text-decoration: none;
+    color: var(--text-primary);
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    padding: 10px;
+    font-weight: 600;
+  }
+
+  nav a:hover { background: #eaf1ff; }
+
+  .main-content { overflow: hidden; }
 
   .page-scroll {
     overflow-y: auto;
     padding: var(--space-4);
-    flex: 1 1 auto;
-    -webkit-overflow-scrolling: touch;
+    height: 100%;
     box-sizing: border-box;
   }
 
-  .logout-button { margin-top: auto; width: 100%; }
   .demo-button { width: 100%; background: #eef3ff; color: #1849a9; }
 
   .emergency-banner {
@@ -163,7 +151,7 @@
     z-index: 1000;
   }
 
-  .app-layout.emergency-active { padding-top: 2.5rem; }
+  .app-shell.emergency-active { padding-top: 2.5rem; }
 
   :global(button) {
     font-size: 0.95rem;

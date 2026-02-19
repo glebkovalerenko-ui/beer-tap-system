@@ -4,19 +4,20 @@
   import { tapStore } from '../stores/tapStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
-  import { systemStore } from '../stores/systemStore.js'; // <-- Импорт системного стора
+  import { systemStore } from '../stores/systemStore.js';
   import { kegStore } from '../stores/kegStore.js';
   import { roleStore } from '../stores/roleStore.js';
+  import { shiftStore } from '../stores/shiftStore.js';
 
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
   import PourFeed from '../components/pours/PourFeed.svelte';
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
-  import Modal from '../components/common/Modal.svelte'; // <-- Импорт модального окна
+  import Modal from '../components/common/Modal.svelte';
   import { uiStore } from '../stores/uiStore.js';
 
   let initialLoadAttempted = false;
-  let showConfirmModal = false; // <-- Состояние для модального окна
+  let showConfirmModal = false;
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
@@ -26,22 +27,29 @@
     }
   }
 
-  // Функция для обработки включения/выключения режима ЧС
   async function handleEmergencyStopToggle() {
     const newState = !$systemStore.emergencyStop;
     try {
       await systemStore.setEmergencyStop(newState);
-      showConfirmModal = false; // Закрываем модальное окно при успехе
+      showConfirmModal = false;
     } catch (error) {
-      // Ошибки уже логируются в сторе, можно добавить alert
       uiStore.notifyError(`Ошибка изменения состояния: ${error}`);
     }
+  }
+
+  function openShift() {
+    shiftStore.openShift($roleStore.roles[$roleStore.key]?.label || 'Кассир');
+    uiStore.notifySuccess('Смена открыта. Можно выполнять денежные операции.');
+  }
+
+  function closeShift() {
+    shiftStore.closeShift();
+    uiStore.notifySuccess('Смена закрыта. Краткий отчет сохранен.');
   }
 </script>
 
 <div class="page-header">
   <h1>Дашборд</h1>
-  <!-- Кнопка управления режимом ЧС -->
   {#if $roleStore.permissions.emergency}
   <button 
     class="emergency-button" 
@@ -62,6 +70,24 @@
   {/if}
 </div>
 
+<section class="shift-panel ui-card">
+  <div>
+    <h2>Смена</h2>
+    <p>
+      {#if $shiftStore.isOpen}
+        Открыта: {$shiftStore.shiftId} · Операций: {$shiftStore.topUpsCount} · Пополнений: {$shiftStore.topUpsAmount.toFixed(2)}
+      {:else}
+        Смена закрыта. Откройте смену перед пополнениями.
+      {/if}
+    </p>
+  </div>
+  {#if $shiftStore.isOpen}
+    <button on:click={closeShift}>Закрыть смену</button>
+  {:else}
+    <button on:click={openShift}>Открыть смену</button>
+  {/if}
+</section>
+
 {#if $roleStore.permissions.investorPanel}
   <InvestorValuePanel
     taps={$tapStore.taps}
@@ -72,7 +98,6 @@
 {/if}
 
 <div class="dashboard-layout">
-  <!-- Основная секция -->
   <section class="main-section">
     <h2>Статус оборудования</h2>
     <div class="status-widgets-grid">
@@ -88,7 +113,6 @@
     {/if}
   </section>
 
-  <!-- Боковая секция -->
   <aside class="sidebar-section">
     <h2>Лента наливов</h2>
     {#if $pourStore.loading && $pourStore.pours.length === 0}
@@ -101,7 +125,6 @@
   </aside>
 </div>
 
-<!-- Модальное окно подтверждения -->
 {#if showConfirmModal}
   <Modal on:close={() => showConfirmModal = false}>
     <h2 slot="header">Подтверждение действия</h2>
@@ -131,17 +154,14 @@
   </Modal>
 {/if}
 
-
 <style>
   .page-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
   }
-  .page-header h1 {
-    margin: 0;
-  }
+  .page-header h1 { margin: 0; }
   .emergency-button {
     background-color: #f0ad4e;
     color: white;
@@ -151,21 +171,25 @@
     cursor: pointer;
     font-weight: bold;
   }
-  .emergency-button.active {
-    background-color: #d9534f;
-  }
-  .emergency-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
+  .emergency-button.active { background-color: #d9534f; }
+  .emergency-button:disabled { opacity: 0.6; cursor: not-allowed; }
   .emergency-note { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
 
-  /* Остальные стили без изменений */
-  .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; height: calc(100vh - 8rem); }
-  .status-widgets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .shift-panel {
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .shift-panel h2 { margin: 0 0 0.2rem; }
+  .shift-panel p { margin: 0; color: var(--text-secondary); }
+
+  .dashboard-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; min-height: 60vh; }
+  .status-widgets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.2rem; }
   .main-section h2, .sidebar-section h2 { margin-top: 0; margin-bottom: 1rem; }
   .sidebar-section { display: flex; flex-direction: column; }
-  .error { color: red; }
+  .error { color: #c61f35; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
   .confirm-button.danger { background-color: #d9534f; color: white; }
 </style>
