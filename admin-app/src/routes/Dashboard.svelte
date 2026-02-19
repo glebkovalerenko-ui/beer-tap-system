@@ -15,9 +15,12 @@
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte';
   import { uiStore } from '../stores/uiStore.js';
+  import { get } from 'svelte/store';
 
   let initialLoadAttempted = false;
   let showConfirmModal = false;
+  let showShiftReportModal = false;
+  let lastShiftReport = null;
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
@@ -43,7 +46,16 @@
   }
 
   function closeShift() {
+    const currentShift = get(shiftStore);
+    lastShiftReport = {
+      shiftId: currentShift.shiftId,
+      openedAt: currentShift.openedAt,
+      closedAt: new Date().toISOString(),
+      topUpsCount: currentShift.topUpsCount,
+      topUpsAmount: currentShift.topUpsAmount,
+    };
     shiftStore.closeShift();
+    showShiftReportModal = true;
     uiStore.notifySuccess('Смена закрыта. Краткий отчет сохранен.');
   }
 </script>
@@ -154,6 +166,22 @@
   </Modal>
 {/if}
 
+{#if showShiftReportModal && lastShiftReport}
+  <Modal on:close={() => showShiftReportModal = false}>
+    <h2 slot="header">Краткий отчет по смене</h2>
+    <div class="shift-report">
+      <p><strong>ID смены:</strong> {lastShiftReport.shiftId || '—'}</p>
+      <p><strong>Открыта:</strong> {lastShiftReport.openedAt ? new Date(lastShiftReport.openedAt).toLocaleString() : '—'}</p>
+      <p><strong>Закрыта:</strong> {new Date(lastShiftReport.closedAt).toLocaleString()}</p>
+      <p><strong>Количество пополнений:</strong> {lastShiftReport.topUpsCount}</p>
+      <p><strong>Сумма пополнений:</strong> {Number(lastShiftReport.topUpsAmount || 0).toFixed(2)}</p>
+    </div>
+    <div slot="footer" class="modal-actions">
+      <button on:click={() => showShiftReportModal = false}>Закрыть</button>
+    </div>
+  </Modal>
+{/if}
+
 <style>
   .page-header {
     display: flex;
@@ -192,4 +220,6 @@
   .error { color: #c61f35; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
   .confirm-button.danger { background-color: #d9534f; color: white; }
+  .shift-report { display: grid; gap: 0.35rem; }
+  .shift-report p { margin: 0; }
 </style>
