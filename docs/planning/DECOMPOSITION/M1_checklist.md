@@ -1,81 +1,79 @@
 # M1 Migration Baseline — Execution Checklist
 
-## Phase 0 — Scope Lock
+## Phase 0 — Scope and Decisions
 - [ ] Confirm M1 scope = backend PostgreSQL migration discipline only.
-- [ ] Confirm out-of-scope for M1 = controller SQLite journal migration.
-- [ ] Confirm no destructive schema work in M1.
+- [ ] Confirm controller SQLite migration is out-of-scope for M1.
+- [ ] Confirm M1 decisions:
+  - [ ] Remove/disable `Base.metadata.create_all()` in M1.
+  - [ ] Alembic is single schema writer from M1 onward.
+  - [ ] Downgrade drill is minimal (one-time on latest/simple revision).
 
 ## Phase 1 — Baseline Preparation
-- [ ] Verify current schema owners:
-  - `backend/models.py` (ORM schema)
-  - `backend/main.py` (`create_all` currently active)
-  - `backend/alembic/*` (migration tooling)
-- [ ] Confirm env contracts used by app and migrations:
-  - App: `DATABASE_URL`
-  - Alembic: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_DB` (current `env.py` behavior)
-- [ ] Decide M1 policy for `create_all` coexistence vs migration-only startup endpoint.
+- [ ] Verify schema touchpoints:
+  - `backend/models.py`
+  - `backend/main.py`
+  - `backend/alembic/*`
+- [ ] Confirm env contract for app and migrations (`DATABASE_URL`, `POSTGRES_*`).
+- [ ] Document migration policy (additive-first, no destructive ops in M1).
 
-## Phase 2 — Baseline Revision
-- [ ] Create initial Alembic baseline revision representing current backend schema.
-- [ ] Ensure baseline revision has clear message/tag (`m1_baseline` style).
-- [ ] Review generated DDL manually for unsafe/destructive operations.
-- [ ] Commit migration revision(s) and any required Alembic config adjustments.
+## Phase 2 — Baseline Migration
+- [ ] Create initial Alembic baseline revision.
+- [ ] Manually review generated DDL for safety.
+- [ ] Commit baseline migration files.
 
-## Phase 3 — Smoke Validation
+## Phase 3 — Runtime Cutover to Alembic-Only
+- [ ] Remove/disable startup `create_all` usage in `backend/main.py`.
+- [ ] Validate that schema creation is not performed by app startup.
+- [ ] Ensure documented startup sequence requires migrations first.
 
-### Clean bootstrap (empty DB)
-- [ ] Recreate clean Postgres volume/container.
-- [ ] Run migration apply to head.
+## Phase 4 — Smoke Validation
+
+### Clean bootstrap
+- [ ] Recreate empty Postgres.
+- [ ] Run `alembic upgrade head`.
 - [ ] Start backend API.
-- [ ] Verify core API health endpoint responds.
+- [ ] Verify health endpoint and basic API access.
 
-### Existing DB snapshot onboarding
+### Existing DB onboarding
 - [ ] Restore representative existing DB snapshot.
-- [ ] Validate schema parity against expected baseline.
-- [ ] Run baseline registration (`stamp`) if schema already matches.
-- [ ] Run migration apply to head.
-- [ ] Validate data presence and basic API reads.
+- [ ] Perform schema parity check with baseline.
+- [ ] Run `alembic stamp <baseline_rev>` only if parity matches.
+- [ ] Run `alembic upgrade head`.
+- [ ] Verify data intact + basic read/write flow.
 
-### Developer workflow drill
-- [ ] Create a sample additive migration (test-only workflow exercise).
-- [ ] Apply upgrade.
-- [ ] Downgrade one step.
-- [ ] Upgrade again.
-- [ ] Confirm no manual DB repair needed.
+### Minimal downgrade capability check
+- [ ] Execute one-step downgrade on simple/latest revision.
+- [ ] Re-upgrade to head.
+- [ ] Record result as capability proof (no expanded downgrade runbook required in M1).
 
-## Phase 4 — Team Workflow and Guardrails
-- [ ] Document migration command cookbook:
-  - create revision
-  - upgrade head
-  - current/history
-  - downgrade -1
-- [ ] Document PR review checklist for migration scripts:
-  - additive-first policy
-  - nullable/default strategy for new columns
-  - rollback path and data safety
-- [ ] Explicitly prohibit direct schema edits outside migration scripts (except emergency runbook path).
+## Phase 5 — Team Guardrails
+- [ ] Document dev command workflow (revision/create, upgrade, history/current).
+- [ ] Add migration PR review checklist (additive, defaults/nullability, data safety).
+- [ ] Freeze direct manual DDL outside migration scripts (except emergency recovery).
 
-## Phase 5 — Pilot Safety Readiness
-- [ ] Document backup-before-migration runbook.
-- [ ] Document rollback/restore decision tree.
-- [ ] Define migration execution window and operator ownership for pilot.
-- [ ] Capture final evidence artifacts (logs/screenshots/command outputs).
+## Phase 6 — Pilot Safety Readiness
+- [ ] Document backup-before-migration requirement.
+- [ ] Document lightweight recovery decision path (downgrade-if-applicable else restore backup).
+- [ ] Assign migration author/reviewer/operator ownership.
+- [ ] Collect sign-off evidence for DoD.
 
 ---
 
 ## Critical Path Checklist
-- [ ] Scope lock approved.
-- [ ] Baseline revision created and reviewed.
-- [ ] Clean bootstrap validated.
+- [ ] Baseline created.
+- [ ] `create_all` removed/disabled.
+- [ ] Clean bootstrap via Alembic validated.
 - [ ] Existing DB onboarding validated.
-- [ ] Rollback/restore runbook validated.
-- [ ] M1 DoD formally signed off.
+- [ ] One-time minimal downgrade check validated.
+- [ ] DoD signed off.
 
 ---
 
 ## M1 Definition of Done (Gate)
-- [ ] A committed migration history exists from baseline to head.
-- [ ] New developer can bootstrap DB from empty state and start project using documented commands.
-- [ ] Existing DB upgrade path is validated OR a precise, tested onboarding/stamp procedure is documented.
-- [ ] Team workflow for creating/applying/rolling back migrations is documented and repeatable.
-- [ ] Pilot rollback safety plan is documented and accepted by owners.
+- [ ] Baseline migration history is committed and consistent.
+- [ ] `Base.metadata.create_all()` is removed/disabled from runtime path.
+- [ ] Alembic is documented and operational as the single schema writer.
+- [ ] New developer can bootstrap clean DB and start project from documented steps.
+- [ ] Existing DB onboarding path is validated (or equivalently tested and documented).
+- [ ] One minimal downgrade capability check is recorded.
+- [ ] Backup/recovery notes are documented for pilot execution.

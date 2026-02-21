@@ -3,128 +3,99 @@
 ## 1) Risk Register
 
 ## R1 — Baseline mismatch with live DB
-- **Description:** Initial Alembic baseline may not exactly match real pilot/dev DB schema already created via `create_all` or manual edits.
+- **Description:** Baseline revision may not match existing DBs created via prior startup behavior/manual edits.
 - **Likelihood:** Medium
 - **Impact:** High
-- **Signals:** `alembic upgrade` attempts unexpected ALTER/CREATE on existing tables; constraint/index conflicts.
-- **Mitigation:**
-  - Run schema diff/parity check on representative snapshot before stamp.
-  - Use stamp only after parity confirmation.
-  - Document mismatch remediation path.
+- **Mitigation:** Schema parity check before `stamp`; no blind stamping.
 
-## R2 — Dual schema writers (`create_all` + Alembic)
-- **Description:** Runtime `Base.metadata.create_all` can create drift relative to migration history.
+## R2 — Incomplete cutover from `create_all` to Alembic-only
+- **Description:** If `Base.metadata.create_all()` remains active, drift can continue despite migrations.
 - **Likelihood:** Medium
 - **Impact:** High
-- **Signals:** New table/column appears without corresponding revision.
-- **Mitigation:**
-  - Explicit transition policy for `create_all` during/after M1.
-  - Enforce “schema changes only through migrations” in PR checks.
+- **Mitigation:** Remove/disable `create_all` in M1 and verify startup path.
 
 ## R3 — Env contract inconsistency
-- **Description:** Backend uses `DATABASE_URL`; Alembic currently builds URL from `POSTGRES_*` vars.
+- **Description:** App and Alembic may read different env inputs (`DATABASE_URL` vs `POSTGRES_*`).
 - **Likelihood:** Medium
 - **Impact:** Medium/High
-- **Signals:** App connects successfully but Alembic fails (or vice versa) in certain environments.
-- **Mitigation:**
-  - Document canonical env contract.
-  - Validate migration commands in docker and local shell contexts.
+- **Mitigation:** Document canonical env contract and validate in docker + local contexts.
 
 ## R4 — False-safe stamping
-- **Description:** Team may stamp baseline onto non-matching schema, hiding drift.
+- **Description:** Stamping non-matching DB schema can hide drift until later migrations fail.
 - **Likelihood:** Medium
 - **Impact:** High
-- **Signals:** Future migrations fail unexpectedly; data anomalies after seemingly successful stamp.
-- **Mitigation:**
-  - Stamp procedure must include required parity checks and sign-off.
-  - Restrict stamp use to designated maintainers.
+- **Mitigation:** Restrict stamp to parity-confirmed DBs and designated maintainers.
 
-## R5 — Rollback not practically tested
-- **Description:** Downgrade path exists on paper but is untested for real datasets.
-- **Likelihood:** Medium
-- **Impact:** High (pilot downtime)
-- **Signals:** Migration incident with no confident reverse path.
-- **Mitigation:**
-  - Rehearse rollback/restore in staging snapshot.
-  - Prefer backup restore when downgrade risk is uncertain.
-
-## R6 — Pilot-time migration execution risk
-- **Description:** Applying baseline during active bar operations can impact availability.
-- **Likelihood:** Low/Medium
-- **Impact:** High
-- **Signals:** Elevated API errors/timeouts during migration window.
-- **Mitigation:**
-  - Execute in controlled window.
-  - Pre-migration backup + rollback owner on-call.
-  - Freeze non-essential writes during execution.
-
-## R7 — Scope drift into controller SQLite migration
-- **Description:** Attempting to include RPi SQLite migration in M1 increases risk and timeline.
+## R5 — Over-scoping rollback expectations
+- **Description:** Attempting full downgrade runbook in M1 can delay pilot-readiness.
 - **Likelihood:** Medium
 - **Impact:** Medium
-- **Signals:** New requirements on `rpi-controller/database.py` appear mid-milestone.
-- **Mitigation:**
-  - Keep explicit scope boundary in M1 docs.
-  - Plan controller migration discipline as separate future milestone.
+- **Mitigation:** Keep M1 downgrade scope minimal: one-time capability check on latest/simple revision.
+
+## R6 — Pilot-time migration execution risk
+- **Description:** Migration errors during bar operation can impact service continuity.
+- **Likelihood:** Low/Medium
+- **Impact:** High
+- **Mitigation:** Controlled window, backup-first, operator ownership, restore-ready posture.
+
+## R7 — Scope creep into controller SQLite migration
+- **Description:** Adding controller DB migration work to M1 expands risk/timeline.
+- **Likelihood:** Medium
+- **Impact:** Medium
+- **Mitigation:** Keep controller SQLite migration explicitly out-of-scope for M1.
 
 ---
 
 ## 2) Safety Plan (Pilot-Oriented)
 
-### Mandatory pre-migration controls
-1. Confirm migration package reviewed and approved.
-2. Take full Postgres backup (timestamped and verified restorable).
-3. Validate migration on staging/snapshot first.
-4. Announce maintenance window + owner roles.
+### Pre-migration controls
+1. Approved migration set and reviewers assigned.
+2. Verified Postgres backup taken and restorable.
+3. Rehearsal on staging/snapshot environment.
+4. Migration window and operator on-call confirmed.
 
 ### Execution controls
-1. Run migration commands exactly from approved runbook.
-2. Monitor API health and DB logs in parallel.
-3. Stop immediately on unexpected DDL/data errors.
+1. Apply migrations via approved runbook.
+2. Monitor API/DB logs and health checks.
+3. Stop on unexpected DDL/data errors.
 
 ### Post-migration controls
-1. Verify current revision (`alembic current`) is expected head.
+1. Confirm `alembic current` at expected head.
 2. Run API smoke checks.
-3. Confirm core read/write flows for pilot operations.
-4. Archive logs and migration evidence.
+3. Verify core pilot operational flows.
+4. Archive run evidence.
 
 ---
 
-## 3) Rollback / Recovery Decision Tree
+## 3) Lightweight Rollback / Recovery Note (M1)
 
-1. **Issue detected during migration?**
-   - Yes → pause writes + capture error context.
-2. **Is downgrade path tested and safe for this exact revision/data state?**
-   - Yes → perform controlled downgrade and re-verify.
-   - No/uncertain → restore pre-migration backup.
-3. **After rollback/restore:**
-   - Re-run smoke checks.
-   - Keep system on known-good revision.
-   - Create incident note and corrective action before reattempt.
+M1 rollback scope is intentionally minimal:
+1. If failure occurs, pause writes and capture error context.
+2. Use one-step downgrade **only if** it matches the tested simple/latest pattern and is clearly safe.
+3. Otherwise restore pre-migration backup.
+4. Re-verify service health and core flows.
 
-### Rollback objective
-- Restore service quickly with known data integrity, prioritizing pilot continuity over rapid reattempt.
+This milestone does **not** require a full expanded downgrade runbook; backup-restore remains the primary safety fallback.
 
 ---
 
 ## 4) Ownership Matrix
-- **Migration author:** prepares revision and self-checks safety.
-- **Migration reviewer:** validates DDL/data safety and policy compliance.
-- **Release operator:** executes runbook during approved window.
-- **Pilot incident owner:** decides downgrade vs restore under time pressure.
-
-(One person may hold multiple roles in small team, but roles must be explicitly assigned before execution.)
+- **Migration author:** prepares revision and self-check.
+- **Migration reviewer:** validates safety and policy compliance.
+- **Release operator:** executes in approved window.
+- **Incident owner:** decides downgrade-if-applicable vs backup restore.
 
 ---
 
-## 5) Exit Risks Allowed vs Not Allowed for M1 Completion
+## 5) M1 Exit Risk Thresholds
 
-### Allowed residual risks after M1
-- Minor process friction in developer migration ergonomics.
-- Deferred CI automation hardening (if runbook + manual checks are solid).
+### Allowed residual risk
+- Minor process friction in migration workflow.
+- Deferred broader automation hardening to post-M1.
 
 ### Not allowed at M1 exit
-- No baseline revision committed.
-- No validated onboarding path for existing DB.
-- No tested rollback/restore procedure.
-- Continued undocumented direct schema editing in production/pilot environments.
+- `create_all` still active in runtime startup path.
+- No committed baseline migration history.
+- No validated existing DB onboarding path.
+- No one-time downgrade capability proof.
+- No backup/recovery note for pilot execution.
