@@ -46,7 +46,7 @@ docker-compose run --rm beer_backend_api alembic history
 
 ---
 
-## 2) Verify Backend is Running and Check Health
+## 2) Start Backend and Verify Health
 
 ### 2.1 Start backend API container
 ```bash

@@ -63,7 +63,7 @@ docker-compose exec postgres pg_restore -U "$DB_USER" -d "$SCRATCH_DB" "$BACKUP_
 ```
 
 ### 3.2 Run baseline onboarding flow on scratch DB
-> **Safety note:** scratch commands must target only the scratch DB and must not touch the real pilot DB.
+> **Safety note:** scratch-команды должны работать только со `SCRATCH_DB` и не должны обращаться к основной (pilot) БД.
 > Override `DATABASE_URL` explicitly so Alembic definitely points to `SCRATCH_DB`.
 
 ```bash
