@@ -72,7 +72,7 @@ docker-compose exec postgres pg_restore -U "$DB_USER" -d "$SCRATCH_DB" "$BACKUP_
 docker-compose exec \
   -e DATABASE_URL="postgresql://${DB_USER}:${POSTGRES_PASSWORD}@postgres:5432/${SCRATCH_DB}" \
   beer_backend_api alembic stamp "$BASELINE_REV"
-````
+```
 
 ```bash
 docker-compose exec \

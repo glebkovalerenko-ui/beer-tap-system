@@ -19,7 +19,7 @@
 ### 1.1 Stop stack and remove old Postgres volume
 ```bash
 docker-compose down -v
-````
+```
 
 ### 1.2 Start only Postgres and wait until healthy
 
