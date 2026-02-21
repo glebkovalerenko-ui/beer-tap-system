@@ -20,14 +20,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 # --- Локальные импорты ---
 import models, schemas, security
-from database import get_db, engine
+from database import get_db
 from crud import pour_crud
 
 # --- Импорты для новых роутеров API ---
 from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours
-
-# --- Создание таблиц в БД на основе моделей ---
-models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
