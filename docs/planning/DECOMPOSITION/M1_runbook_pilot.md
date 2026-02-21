@@ -63,23 +63,30 @@ docker-compose exec postgres pg_restore -U "$DB_USER" -d "$SCRATCH_DB" "$BACKUP_
 ```
 
 ### 3.2 Run baseline onboarding flow on scratch DB
-> Run Alembic against scratch DB by overriding `POSTGRES_DB` for command scope.
+
+> ⚠️ ВАЖНО: Alembic использует `DATABASE_URL`, а не `POSTGRES_DB`.
+> Поэтому мы переопределяем именно `DATABASE_URL`,
+> чтобы гарантированно работать со scratch базой, а не с основной.
 
 ```bash
-docker-compose exec -e POSTGRES_DB="$SCRATCH_DB" beer_backend_api alembic stamp "$BASELINE_REV"
-```
+docker-compose exec \
+  -e DATABASE_URL="postgresql://${DB_USER}:${POSTGRES_PASSWORD}@postgres:5432/${SCRATCH_DB}" \
+  beer_backend_api alembic stamp "$BASELINE_REV"
+````
 
 ```bash
-docker-compose exec -e POSTGRES_DB="$SCRATCH_DB" beer_backend_api alembic upgrade head
+docker-compose exec \
+  -e DATABASE_URL="postgresql://${DB_USER}:${POSTGRES_PASSWORD}@postgres:5432/${SCRATCH_DB}" \
+  beer_backend_api alembic upgrade head
 ```
 
 ### 3.3 Validate revision state on scratch DB
-```bash
-docker-compose exec -e POSTGRES_DB="$SCRATCH_DB" beer_backend_api alembic current
-```
 
-Pass condition:
-- Scratch stamp + upgrade completes successfully without schema/data errors.
+```bash
+docker-compose exec \
+  -e DATABASE_URL="postgresql://${DB_USER}:${POSTGRES_PASSWORD}@postgres:5432/${SCRATCH_DB}" \
+  beer_backend_api alembic current
+```
 
 ---
 

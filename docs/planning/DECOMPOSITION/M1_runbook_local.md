@@ -19,9 +19,10 @@
 ### 1.1 Stop stack and remove old Postgres volume
 ```bash
 docker-compose down -v
-```
+````
 
 ### 1.2 Start only Postgres and wait until healthy
+
 ```bash
 docker-compose up -d postgres
 ```
@@ -30,17 +31,20 @@ docker-compose up -d postgres
 docker-compose ps
 ```
 
-### 1.3 Start backend container (without relying on schema auto-create)
+### 1.3 Apply migrations BEFORE starting backend
+
+```bash
+docker-compose run --rm beer_backend_api alembic upgrade head
+```
+
+### 1.4 Start backend API
+
 ```bash
 docker-compose up -d beer_backend_api
 ```
 
-### 1.4 Apply migrations to head
-```bash
-docker-compose exec beer_backend_api alembic upgrade head
-```
-
 ### 1.5 Verify Alembic revision state
+
 ```bash
 docker-compose exec beer_backend_api alembic current
 ```
