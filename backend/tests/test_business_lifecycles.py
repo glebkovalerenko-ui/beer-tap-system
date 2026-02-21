@@ -127,10 +127,17 @@ def test_guest_and_finance_lifecycle(client):
         json={"card_uid": card_uid}
     )
     assert assign_response.status_code == 200
-    # Проверяем, что карта теперь активна
-    # --- ИЗМЕНЕНИЕ: Вложенная структура ответа может отличаться, проверяем напрямую гостя ---
+    # В M2 карта становится operational-active только в рамках открытого визита.
     updated_guest = client.get(f"/api/guests/{guest_id}", headers=headers).json()
-    assert updated_guest['cards'][0]['status'] == 'active'
+    assert updated_guest['cards'][0]['status'] == 'inactive'
+
+    open_visit_response = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id, "card_uid": card_uid},
+    )
+    assert open_visit_response.status_code == 200
+    visit_id = open_visit_response.json()["visit_id"]
     
     # --- Шаг 4: Пополнение баланса Гостя ---
     topup_amount = 50.75
@@ -140,6 +147,13 @@ def test_guest_and_finance_lifecycle(client):
         json={"amount": topup_amount, "payment_method": "card"}
     )
     assert topup_response.status_code == 200
+
+    close_visit_response = client.post(
+        f"/api/visits/{visit_id}/close",
+        headers=headers,
+        json={"closed_reason": "demo_checkout", "card_returned": True},
+    )
+    assert close_visit_response.status_code == 200
 
     # --- Шаг 5: Проверка итогового баланса ---
     # Запрашиваем данные гостя еще раз, чтобы убедиться, что баланс сохранился в БД

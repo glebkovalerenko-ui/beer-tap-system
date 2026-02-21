@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 import models
 import schemas
 import uuid
-from crud import guest_crud
+from crud import guest_crud, visit_crud
 
 def create_topup_transaction(db: Session, guest_id: uuid.UUID, topup_data: schemas.TopUpRequest):
     """
@@ -26,8 +26,11 @@ def create_topup_transaction(db: Session, guest_id: uuid.UUID, topup_data: schem
     # Мы просто выполняем все операции, и `db.commit()` в конце их подтвердит.
     
     # 1. Создаем объект транзакции
+    active_visit = visit_crud.get_active_visit_by_guest_id(db=db, guest_id=guest_id)
+
     transaction = models.Transaction(
         guest_id=guest_id,
+        visit_id=active_visit.visit_id if active_visit else None,
         amount=topup_data.amount,
         type="top-up",
         payment_method=topup_data.payment_method

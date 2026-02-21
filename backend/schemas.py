@@ -87,6 +87,29 @@ class CardAssign(BaseModel):
 class CardStatusUpdate(BaseModel):
     status: str = Field(..., json_schema_extra={'example': "lost"})
 
+
+class VisitOpenRequest(BaseModel):
+    guest_id: uuid.UUID
+    card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})
+
+
+class VisitCloseRequest(BaseModel):
+    closed_reason: str = Field(..., min_length=1, json_schema_extra={'example': "guest_checkout"})
+    card_returned: bool = Field(default=True)
+
+
+class Visit(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    card_uid: str
+    status: str
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    closed_reason: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    card_returned: bool
+    model_config = ConfigDict(from_attributes=True)
+
 class TopUpRequest(BaseModel):
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 500.00}, description="Сумма пополнения, должна быть больше нуля")
     payment_method: str = Field(..., json_schema_extra={'example': "cash"}, description="Метод оплаты (e.g., 'cash', 'card')")
@@ -109,10 +132,12 @@ class TransactionBase(BaseModel):
 
 class TransactionCreate(TransactionBase):
     guest_id: uuid.UUID
+    visit_id: Optional[uuid.UUID] = None
 
 class Transaction(TransactionBase):
     transaction_id: uuid.UUID
     guest_id: uuid.UUID
+    visit_id: Optional[uuid.UUID] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
         

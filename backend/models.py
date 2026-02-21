@@ -110,6 +110,7 @@ class Guest(Base):
 
     # Связи "один ко многим"
     cards = relationship("Card", back_populates="guest")
+    visits = relationship("Visit", back_populates="guest")
     transactions = relationship("Transaction", back_populates="guest")
     pours = relationship("Pour", back_populates="guest")
 
@@ -131,7 +132,31 @@ class Card(Base):
     # Связь "многие к одному": многие карты могут принадлежать одному гостю
     guest = relationship("Guest", back_populates="cards")
     # Связь "один ко многим": одной картой можно сделать много наливов
+    visits = relationship("Visit", back_populates="card")
     pours = relationship("Pour", back_populates="card")
+
+
+class Visit(Base):
+    """
+    ВИЗИТ ГОСТЯ.
+    Операционная сессия в рамках одного посещения.
+    """
+    __tablename__ = "visits"
+
+    visit_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="active", index=True)
+    opened_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    closed_reason = Column(Text, nullable=True)
+    # M3 placeholder: intentionally no FK for M2.
+    active_tap_id = Column(Integer, nullable=True)
+    card_returned = Column(Boolean, nullable=False, default=True)
+
+    guest = relationship("Guest", back_populates="visits")
+    card = relationship("Card", back_populates="visits")
+    pours = relationship("Pour", back_populates="visit")
 
 
 # --- ПРИНЦИП 3: Транзакционная модель для всех изменений ---
@@ -151,6 +176,7 @@ class Pour(Base):
     # Внешние ключи для связи с другими сущностями
     guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
     card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=True, index=True)
     tap_id = Column(Integer, ForeignKey("taps.tap_id"), nullable=False)
     keg_id = Column(UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=False, index=True)
     
@@ -167,6 +193,7 @@ class Pour(Base):
     # Связи "многие к одному"
     guest = relationship("Guest", back_populates="pours")
     card = relationship("Card", back_populates="pours")
+    visit = relationship("Visit", back_populates="pours")
     tap = relationship("Tap", back_populates="pours")
     keg = relationship("Keg", back_populates="pours")
 
@@ -185,6 +212,7 @@ class Transaction(Base):
     # --- ИЗМЕНЕНИЕ: Генерация UUID теперь выполняется кодом Python ---
     transaction_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=True, index=True)
     
     amount = Column(Numeric(10, 2), nullable=False, comment="Сумма транзакции. Положительная для пополнения.")
     type = Column(String(20), nullable=False, comment="Тип: top-up, refund, correction")
@@ -192,6 +220,7 @@ class Transaction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     guest = relationship("Guest", back_populates="transactions")
+    visit = relationship("Visit")
 
 
 # --- СИСТЕМНЫЕ МОДЕЛИ ---

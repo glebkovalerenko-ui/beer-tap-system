@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import date
 import models
 import schemas
-from crud import card_crud
+from crud import card_crud, visit_crud
 import uuid
 
 # --- READ операции ---
@@ -114,7 +114,11 @@ def unassign_card_from_guest(db: Session, guest_id: uuid.UUID, card_uid: str):
     db_card = db.query(models.Card).filter(models.Card.card_uid == card_uid).first()
     if not db_card or db_card.guest_id != guest_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found or not assigned to this guest")
-            
+
+    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=card_uid)
+    if active_visit:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot unassign card during active visit")
+
     db_card.guest_id = None
     db_card.status = "inactive"
     db.commit()
