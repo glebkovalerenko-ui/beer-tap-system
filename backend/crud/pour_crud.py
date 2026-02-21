@@ -4,14 +4,14 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException, status
 import models
 import schemas
-from crud import card_crud, tap_crud, guest_crud, keg_crud # Импортируем все необходимые CRUD-модули
+from crud import card_crud, tap_crud, guest_crud, keg_crud, visit_crud # Импортируем все необходимые CRUD-модули
 import uuid
 
 def get_pour_by_client_tx_id(db: Session, client_tx_id: str):
     """Проверяет, существует ли уже транзакция с таким ID от клиента."""
     return db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
 
-def _create_pour_record(db: Session, pour_data: schemas.PourData, guest_id: uuid.UUID, keg_id: uuid.UUID, amount_charged: Decimal, price_per_ml: Decimal):
+def _create_pour_record(db: Session, pour_data: schemas.PourData, guest_id: uuid.UUID, visit_id: uuid.UUID, keg_id: uuid.UUID, amount_charged: Decimal, price_per_ml: Decimal):
     """
     (Внутренняя функция) Создает и сохраняет запись о наливе в БД.
     Эта функция является частью более крупной транзакции в process_pour.
@@ -20,6 +20,7 @@ def _create_pour_record(db: Session, pour_data: schemas.PourData, guest_id: uuid
         client_tx_id=pour_data.client_tx_id,
         card_uid=pour_data.card_uid,
         tap_id=pour_data.tap_id,
+        visit_id=visit_id,
         volume_ml=pour_data.volume_ml,
         poured_at=pour_data.start_ts, # Используем время начала налива
         amount_charged=amount_charged,
@@ -51,7 +52,11 @@ def process_pour(db: Session, pour_data: schemas.PourData):
 
     if not guest.is_active or card.status != "active":
         return {"status": "rejected", "reason": f"Guest {guest.guest_id} or Card {card.card_uid} is not active."}
-    
+
+    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=card.card_uid)
+    if not active_visit:
+        return {"status": "rejected", "reason": f"No active visit for Card {card.card_uid}."}
+
     if tap.status != "active" or keg.status != "in_use":
         return {"status": "rejected", "reason": f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active'/'in_use' state."}
 
@@ -71,7 +76,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     # --- ШАГ 2: АТОМАРНОЕ ОБНОВЛЕНИЕ СОСТОЯНИЯ ---
     try:
         # 2.1. Создаем запись о наливе (Pour)
-        _create_pour_record(db, pour_data, guest.guest_id, keg.keg_id, amount_to_charge, price_per_ml)
+        _create_pour_record(db, pour_data, guest.guest_id, active_visit.visit_id, keg.keg_id, amount_to_charge, price_per_ml)
 
         # 2.2. Списываем баланс с гостя
         guest.balance -= amount_to_charge

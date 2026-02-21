@@ -53,7 +53,8 @@ def assign_card_to_guest(db: Session, db_card: models.Card, guest_id: uuid.UUID)
     Привязывает существующий объект карты к гостю и активирует ее.
     """
     db_card.guest_id = guest_id
-    db_card.status = "active"
+    # Card is operationally activated by opening a Visit (M2).
+    db_card.status = "inactive"
     db.commit()
     db.refresh(db_card)
     return db_card
@@ -67,7 +68,8 @@ def create_and_assign_card(db: Session, card: schemas.CardCreate, guest_id: uuid
     db_card = models.Card(
         card_uid=card.card_uid, 
         guest_id=guest_id,
-        status="active"
+        # Card is operationally activated by opening a Visit (M2).
+        status="inactive"
     )
     db.add(db_card)
     db.commit()
