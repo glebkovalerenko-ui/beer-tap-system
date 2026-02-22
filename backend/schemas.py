@@ -110,6 +110,22 @@ class Visit(BaseModel):
     card_returned: bool
     model_config = ConfigDict(from_attributes=True)
 
+
+class VisitPourAuthorizeRequest(BaseModel):
+    card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})
+    tap_id: int = Field(..., ge=1, json_schema_extra={'example': 1})
+
+
+class VisitPourAuthorizeResponse(BaseModel):
+    allowed: bool
+    visit: Optional[Visit] = None
+    reason: Optional[str] = None
+
+
+class VisitForceUnlockRequest(BaseModel):
+    reason: str = Field(..., min_length=1, json_schema_extra={'example': "controller_offline_recovery"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Manual unlock after timeout"})
+
 class TopUpRequest(BaseModel):
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 500.00}, description="Сумма пополнения, должна быть больше нуля")
     payment_method: str = Field(..., json_schema_extra={'example': "cash"}, description="Метод оплаты (e.g., 'cash', 'card')")

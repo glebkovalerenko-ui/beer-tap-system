@@ -90,29 +90,32 @@ def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
     Вся пачка обрабатывается в рамках одной транзакции БД.
     """
     response_results = []
-    
-    for pour_data in sync_data.pours:
-        existing_pour = pour_crud.get_pour_by_client_tx_id(db, client_tx_id=pour_data.client_tx_id)
-        if existing_pour:
+
+    try:
+        for pour_data in sync_data.pours:
+            existing_pour = pour_crud.get_pour_by_client_tx_id(db, client_tx_id=pour_data.client_tx_id)
+            if existing_pour:
+                response_results.append(schemas.SyncResult(
+                    client_tx_id=pour_data.client_tx_id,
+                    status="accepted",
+                    reason="duplicate"
+                ))
+                continue
+
+            result = pour_crud.process_pour(db, pour_data=pour_data)
+
             response_results.append(schemas.SyncResult(
                 client_tx_id=pour_data.client_tx_id,
-                status="accepted",
-                reason="duplicate"
+                status=result["status"],
+                reason=result.get("reason")
             ))
-            continue
-        
-        result = pour_crud.process_pour(db, pour_data=pour_data)
-        
-        response_results.append(schemas.SyncResult(
-            client_tx_id=pour_data.client_tx_id,
-            status=result["status"],
-            reason=result.get("reason")
-        ))
-    try:
+
         db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        # --- ИЗМЕНЕНИЕ: Используем logger для ошибок ---
         logging.error(f"Failed to commit pours batch: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
