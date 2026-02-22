@@ -31,7 +31,9 @@ def _add_audit_log(
 
 def get_pour_by_client_tx_id(db: Session, client_tx_id: str):
     """Проверяет, существует ли уже транзакция с таким ID от клиента."""
-    return db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
+    return (
+        db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
+    )
 
 
 def _create_pour_record(
@@ -60,8 +62,18 @@ def _create_pour_record(
 
 
 def process_pour(db: Session, pour_data: schemas.PourData):
-    card = db.query(models.Card).options(joinedload(models.Card.guest)).filter(models.Card.card_uid == pour_data.card_uid).first()
-    tap = db.query(models.Tap).options(joinedload(models.Tap.keg).joinedload(models.Keg.beverage)).filter(models.Tap.tap_id == pour_data.tap_id).first()
+    card = (
+        db.query(models.Card)
+        .options(joinedload(models.Card.guest))
+        .filter(models.Card.card_uid == pour_data.card_uid)
+        .first()
+    )
+    tap = (
+        db.query(models.Tap)
+        .options(joinedload(models.Tap.keg).joinedload(models.Keg.beverage))
+        .filter(models.Tap.tap_id == pour_data.tap_id)
+        .first()
+    )
 
     if not (card and card.guest and tap and tap.keg and tap.keg.beverage):
         return {
@@ -74,29 +86,46 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     beverage = keg.beverage
 
     if not guest.is_active or card.status != "active":
-        return {"status": "rejected", "reason": f"Guest {guest.guest_id} or Card {card.card_uid} is not active."}
+        return {
+            "status": "rejected",
+            "reason": f"Guest {guest.guest_id} or Card {card.card_uid} is not active.",
+        }
 
-    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=card.card_uid)
+    active_visit = visit_crud.get_active_visit_by_card_uid(
+        db=db, card_uid=card.card_uid
+    )
     if not active_visit:
-        return {"status": "rejected", "reason": f"No active visit for Card {card.card_uid}."}
+        return {
+            "status": "rejected",
+            "reason": f"No active visit for Card {card.card_uid}.",
+        }
 
     if active_visit.active_tap_id is None:
+        price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
+        reported_amount = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         _add_audit_log(
             db,
             actor_id="internal_rpi",
-            action="late_or_out_of_order_sync",
+            action="late_sync_received",
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
+                "reason": "late_sync_received",
                 "card_uid": card.card_uid,
                 "tap_id": pour_data.tap_id,
                 "client_tx_id": pour_data.client_tx_id,
-                "event": "sync_without_active_lock",
+                "volume_ml": pour_data.volume_ml,
+                "start_ts": pour_data.start_ts.isoformat(),
+                "end_ts": pour_data.end_ts.isoformat(),
+                "amount": str(reported_amount),
+                "price_cents": pour_data.price_cents,
             },
         )
         return {
-            "status": "rejected",
-            "reason": "Late/out-of-order sync: active tap lock is not present",
+            "status": "accepted",
+            "reason": "accepted_late_sync_recorded",
         }
 
     if active_visit.active_tap_id != pour_data.tap_id:
@@ -120,19 +149,38 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         )
 
     if tap.status != "active" or keg.status != "in_use":
-        return {"status": "rejected", "reason": f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active'/'in_use' state."}
+        return {
+            "status": "rejected",
+            "reason": f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active'/'in_use' state.",
+        }
 
     price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
-    amount_to_charge = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    amount_to_charge = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     if guest.balance < amount_to_charge:
-        return {"status": "rejected", "reason": f"Insufficient funds for Guest {guest.guest_id}."}
+        return {
+            "status": "rejected",
+            "reason": f"Insufficient funds for Guest {guest.guest_id}.",
+        }
 
     if keg.current_volume_ml < pour_data.volume_ml:
-        return {"status": "rejected", "reason": f"Insufficient volume in Keg {keg.keg_id}."}
+        return {
+            "status": "rejected",
+            "reason": f"Insufficient volume in Keg {keg.keg_id}.",
+        }
 
     try:
-        _create_pour_record(db, pour_data, guest.guest_id, active_visit.visit_id, keg.keg_id, amount_to_charge, price_per_ml)
+        _create_pour_record(
+            db,
+            pour_data,
+            guest.guest_id,
+            active_visit.visit_id,
+            keg.keg_id,
+            amount_to_charge,
+            price_per_ml,
+        )
         guest.balance -= amount_to_charge
         keg.current_volume_ml -= pour_data.volume_ml
         active_visit.active_tap_id = None
@@ -149,8 +197,15 @@ def process_pour(db: Session, pour_data: schemas.PourData):
 
 
 def get_pours(db: Session, skip: int = 0, limit: int = 20):
-    return db.query(models.Pour).options(
-        joinedload(models.Pour.guest),
-        joinedload(models.Pour.tap),
-        joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
-    ).order_by(models.Pour.poured_at.desc()).offset(skip).limit(limit).all()
+    return (
+        db.query(models.Pour)
+        .options(
+            joinedload(models.Pour.guest),
+            joinedload(models.Pour.tap),
+            joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
+        )
+        .order_by(models.Pour.poured_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )

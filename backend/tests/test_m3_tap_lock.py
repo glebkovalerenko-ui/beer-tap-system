@@ -1,6 +1,10 @@
+import json
+
 
 def _login(client):
-    response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
+    response = client.post(
+        "/api/token", data={"username": "admin", "password": "fake_password"}
+    )
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -59,7 +63,11 @@ def _prepare_active_visit(client, suffix: str, card_uid: str):
     keg_resp = client.post(
         "/api/kegs/",
         headers=headers,
-        json={"beverage_id": beverage_id, "initial_volume_ml": 30000, "purchase_price": 1000.0},
+        json={
+            "beverage_id": beverage_id,
+            "initial_volume_ml": 30000,
+            "purchase_price": 1000.0,
+        },
     )
     assert keg_resp.status_code == 201
     keg_id = keg_resp.json()["keg_id"]
@@ -72,7 +80,9 @@ def _prepare_active_visit(client, suffix: str, card_uid: str):
     assert tap_resp.status_code == 201
     tap_id = tap_resp.json()["tap_id"]
 
-    assign_resp = client.put(f"/api/taps/{tap_id}/keg", headers=headers, json={"keg_id": keg_id})
+    assign_resp = client.put(
+        f"/api/taps/{tap_id}/keg", headers=headers, json={"keg_id": keg_id}
+    )
     assert assign_resp.status_code == 200
 
     topup = client.post(
@@ -86,7 +96,9 @@ def _prepare_active_visit(client, suffix: str, card_uid: str):
 
 
 def test_authorize_sets_lock_and_second_tap_gets_409(client):
-    headers, _, _, tap_id = _prepare_active_visit(client, suffix="91001", card_uid="CARD-M3-001")
+    headers, _, _, tap_id = _prepare_active_visit(
+        client, suffix="91001", card_uid="CARD-M3-001"
+    )
 
     auth_1 = client.post(
         "/api/visits/authorize-pour",
@@ -96,7 +108,9 @@ def test_authorize_sets_lock_and_second_tap_gets_409(client):
     assert auth_1.status_code == 200
     assert auth_1.json()["visit"]["active_tap_id"] == tap_id
 
-    extra_tap = client.post("/api/taps/", headers=headers, json={"display_name": "Tap M3 conflict"})
+    extra_tap = client.post(
+        "/api/taps/", headers=headers, json={"display_name": "Tap M3 conflict"}
+    )
     assert extra_tap.status_code == 201
     conflict_tap_id = extra_tap.json()["tap_id"]
 
@@ -110,7 +124,9 @@ def test_authorize_sets_lock_and_second_tap_gets_409(client):
 
 
 def test_sync_releases_lock_and_next_authorize_on_other_tap_succeeds(client):
-    headers, _, _, tap_id = _prepare_active_visit(client, suffix="91002", card_uid="CARD-M3-002")
+    headers, _, _, tap_id = _prepare_active_visit(
+        client, suffix="91002", card_uid="CARD-M3-002"
+    )
 
     auth_resp = client.post(
         "/api/visits/authorize-pour",
@@ -145,7 +161,9 @@ def test_sync_releases_lock_and_next_authorize_on_other_tap_succeeds(client):
 
 
 def test_force_unlock_clears_lock_and_audits(client):
-    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="91003", card_uid="CARD-M3-003")
+    headers, _, visit_id, tap_id = _prepare_active_visit(
+        client, suffix="91003", card_uid="CARD-M3-003"
+    )
 
     auth_resp = client.post(
         "/api/visits/authorize-pour",
@@ -168,7 +186,9 @@ def test_force_unlock_clears_lock_and_audits(client):
 
 
 def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
-    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="91004", card_uid="CARD-M3-004")
+    headers, _, visit_id, tap_id = _prepare_active_visit(
+        client, suffix="91004", card_uid="CARD-M3-004"
+    )
 
     auth_resp = client.post(
         "/api/visits/authorize-pour",
@@ -188,7 +208,11 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
     keg_resp = client.post(
         "/api/kegs/",
         headers=headers,
-        json={"beverage_id": beverage_id, "initial_volume_ml": 30000, "purchase_price": 1000.0},
+        json={
+            "beverage_id": beverage_id,
+            "initial_volume_ml": 30000,
+            "purchase_price": 1000.0,
+        },
     )
     assert keg_resp.status_code == 201
 
@@ -250,12 +274,27 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
         },
     )
     assert late_sync.status_code == 200
-    assert late_sync.json()["results"][0]["status"] == "rejected"
-    assert "Late/out-of-order" in late_sync.json()["results"][0]["reason"]
+    assert late_sync.json()["results"][0]["status"] == "accepted"
+    assert late_sync.json()["results"][0]["reason"] == "accepted_late_sync_recorded"
+
+    audit_resp = client.get("/api/audit/", headers=headers)
+    assert audit_resp.status_code == 200
+    late_entries = [
+        log for log in audit_resp.json() if log["action"] == "late_sync_received"
+    ]
+    assert late_entries
+    details = json.loads(late_entries[0]["details"])
+    assert details["reason"] == "late_sync_received"
+    assert details["client_tx_id"] == "m3-sync-003"
+    assert details["card_uid"] == "CARD-M3-004"
+    assert details["tap_id"] == tap_id
+    assert details["volume_ml"] == 200
 
 
 def test_search_active_visit_by_guest_phone_or_name(client):
-    headers, guest_id, _, _ = _prepare_active_visit(client, suffix="91006", card_uid="CARD-M3-006")
+    headers, guest_id, _, _ = _prepare_active_visit(
+        client, suffix="91006", card_uid="CARD-M3-006"
+    )
 
     guest_resp = client.get(f"/api/guests/{guest_id}", headers=headers)
     assert guest_resp.status_code == 200
