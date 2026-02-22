@@ -236,6 +236,27 @@ async fn set_emergency_stop(token: String, value: String) -> Result<api_client::
     api_client::set_emergency_stop(&token, &payload).await.map_err(AppError::from)
 }
 
+
+#[tauri::command]
+async fn search_active_visit(token: String, query: String) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Поиск активного визита по строке запроса...");
+    api_client::search_active_visit(&token, &query).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn force_unlock_visit(token: String, visit_id: String, reason: String, comment: Option<String>) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Force unlock для визита ID: {}", visit_id);
+    let payload = api_client::VisitForceUnlockPayload { reason, comment };
+    api_client::force_unlock_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn close_visit(token: String, visit_id: String, closed_reason: String, card_returned: bool) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Закрытие визита ID: {}", visit_id);
+    let payload = api_client::VisitClosePayload { closed_reason, card_returned };
+    api_client::close_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
 // =============================================================================
 // ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
 // =============================================================================
@@ -290,7 +311,11 @@ fn main() {
             update_tap,
             // API - System
             get_system_status,
-            set_emergency_stop
+            set_emergency_stop,
+            // API - Visits
+            search_active_visit,
+            force_unlock_visit,
+            close_visit
         ])
         .setup(move |app| {
             // ... (фоновый поток NFC без изменений)

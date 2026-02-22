@@ -13,6 +13,7 @@
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
   import TapsKegs from './routes/TapsKegs.svelte';
+  import Visits from './routes/Visits.svelte';
   import Login from './routes/Login.svelte';
 
   import ToastContainer from './components/feedback/ToastContainer.svelte';
@@ -26,6 +27,7 @@
     '/': Dashboard,
     '/guests': Guests,
     '/taps-kegs': TapsKegs,
+    '/visits': Visits,
     '*': Dashboard,
   };
 
@@ -67,6 +69,7 @@
       <aside class="left-rail ui-card">
         <nav aria-label="Главная навигация">
           <a href="#/">Дашборд</a>
+          {#if $roleStore.permissions.guests}<a href="#/visits">Визиты</a>{/if}
           {#if $roleStore.permissions.guests}<a href="#/guests">Гости и операции</a>{/if}
           {#if $roleStore.permissions.taps}<a href="#/taps-kegs">Краны и кеги</a>{/if}
         </nav>

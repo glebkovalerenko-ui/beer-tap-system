@@ -136,6 +136,44 @@ pub struct GuestUpdatePayload {
 }
 
 
+
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VisitGuest {
+    pub guest_id: String,
+    pub last_name: String,
+    pub first_name: String,
+    pub patronymic: Option<String>,
+    pub phone_number: String,
+    pub balance: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Visit {
+    pub visit_id: String,
+    pub guest_id: String,
+    pub card_uid: String,
+    pub status: String,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+    pub closed_reason: Option<String>,
+    pub active_tap_id: Option<i32>,
+    pub card_returned: bool,
+    pub guest: Option<VisitGuest>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitClosePayload {
+    pub closed_reason: String,
+    pub card_returned: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitForceUnlockPayload {
+    pub reason: String,
+    pub comment: Option<String>,
+}
+
 // --- Kegs, Taps, Beverages ---
 
 // --- ИЗМЕНЕНИЕ: Структура Beverage расширена до полного соответствия схеме API ---
@@ -475,6 +513,37 @@ pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload)
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+// --- Visit Functions ---
+pub async fn search_active_visit(token: &str, query: &str) -> Result<Visit, String> {
+    let url = format!("{}/visits/active/search", API_BASE_URL);
+    let response = CLIENT.get(&url).query(&[("q", query)]).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForceUnlockPayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/{}/force-unlock", API_BASE_URL, visit_id);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn close_visit(token: &str, visit_id: &str, payload: &VisitClosePayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/{}/close", API_BASE_URL, visit_id);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
