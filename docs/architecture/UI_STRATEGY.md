@@ -7,6 +7,7 @@ This document defines UI layering strategy for the current implementation window
 
 ### A) Functional Operator UI (admin-app)
 Current priority is operator reliability and invariant visibility:
+- **Primary operator action: Open Visit**,
 - visit-centric workflows,
 - lock state visibility,
 - explicit manual intervention actions,

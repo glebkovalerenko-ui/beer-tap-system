@@ -41,6 +41,22 @@ function createVisitStore() {
       }
     },
 
+
+
+    openVisit: async ({ guestId, cardUid }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null, notFound: false }));
+      try {
+        const visit = await invoke('open_visit', { token, guestId, cardUid });
+        update((s) => ({ ...s, currentVisit: visit, loading: false }));
+        return visit;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw error;
+      }
+    },
+
     forceUnlock: async ({ visitId, reason, comment = null }) => {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null }));

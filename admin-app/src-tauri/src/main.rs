@@ -244,6 +244,13 @@ async fn search_active_visit(token: String, query: String) -> Result<api_client:
 }
 
 #[tauri::command]
+async fn open_visit(token: String, guest_id: String, card_uid: String) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Открытие визита для гостя ID: {}", guest_id);
+    let payload = api_client::VisitOpenPayload { guest_id, card_uid };
+    api_client::open_visit(&token, &payload).await.map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn force_unlock_visit(token: String, visit_id: String, reason: String, comment: Option<String>) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND] Force unlock для визита ID: {}", visit_id);
     let payload = api_client::VisitForceUnlockPayload { reason, comment };
@@ -314,6 +321,7 @@ fn main() {
             set_emergency_stop,
             // API - Visits
             search_active_visit,
+            open_visit,
             force_unlock_visit,
             close_visit
         ])

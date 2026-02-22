@@ -10,14 +10,92 @@
   let closeReason = 'guest_checkout';
   let actionError = '';
 
+  let openFlowVisible = false;
+  let guestQuery = '';
+  let candidateGuest = null;
+  let openFlowNotFound = false;
+  let openFlowError = '';
+
   $: visit = $visitStore.currentVisit;
   $: guest = visit ? $guestStore.guests.find((g) => g.guest_id === visit.guest_id) : null;
   $: lockActive = visit?.active_tap_id !== null && visit?.active_tap_id !== undefined;
 
-  async function handleSearch() {
+  const fullName = (targetGuest) => {
+    if (!targetGuest) return '—';
+    return [targetGuest.last_name, targetGuest.first_name, targetGuest.patronymic].filter(Boolean).join(' ');
+  };
+
+  const matchesGuest = (targetGuest, query) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return false;
+    const fio = fullName(targetGuest).toLowerCase();
+    const phone = (targetGuest.phone_number || '').toLowerCase();
+    return fio.includes(q) || phone.includes(q);
+  };
+
+  const getDefaultCardUid = (targetGuest) => {
+    if (!targetGuest?.cards?.length) return null;
+    const activeCard = targetGuest.cards.find((c) => c.status === 'active' || c.status === 'inactive');
+    return activeCard?.card_uid || targetGuest.cards[0]?.card_uid || null;
+  };
+
+  async function ensureGuestsLoaded() {
     if ($guestStore.guests.length === 0 && !$guestStore.loading) {
-      guestStore.fetchGuests();
+      await guestStore.fetchGuests();
     }
+  }
+
+  function startOpenFlow() {
+    openFlowVisible = true;
+    guestQuery = '';
+    candidateGuest = null;
+    openFlowNotFound = false;
+    openFlowError = '';
+  }
+
+  async function handleGuestSearch() {
+    openFlowError = '';
+    openFlowNotFound = false;
+    candidateGuest = null;
+
+    if (!guestQuery.trim()) {
+      uiStore.notifyWarning('Введите ФИО или телефон гостя.');
+      return;
+    }
+
+    await ensureGuestsLoaded();
+    candidateGuest = $guestStore.guests.find((g) => matchesGuest(g, guestQuery)) || null;
+    openFlowNotFound = !candidateGuest;
+  }
+
+  async function openVisitWithoutCard() {
+    openFlowError = '';
+    if (!candidateGuest) return;
+
+    const cardUid = getDefaultCardUid(candidateGuest);
+    if (!cardUid) {
+      openFlowError = 'Backend open_visit пока требует card_uid. Для гостя нет привязанной карты.';
+      return;
+    }
+
+    try {
+      await visitStore.openVisit({ guestId: candidateGuest.guest_id, cardUid });
+      uiStore.notifySuccess('Визит открыт.');
+    } catch (error) {
+      const message = error?.message || error?.toString?.() || 'Ошибка открытия визита';
+      openFlowError = message;
+      if (message.includes('already has an active visit')) {
+        await visitStore.searchActiveVisit(guestQuery.trim());
+      }
+    }
+  }
+
+  async function handleOpenExistingVisit() {
+    if (!guestQuery.trim()) return;
+    await visitStore.searchActiveVisit(guestQuery.trim());
+  }
+
+  async function handleSearch() {
     actionError = '';
     if (!searchQuery.trim()) {
       uiStore.notifyWarning('Введите строку поиска.');
@@ -68,11 +146,6 @@
       actionError = error?.message || error?.toString?.() || 'Ошибка закрытия визита';
     }
   }
-
-  const fullName = (visitGuest) => {
-    if (!visitGuest) return '—';
-    return [visitGuest.last_name, visitGuest.first_name, visitGuest.patronymic].filter(Boolean).join(' ');
-  };
 </script>
 
 {#if !$roleStore.permissions.guests}
@@ -82,8 +155,51 @@
   </section>
 {:else}
   <section class="search-card ui-card">
-    <h1>Active Visit Search</h1>
-    <p class="hint">Поиск активного визита по карте / телефону / ФИО.</p>
+    <h1>Визиты</h1>
+    <button class="primary-open" on:click={startOpenFlow}>Открыть новый визит</button>
+
+    {#if openFlowVisible}
+      <div class="open-flow">
+        <h2>Open Visit Flow</h2>
+        <p class="hint">Найдите гостя по ФИО или телефону.</p>
+        <div class="search-row">
+          <input
+            type="text"
+            bind:value={guestQuery}
+            placeholder="ФИО / телефон"
+            on:keydown={(e) => e.key === 'Enter' && handleGuestSearch()}
+          />
+          <button on:click={handleGuestSearch} disabled={$guestStore.loading || $visitStore.loading}>Найти гостя</button>
+        </div>
+
+        {#if openFlowNotFound}
+          <p class="not-found">Гость не найден</p>
+        {/if}
+
+        {#if candidateGuest}
+          <div class="candidate-card">
+            <div><strong>ФИО:</strong> {fullName(candidateGuest)}</div>
+            <div><strong>Телефон:</strong> {candidateGuest.phone_number}</div>
+            <div><strong>Баланс:</strong> {candidateGuest.balance}</div>
+          </div>
+          <div class="open-actions">
+            <button on:click={openVisitWithoutCard} disabled={$visitStore.loading}>Открыть визит без карты</button>
+            <button disabled title="Будет добавлено отдельным этапом">Открыть визит и выдать карту</button>
+          </div>
+        {/if}
+
+        {#if openFlowError}
+          <p class="error">{openFlowError}</p>
+          {#if openFlowError.includes('already has an active visit')}
+            <button on:click={handleOpenExistingVisit}>Открыть существующий визит</button>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+  </section>
+
+  <section class="search-card ui-card">
+    <h2>Active Visit Search</h2>
     <div class="search-row">
       <input
         type="text"
@@ -150,6 +266,26 @@
   .hint { margin-top: 0; color: var(--text-secondary); }
   .search-row { display: flex; gap: 0.75rem; }
   .search-row input { flex: 1; }
+  .primary-open { margin-bottom: 0.75rem; }
+
+  .open-flow {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-surface-muted);
+    padding: 0.75rem;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .open-flow h2 { margin: 0; }
+  .candidate-card {
+    border: 1px solid var(--border-soft);
+    background: #fff;
+    border-radius: 8px;
+    padding: 0.6rem;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .open-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
   .visit-card { display: grid; gap: 1rem; }
   .visit-fields { display: grid; gap: 0.4rem; }

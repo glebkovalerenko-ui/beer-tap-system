@@ -174,6 +174,12 @@ pub struct VisitForceUnlockPayload {
     pub comment: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitOpenPayload {
+    pub guest_id: String,
+    pub card_uid: String,
+}
+
 // --- Kegs, Taps, Beverages ---
 
 // --- ИЗМЕНЕНИЕ: Структура Beverage расширена до полного соответствия схеме API ---
@@ -522,6 +528,16 @@ pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload)
 pub async fn search_active_visit(token: &str, query: &str) -> Result<Visit, String> {
     let url = format!("{}/visits/active/search", API_BASE_URL);
     let response = CLIENT.get(&url).query(&[("q", query)]).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn open_visit(token: &str, payload: &VisitOpenPayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/open", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Visit>().await.map_err(|e| e.to_string())
     } else {

@@ -145,6 +145,7 @@ Out of scope (intentionally):
 - Make visit the operational center of operator workflows in admin-app.
 
 **Scope**
+- Primary action: open new visit (guest search by FIO/phone, open visit transition).
 - Active visit search by one universal query input (backend determines query type).
 - Central visit card with guest identity, status, balance, and active tap lock visibility.
 - Manual operator actions: force unlock (with reason) and close visit.
@@ -170,6 +171,7 @@ Out of scope (intentionally):
 - Operator can manage active visits deterministically through UI with explicit lock handling.
 
 **Acceptance criteria**
+- Operator can start from "Open new visit", find a guest, and open visit card.
 - Operator can find an active visit via one search field and open visit card.
 - Lock state is clearly visible (`Locked on tap #X` / `No active tap`).
 - Force unlock requires reason and is executable from visit card.
