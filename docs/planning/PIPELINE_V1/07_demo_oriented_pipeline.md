@@ -145,11 +145,12 @@ Out of scope (intentionally):
 - Make visit the operational center of operator workflows in admin-app.
 
 **Scope**
-- Primary action: open new visit (guest search by FIO/phone, open visit transition).
+- Primary action: open new visit by guest (card is optional at open step).
 - Active visit search by one universal query input (backend determines query type).
 - Central visit card with guest identity, status, balance, and active tap lock visibility.
 - Manual operator actions: force unlock (with reason) and close visit.
 - Keep existing admin-app shell/layout; no global redesign and no final POS styling.
+- Card issuance/binding remains a separate later step.
 
 **UI strategy note**
 - This is a functional operator layer that mirrors backend invariants.

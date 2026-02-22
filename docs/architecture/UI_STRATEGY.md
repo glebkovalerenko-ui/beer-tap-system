@@ -7,13 +7,14 @@ This document defines UI layering strategy for the current implementation window
 
 ### A) Functional Operator UI (admin-app)
 Current priority is operator reliability and invariant visibility:
-- **Primary operator action: Open Visit**,
+- **Primary operator action: Open Visit by guest**,
 - visit-centric workflows,
 - lock state visibility,
 - explicit manual intervention actions,
 - alignment with backend operational state.
 
 This layer is intentionally pragmatic and does not aim to be final POS design.
+Card issue/bind is a separate flow handled after visit open.
 
 ### B) Demo POS UI (future)
 A dedicated demo/presentation POS UI will be implemented in a later stage.

@@ -90,7 +90,7 @@ class CardStatusUpdate(BaseModel):
 
 class VisitOpenRequest(BaseModel):
     guest_id: uuid.UUID
-    card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})
+    card_uid: Optional[str] = Field(default=None, json_schema_extra={'example': "04AB7815CD6B80"})
 
 
 class VisitCloseRequest(BaseModel):
@@ -101,7 +101,7 @@ class VisitCloseRequest(BaseModel):
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
-    card_uid: str
+    card_uid: Optional[str]
     status: str
     opened_at: datetime
     closed_at: Optional[datetime] = None

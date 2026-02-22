@@ -43,11 +43,12 @@ function createVisitStore() {
 
 
 
-    openVisit: async ({ guestId, cardUid }) => {
+    openVisit: async ({ guestId, cardUid = undefined }) => {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null, notFound: false }));
       try {
-        const visit = await invoke('open_visit', { token, guestId, cardUid });
+        const payload = cardUid ? { token, guestId, cardUid } : { token, guestId };
+        const visit = await invoke('open_visit', payload);
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {

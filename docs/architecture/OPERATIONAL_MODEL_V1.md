@@ -53,6 +53,7 @@ Core domain must remain independent from POS integration.
 Operator UI is a functional layer that must reflect backend invariants first.
 
 - **Visit is the center**: operator actions are performed from an active visit context.
+- **Visit opens by guest identity**: card may be absent at open time and can be issued/bound later.
 - **Lock state visible**: active tap lock (`active_tap_id`) is always explicit in UI.
 - **Manual intervention visible**: force unlock / close actions are clear and require intent data where needed.
 - **Audit transparency**: manual actions must remain traceable through backend audit trail and status transitions.

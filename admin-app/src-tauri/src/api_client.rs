@@ -34,7 +34,7 @@ struct TokenResponse {
 // --- Cards ---
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Card {
-    pub card_uid: String,
+    pub card_uid: Option<String>,
     pub status: String,
     pub guest_id: Option<String>,
     pub created_at: String,
@@ -152,7 +152,7 @@ pub struct VisitGuest {
 pub struct Visit {
     pub visit_id: String,
     pub guest_id: String,
-    pub card_uid: String,
+    pub card_uid: Option<String>,
     pub status: String,
     pub opened_at: String,
     pub closed_at: Option<String>,
@@ -177,7 +177,7 @@ pub struct VisitForceUnlockPayload {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VisitOpenPayload {
     pub guest_id: String,
-    pub card_uid: String,
+    pub card_uid: Option<String>,
 }
 
 // --- Kegs, Taps, Beverages ---
@@ -271,14 +271,27 @@ pub struct SystemStateUpdatePayload {
 
 // --- Error Handling ---
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum ApiDetail {
+    Message(String),
+    Conflict { message: String, visit_id: Option<String> },
+}
+
+#[derive(Deserialize)]
 struct ApiErrorDetail {
-    detail: String,
+    detail: ApiDetail,
 }
 
 async fn handle_api_error(response: Response) -> String {
     let status = response.status();
     if let Ok(error_body) = response.json::<ApiErrorDetail>().await {
-        error_body.detail
+        match error_body.detail {
+            ApiDetail::Message(detail) => detail,
+            ApiDetail::Conflict { message, visit_id } => match visit_id {
+                Some(id) => format!("{} (visit_id={})", message, id),
+                None => message,
+            },
+        }
     } else {
         format!("HTTP Error: {}", status)
     }

@@ -74,7 +74,7 @@ def get_visit(db: Session, visit_id: uuid.UUID):
     return db.query(models.Visit).filter(models.Visit.visit_id == visit_id).first()
 
 
-def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str):
+def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
     guest = db.query(models.Guest).filter(models.Guest.guest_id == guest_id).first()
     if not guest:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guest not found")
@@ -82,31 +82,38 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str):
     if not _is_adult(guest.date_of_birth):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Guest must be 18+ to open visit")
 
-    card = db.query(models.Card).filter(models.Card.card_uid == card_uid).first()
-    if not card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
-
-    if card.guest_id != guest_id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is not assigned to this guest")
-
     existing_guest_visit = get_active_visit_by_guest_id(db=db, guest_id=guest_id)
     if existing_guest_visit:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Guest already has an active visit")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "Guest already has an active visit", "visit_id": str(existing_guest_visit.visit_id)},
+        )
 
-    existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
-    if existing_card_visit:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+    card = None
+    if card_uid is not None:
+        card = db.query(models.Card).filter(models.Card.card_uid == card_uid).first()
+        if not card:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+
+        if card.guest_id != guest_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is not assigned to this guest")
+
+        existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
+        if existing_card_visit:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
 
     try:
         visit = models.Visit(
             guest_id=guest_id,
             card_uid=card_uid,
             status="active",
+            active_tap_id=None,
             card_returned=True,
         )
         db.add(visit)
 
-        card.status = "active"
+        if card is not None:
+            card.status = "active"
 
         db.commit()
         db.refresh(visit)
@@ -209,9 +216,10 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
     visit.card_returned = card_returned
     visit.active_tap_id = None
 
-    card = db.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
-    if card:
-        card.status = "inactive"
+    if visit.card_uid is not None:
+        card = db.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
+        if card:
+            card.status = "inactive"
 
     db.commit()
     db.refresh(visit)

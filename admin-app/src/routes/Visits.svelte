@@ -33,12 +33,6 @@
     return fio.includes(q) || phone.includes(q);
   };
 
-  const getDefaultCardUid = (targetGuest) => {
-    if (!targetGuest?.cards?.length) return null;
-    const activeCard = targetGuest.cards.find((c) => c.status === 'active' || c.status === 'inactive');
-    return activeCard?.card_uid || targetGuest.cards[0]?.card_uid || null;
-  };
-
   async function ensureGuestsLoaded() {
     if ($guestStore.guests.length === 0 && !$guestStore.loading) {
       await guestStore.fetchGuests();
@@ -72,14 +66,8 @@
     openFlowError = '';
     if (!candidateGuest) return;
 
-    const cardUid = getDefaultCardUid(candidateGuest);
-    if (!cardUid) {
-      openFlowError = 'Backend open_visit пока требует card_uid. Для гостя нет привязанной карты.';
-      return;
-    }
-
     try {
-      await visitStore.openVisit({ guestId: candidateGuest.guest_id, cardUid });
+      await visitStore.openVisit({ guestId: candidateGuest.guest_id });
       uiStore.notifySuccess('Визит открыт.');
     } catch (error) {
       const message = error?.message || error?.toString?.() || 'Ошибка открытия визита';
@@ -225,7 +213,7 @@
       <div class="visit-fields">
         <div><strong>Guest:</strong> {fullName(guest)}</div>
         <div><strong>Phone:</strong> {guest?.phone_number || '—'}</div>
-        <div><strong>Card UID:</strong> {visit.card_uid}</div>
+        <div><strong>Card UID:</strong> {visit.card_uid || '—'}</div>
         <div><strong>Visit status:</strong> {visit.status}</div>
         <div><strong>Balance:</strong> {guest?.balance ?? '—'}</div>
       </div>

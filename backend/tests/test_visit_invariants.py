@@ -101,3 +101,42 @@ def test_topup_allowed_without_active_visit(client):
     )
     assert topup_resp.status_code == 200
     assert float(topup_resp.json()["balance"]) == 100.0
+
+
+def test_open_visit_without_card_and_search_by_guest_query(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81005")
+
+    open_resp = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert open_resp.status_code == 200
+    assert open_resp.json()["card_uid"] is None
+    assert open_resp.json()["active_tap_id"] is None
+
+    search_resp = client.get("/api/visits/active/search", headers=headers, params={"q": "Guest81005"})
+    assert search_resp.status_code == 200
+    assert search_resp.json()["guest_id"] == guest_id
+
+
+def test_open_visit_conflict_includes_existing_visit_id(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81006")
+
+    first_open = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert first_open.status_code == 200
+
+    second_open = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert second_open.status_code == 409
+    assert second_open.json()["detail"]["message"] == "Guest already has an active visit"
+    assert second_open.json()["detail"]["visit_id"] == first_open.json()["visit_id"]

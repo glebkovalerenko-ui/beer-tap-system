@@ -244,7 +244,7 @@ async fn search_active_visit(token: String, query: String) -> Result<api_client:
 }
 
 #[tauri::command]
-async fn open_visit(token: String, guest_id: String, card_uid: String) -> Result<api_client::Visit, AppError> {
+async fn open_visit(token: String, guest_id: String, card_uid: Option<String>) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND] Открытие визита для гостя ID: {}", guest_id);
     let payload = api_client::VisitOpenPayload { guest_id, card_uid };
     api_client::open_visit(&token, &payload).await.map_err(AppError::from)
