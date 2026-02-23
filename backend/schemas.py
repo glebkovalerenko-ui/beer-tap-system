@@ -111,6 +111,23 @@ class Visit(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+
+
+class VisitAssignCardRequest(BaseModel):
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+
+
+class VisitActiveListItem(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: str
+    balance: Decimal
+    status: str
+    card_uid: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    opened_at: datetime
+
 class VisitPourAuthorizeRequest(BaseModel):
     card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})
     tap_id: int = Field(..., ge=1, json_schema_extra={'example': 1})

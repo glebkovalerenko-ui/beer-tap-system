@@ -180,6 +180,24 @@ pub struct VisitOpenPayload {
     pub card_uid: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VisitActiveListItem {
+    pub visit_id: String,
+    pub guest_id: String,
+    pub guest_full_name: String,
+    pub phone_number: String,
+    pub balance: String,
+    pub status: String,
+    pub card_uid: Option<String>,
+    pub active_tap_id: Option<i32>,
+    pub opened_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitAssignCardPayload {
+    pub card_uid: String,
+}
+
 // --- Kegs, Taps, Beverages ---
 
 // --- ИЗМЕНЕНИЕ: Структура Beverage расширена до полного соответствия схеме API ---
@@ -538,9 +556,39 @@ pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload)
 }
 
 // --- Visit Functions ---
+pub async fn get_active_visits(token: &str) -> Result<Vec<VisitActiveListItem>, String> {
+    let url = format!("{}/visits/active", API_BASE_URL);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Vec<VisitActiveListItem>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 pub async fn search_active_visit(token: &str, query: &str) -> Result<Visit, String> {
     let url = format!("{}/visits/active/search", API_BASE_URL);
     let response = CLIENT.get(&url).query(&[("q", query)]).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn open_visit(token: &str, payload: &VisitOpenPayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/open", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn assign_card_to_visit(token: &str, visit_id: &str, payload: &VisitAssignCardPayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/{}/assign-card", API_BASE_URL, visit_id);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Visit>().await.map_err(|e| e.to_string())
     } else {

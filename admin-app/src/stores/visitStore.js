@@ -3,11 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
 
 function createVisitStore() {
-  const { subscribe, set, update } = writable({
+  const { subscribe, update } = writable({
+    activeVisits: [],
     currentVisit: null,
     loading: false,
     error: null,
-    notFound: false,
   });
 
   const withAuth = () => {
@@ -20,35 +20,47 @@ function createVisitStore() {
     subscribe,
 
     clearCurrentVisit: () => {
-      update((s) => ({ ...s, currentVisit: null, error: null, notFound: false }));
+      update((s) => ({ ...s, currentVisit: null, error: null }));
     },
 
-    searchActiveVisit: async (query) => {
+    fetchActiveVisits: async () => {
       const token = withAuth();
-      update((s) => ({ ...s, loading: true, error: null, notFound: false }));
+      update((s) => ({ ...s, loading: true, error: null }));
       try {
-        const visit = await invoke('search_active_visit', { token, query });
-        set({ currentVisit: visit, loading: false, error: null, notFound: false });
-        return visit;
+        const activeVisits = await invoke('get_active_visits', { token });
+        update((s) => ({ ...s, activeVisits, loading: false }));
+        return activeVisits;
       } catch (error) {
         const message = error?.message || error?.toString?.() || 'Unknown error';
-        if (message.toLowerCase().includes('active visit not found') || message.includes('404')) {
-          set({ currentVisit: null, loading: false, error: null, notFound: true });
-          return null;
-        }
-        set({ currentVisit: null, loading: false, error: message, notFound: false });
+        update((s) => ({ ...s, loading: false, error: message }));
         throw error;
       }
     },
 
-
+    setCurrentVisit: (visit) => {
+      update((s) => ({ ...s, currentVisit: visit }));
+    },
 
     openVisit: async ({ guestId, cardUid = undefined }) => {
       const token = withAuth();
-      update((s) => ({ ...s, loading: true, error: null, notFound: false }));
+      update((s) => ({ ...s, loading: true, error: null }));
       try {
         const payload = cardUid ? { token, guestId, cardUid } : { token, guestId };
         const visit = await invoke('open_visit', payload);
+        update((s) => ({ ...s, currentVisit: visit, loading: false }));
+        return visit;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw error;
+      }
+    },
+
+    assignCardToVisit: async ({ visitId, cardUid }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const visit = await invoke('assign_card_to_visit', { token, visitId, cardUid });
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {

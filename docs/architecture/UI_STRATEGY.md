@@ -36,3 +36,8 @@ For visit workflows this means:
 ## Forward impact (M4–M6)
 Upcoming milestones (offline sync handling, shift authority, security hardening) will affect UX flows.
 Therefore, current UI should remain lean and adaptable while preserving clear functional hierarchy.
+
+
+## Follow-up UX flows
+- **Issue Card / Bind Card** remains a dedicated subsequent UX flow.
+- M3.5 covers only visit open and operational actions from visit context.

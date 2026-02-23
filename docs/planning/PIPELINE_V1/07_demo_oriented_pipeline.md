@@ -178,6 +178,10 @@ Out of scope (intentionally):
 - Force unlock requires reason and is executable from visit card.
 - Visit can be closed from visit card.
 
+**Ограничения M3.5**
+- Выдача новой карты при открытии визита (Issue Card) не реализована; в UI оставлена заглушка.
+- Flow `Выдать карту` будет реализован следующим шагом после M3.5 как отдельный сценарий.
+
 ---
 
 ## M4 — Minimal deterministic offline sync + manual close/reconcile (pilot scope)
