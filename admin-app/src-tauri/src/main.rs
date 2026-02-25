@@ -51,7 +51,7 @@ struct CardStatusPayload {
 // --- Команды для работы с NFC ---
 #[tauri::command]
 fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
-    // ... (Р±РµР· изменений)
+    // ... (без изменений)
     info!("[COMMAND] Запрос списка считывателей...");
     let readers_vec = nfc_handler::list_readers_internal(&state.context)?;
     info!("[COMMAND] Найдено считывателей: {}", readers_vec.len());
@@ -60,7 +60,7 @@ fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
 
 #[tauri::command]
 fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, state: State<AppState> ) -> Result<String, AppError> {
-    // ... (Р±РµР· изменений)
+    // ... (без изменений)
     info!("[COMMAND] Запрос на чтение блока {}", block_addr);
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
     let read_apdu = &[0xFF, 0xB0, 0x00, block_addr, 0x10];
@@ -76,11 +76,11 @@ fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex
 
 #[tauri::command]
 fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, data_hex: &str, state: State<AppState> ) -> Result<(), AppError> {
-    // ... (Р±РµР· изменений)
+    // ... (без изменений)
     info!("[COMMAND] Запрос на запись в блок {}. Данные: {}", block_addr, data_hex);
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
     let data = hex::decode(data_hex)?;
-    if data.len() != 16 { return Err("Данные для записи должны быть 16 Р±Р°Р№С‚".into()); }
+    if data.len() != 16 { return Err("Данные для записи должны быть 16 байт".into()); }
     let mut write_apdu = vec![0xFF, 0xD6, 0x00, block_addr, 0x10];
     write_apdu.extend_from_slice(&data);
     let mut rapdu_buf = [0; 256];
@@ -94,14 +94,14 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
 
 #[tauri::command]
 fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_key_hex: &str, new_key_a: &str, new_key_b: &str, state: State<AppState>) -> Result<(), AppError> {
-    // ... (Р±РµР· изменений)
+    // ... (без изменений)
     info!("[COMMAND] Запрос на смену ключей для сектора {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
     let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, trailer_block_addr, key_type, current_key_hex)?;
     let new_key_a_bytes = hex::decode(new_key_a)?;
     let new_key_b_bytes = hex::decode(new_key_b)?;
     if new_key_a_bytes.len() != 6 || new_key_b_bytes.len() != 6 {
-        return Err("Новые ключи должны быть длиной 6 Р±Р°Р№С‚ (12 HEX)".into());
+        return Err("Новые ключи должны быть длиной 6 байт (12 HEX)".into());
     }
     let access_bits: [u8; 4] = [0xFF, 0x07, 0x80, 0x69]; 
     let mut new_trailer_data: Vec<u8> = Vec::with_capacity(16);
@@ -304,7 +304,7 @@ async fn reconcile_pour(
 // =============================================================================
 
 fn main() {
-    // ... (panic_hook и PC/SC context Р±РµР· изменений)
+    // ... (panic_hook и PC/SC context без изменений)
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         error!("!!! THREAD PANICKED !!!: {}", panic_info);
@@ -324,7 +324,7 @@ fn main() {
             .level(log::LevelFilter::Debug)
             .build())
         .manage(AppState { context: Arc::clone(&context) })
-        // --- РР—РњР•РќР•РќРР•: Добавлены новые команды в обработчик ---
+        // --- ИЗМЕНЕНИЕ: Добавлены новые команды в обработчик ---
         .invoke_handler(tauri::generate_handler![
             // NFC
             list_readers,
@@ -364,28 +364,28 @@ fn main() {
             reconcile_pour
         ])
         .setup(move |app| {
-            // ... (фоновый поток NFC Р±РµР· изменений)
+            // ... (фоновый поток NFC без изменений)
             let app_handle = app.handle().clone();
             let context_clone = Arc::clone(&context);
             
             info!("Запуск фонового потока для мониторинга карт...");
             // Вставь этот код вместо старого thread::spawn
             thread::spawn(move || {
-                let mut last_payload_json = String::new(); // РРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚СЊ события на фронтенде
+                let mut last_payload_json = String::new(); // Идемпотентность события на фронтенде
 
                 loop {
                     let payload = match nfc_handler::list_readers_internal(&context_clone) {
-                        // ШАБЛОН: Р идеры найдены и список НЕ пуст
+                        // ШАБЛОН: Ридеры найдены и список НЕ пуст
                         Ok(mut names) if !names.is_empty() => {
                             let reader_name = names.remove(0);
-                            // Р идер найден. Пытаемся прочитать карту.
+                            // Ридер найден. Пытаемся прочитать карту.
                             match nfc_handler::get_card_uid_internal(&context_clone, &reader_name) {
                                 Ok(uid_bytes) => {
                                     // Карта найдена.
                                     CardStatusPayload { uid: Some(hex::encode(uid_bytes)), error: None }
                                 },
                                 Err(pcsc::Error::NoSmartcard) | Err(pcsc::Error::RemovedCard) => {
-                                    // Р идер есть, но карты нет (или убрали). Это штатный, "рабочий" статус.
+                                    // Ридер есть, но карты нет (или убрали). Это штатный, "рабочий" статус.
                                     CardStatusPayload { uid: None, error: None }
                                 },
                                 Err(e) => {
@@ -395,14 +395,14 @@ fn main() {
                                 }
                             }
                         },
-                        // +++ НОВЫЙ ШАБЛОН: Р идеры найдены, но список ПУСТ (логически невозможно, но Rust требует)
+                        // +++ НОВЫЙ ШАБЛОН: Ридеры найдены, но список ПУСТ (логически невозможно, но Rust требует)
                         Ok(_) => {
                             error!("Ошибка: список ридеров пуст, хотя контекст ОК.");
                             CardStatusPayload { uid: None, error: Some("Считыватель не найден.".to_string()) }
                         }
-                        // ШАБЛОН: Р идер не найден из-за ошибки PC/SC
+                        // ШАБЛОН: Ридер не найден из-за ошибки PC/SC
                         Err(e) => {
-                            // Р идер не найден или глобальная ошибка контекста.
+                            // Ридер не найден или глобальная ошибка контекста.
                             error!("Глобальная ошибка PC/SC: {}", e);
                             CardStatusPayload { uid: None, error: Some("Считыватель не найден.".to_string()) }
                         }

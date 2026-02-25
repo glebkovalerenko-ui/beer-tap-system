@@ -79,9 +79,9 @@ Create a new guest account.
 **Request Body:**
 ```json
 {
-  "last_name": "РРІР°РЅРѕРІ",
-  "first_name": "РРІР°РЅ",
-  "patronymic": "РРІР°РЅРѕРІРёС‡",
+  "last_name": "Иванов",
+  "first_name": "Иван",
+  "patronymic": "Иванович",
   "phone_number": "+79211234567",
   "date_of_birth": "1990-01-15",
   "id_document": "4510 123456"

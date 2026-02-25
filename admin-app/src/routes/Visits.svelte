@@ -230,8 +230,8 @@
     {#if openFlowVisible}
       <div class="open-flow">
         <h2>Открытие визита</h2>
-        <p class="hint">Найдите гостя по Р¤РРћ или телефону и выберите его из списка.</p>
-        <input type="text" bind:value={guestQuery} placeholder="Р¤РРћ / телефон" />
+        <p class="hint">Найдите гостя по ФИО или телефону и выберите его из списка.</p>
+        <input type="text" bind:value={guestQuery} placeholder="ФИО / телефон" />
 
         {#if guestQuery.trim() && openCandidates.length === 0}
           <p class="not-found">Гость не найден</p>
@@ -263,7 +263,7 @@
         <h2>Список активных визитов</h2>
         <button on:click={refreshVisits} disabled={$visitStore.loading}>Обновить</button>
       </div>
-      <input type="text" bind:value={filterQuery} placeholder="Фильтр: Р¤РРћ / телефон / карта / ID визита" />
+      <input type="text" bind:value={filterQuery} placeholder="Фильтр: ФИО / телефон / карта / ID визита" />
 
       {#if $visitStore.loading && $visitStore.activeVisits.length === 0}
         <p>Загрузка активных визитов...</p>
@@ -275,7 +275,7 @@
             <button class="visit-item" on:click={() => selectVisit(item)}>
               <div><strong>{item.guest_full_name}</strong></div>
               <div>{item.phone_number}</div>
-              <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Р‘РµР· карты'}</div>
+              <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Без карты'}</div>
               {#if item.active_tap_id}
                 <div class="sync-indicator">processing_sync (tap {item.active_tap_id})</div>
               {/if}

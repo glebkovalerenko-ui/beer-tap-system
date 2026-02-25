@@ -1,15 +1,15 @@
 # Interface Contract
 
-**РСЃС‚РѕС‡РЅРёРє правды:** `admin-app/src-tauri/src/lib.rs`, `admin-app/src-tauri/src/main.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
+**Источник правды:** `admin-app/src-tauri/src/lib.rs`, `admin-app/src-tauri/src/main.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
 
 **Версия:** 1.0  
-**Р”Р°С‚Р°:** 2026-02-17
+**Дата:** 2026-02-17
 
 ## Архитектура взаимодействия
 
 ```
 Svelte 5 Frontend в†ђв†’ Tauri 2.0 (Rust) в†ђв†’ FastAPI Backend
-     в†“                    в†“                    в†“
+     ↓                    ↓                    ↓
   Stores            Commands          HTTP Endpoints
 ```
 
@@ -119,11 +119,11 @@ const handleEvent = (payload) => {
 | Сценарий | UID | Error | Status | Описание |
 |----------|-----|-------|--------|----------|
 | Карта на ридере | HEX string | null | 'ok' | Карта обнаружена и прочитана |
-| Р идер пуст | null | null | 'ok' | Р идер доступен, карты нет |
+| Ридер пуст | null | null | 'ok' | Ридер доступен, карты нет |
 | Ошибка PC/SC | null | string | 'error' | Аппаратная ошибка ридера |
-| Р идер не найден | null | "Считыватель не найден" | 'error' | Р идер отключен |
+| Ридер не найден | null | "Считыватель не найден" | 'error' | Ридер отключен |
 
-#### РРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚СЊ:
+#### Идемпотентность:
 
 Событие отправляется только при изменении payload. Сравнение происходит через JSON сериализацию:
 
@@ -138,12 +138,12 @@ if current_payload_json != last_payload_json {
 
 ### Публичные эндпоинты (для RPi)
 
-| Endpoint | Method | Описание | РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ |
+| Endpoint | Method | Описание | Использование |
 |----------|--------|----------|---------------|
 | `/api/token` | POST | Аутентификация | Получение JWT токена |
 | `/api/system/status` | GET | Статус экстренной остановки | Опрос RPi контроллерами |
 | `/api/guests/{id}` | GET | Получение гостя по ID | RPi для проверки баланса |
-| `/api/controllers/register` | POST | Р егистрация контроллера | Check-in RPi контроллеров |
+| `/api/controllers/register` | POST | Регистрация контроллера | Check-in RPi контроллеров |
 | `/api/sync/pours` | POST | Синхронизация наливов | Отправка данных о наливах |
 
 **Особенности:**
@@ -160,7 +160,7 @@ if current_payload_json != last_payload_json {
 - `PUT /api/guests/{id}` - Обновление гостя
 - `POST /api/guests/{id}/cards` - Привязка карты
 - `POST /api/guests/{id}/topup` - Пополнение баланса
-- `GET /api/guests/{id}/history` - РСЃС‚РѕСЂРёСЏ операций
+- `GET /api/guests/{id}/history` - История операций
 
 #### Kegs API
 - `GET /api/kegs/` - Список кег
@@ -184,25 +184,25 @@ if current_payload_json != last_payload_json {
 
 #### Cards API
 - `GET /api/cards/` - Список всех карт
-- `POST /api/cards/` - Р егистрация карты
-- `PUT /api/cards/{uid}/status` - РР·РјРµРЅРµРЅРёРµ статуса карты
+- `POST /api/cards/` - Регистрация карты
+- `PUT /api/cards/{uid}/status` - Изменение статуса карты
 
 #### Pours API
-- `GET /api/pours/` - РСЃС‚РѕСЂРёСЏ наливов
+- `GET /api/pours/` - История наливов
 
 ## 4. Потоки данных
 
 ### Аутентификация:
 ```
 UI в†’ sessionStore в†’ invoke('login') в†’ api_client::login() в†’ POST /api/token
-                                            в†“
+                                            ↓
 UI в†ђ sessionStore в†ђ JWT токен в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
 ### CRUD операции:
 ```
 UI в†’ store в†’ invoke('command') в†’ api_client::function() в†’ HTTP endpoint
-                                            в†“
+                                            ↓
 UI в†ђ store в†ђ Обновленные данные в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
@@ -265,7 +265,7 @@ thread::sleep(Duration::from_millis(500));
 
 Следующие публичные эндпоинты требуют заголовок `X-Internal-Token` для аутентификации RPi контроллеров:
 
-- `POST /api/controllers/register` - Р егистрация контроллера
+- `POST /api/controllers/register` - Регистрация контроллера
 - `POST /api/sync/pours` - Синхронизация наливов
 
 ### Формат заголовка

@@ -6,7 +6,7 @@ The project had mojibake UI text and hidden Unicode control characters. This che
 
 `scripts/encoding_guard.py` scans for:
 - files that are not valid UTF-8,
-- mojibake markers (`РІР‚`, `Р Сџ`, `Р С’`, `Гѓ`, `Г‚`, `пїЅ`, etc.),
+- mojibake signatures (broken UTF-8/cp1251 mixes, replacement chars, corrupted Cyrillic pairs),
 - Unicode bidi/control characters (`Cf` + common bidi controls).
 
 ## Install Git hooks

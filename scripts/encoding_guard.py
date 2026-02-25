@@ -37,16 +37,28 @@ MOJIBAKE_MARKERS = [
     "\u0432\u0402",
     "\u0420\u045f",
     "\u0420\u0452",
+    "\u0420\u00A4",
+    "\u0420\u0098",
+    "\u0420\u009E",
+    "\u0420\u00B0",
+    "\u0420\u00B5",
+    "\u0420\u00BE",
+    "\u0420\u00B8",
     "\u0420\u0404",
     "\u0420\u040e",
     "\u0420\u040b",
     "\u0420\u040f",
+    "\u00d0",
+    "\u00d1",
     "\u00c3",
     "\u00c2",
     "\ufffd",
 ]
 
 R_LATIN_RE = re.compile(r"\u0420[A-Za-z]|[A-Za-z]\u0420")
+R_OR_S_NON_CYRILLIC_RE = re.compile(
+    r"[\u0420\u0421][\u0080-\u00BF\u00D0\u00D1\u00C2\u00C3\u2018\u2019\u201A\u201C\u201D\u2013\u2014]"
+)
 
 # Explicit bidi controls + direction marks commonly abused in trojan source.
 BIDI_CONTROL_POINTS = set(range(0x202A, 0x202F))
@@ -96,6 +108,10 @@ def collect_issues(root: Path) -> list[tuple[Path, int, int, str, str]]:
                 match = R_LATIN_RE.search(line)
                 if match:
                     issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р' next to Latin"))
+
+                match = R_OR_S_NON_CYRILLIC_RE.search(line)
+                if match:
+                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р/С + non-cyrillic' sequence"))
 
             for col_no, ch in enumerate(line, start=1):
                 code = ord(ch)
