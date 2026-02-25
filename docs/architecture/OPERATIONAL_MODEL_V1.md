@@ -135,6 +135,7 @@ Rules:
 - One guest = one active visit.
 - One visit = one active card.
 - Card is deactivated when visit closes.
+- When a visit closes with card returned, card ownership is released (`cards.guest_id = NULL`) so the card can be issued to the next guest.
 - Active visits prevent shift closure.
 
 ---

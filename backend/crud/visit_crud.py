@@ -243,6 +243,8 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
         card = db.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
         if card:
             card.status = "inactive"
+            if card_returned:
+                card.guest_id = None
 
     db.commit()
     db.refresh(visit)
