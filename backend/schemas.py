@@ -263,6 +263,7 @@ class SyncRequest(BaseModel):
 class SyncResult(BaseModel):
     client_tx_id: str
     status: str
+    outcome: Optional[str] = None
     reason: Optional[str] = None
 
 class SyncResponse(BaseModel):

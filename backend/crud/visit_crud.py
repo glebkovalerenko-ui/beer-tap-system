@@ -89,10 +89,10 @@ def _get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: in
     )
 
 
-def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_id: int):
+def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_id: int) -> str:
     existing = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
     if existing:
-        return existing
+        return "pending_exists"
 
     tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if not tap or not tap.keg_id:
@@ -116,7 +116,7 @@ def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_
             is_manual_reconcile=False,
         )
     )
-    return None
+    return "pending_created"
 
 
 def get_active_visits_list(db: Session):
@@ -239,11 +239,11 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if tap and tap.status == "active":
         tap.status = "processing_sync"
-    _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
+    pending_outcome = _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
 
     db.commit()
     db.refresh(active_visit)
-    return active_visit
+    return active_visit, pending_outcome
 
 
 def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: str | None, actor_id: str):

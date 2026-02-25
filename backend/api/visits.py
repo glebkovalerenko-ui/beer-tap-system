@@ -1,18 +1,21 @@
+import logging
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 import schemas
 import security
 from crud import visit_crud
 from database import get_db
+from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 
 router = APIRouter(
     prefix="/visits",
     tags=["Visits"],
 )
+logger = logging.getLogger("m4.runtime.authorize")
 
 
 @router.post("/open", response_model=schemas.Visit, summary="Open active visit")
@@ -42,14 +45,54 @@ def close_visit(
 @router.post("/authorize-pour", response_model=schemas.VisitPourAuthorizeResponse, summary="Authorize pour and set active tap lock")
 def authorize_pour(
     payload: schemas.VisitPourAuthorizeRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    visit = visit_crud.authorize_pour_lock(
-        db=db,
-        card_uid=payload.card_uid,
-        tap_id=payload.tap_id,
-        actor_id=current_user["username"] if current_user else "operator",
+    request_id = get_request_id(request)
+    db_identity = get_db_identity(db)
+    alembic_revision = get_alembic_revision(db)
+    actor_id = current_user["username"] if current_user else "operator"
+
+    try:
+        visit, pending_outcome = visit_crud.authorize_pour_lock(
+            db=db,
+            card_uid=payload.card_uid,
+            tap_id=payload.tap_id,
+            actor_id=actor_id,
+        )
+    except HTTPException as exc:
+        outcome = "authorize_rejected"
+        if exc.status_code == status.HTTP_409_CONFLICT and isinstance(exc.detail, str):
+            if exc.detail.startswith("No active visit for Card "):
+                outcome = "rejected_no_active_visit"
+            elif exc.detail.startswith("Card already in use on Tap "):
+                outcome = "rejected_tap_mismatch"
+
+        logger.warning(
+            "authorize_pour request_id=%s db_identity=%s alembic_revision=%s actor=%s card_uid=%s tap_id=%s outcome=%s status_code=%s detail=%s",
+            request_id,
+            db_identity,
+            alembic_revision,
+            actor_id,
+            payload.card_uid,
+            payload.tap_id,
+            outcome,
+            exc.status_code,
+            exc.detail,
+        )
+        raise
+
+    logger.info(
+        "authorize_pour request_id=%s db_identity=%s alembic_revision=%s actor=%s card_uid=%s tap_id=%s visit_id=%s outcome=%s",
+        request_id,
+        db_identity,
+        alembic_revision,
+        actor_id,
+        payload.card_uid,
+        payload.tap_id,
+        visit.visit_id,
+        pending_outcome,
     )
     return schemas.VisitPourAuthorizeResponse(allowed=True, visit=visit)
 
