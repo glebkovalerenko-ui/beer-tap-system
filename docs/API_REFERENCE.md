@@ -1,4 +1,4 @@
-﻿# Beer Tap System API Reference
+# Beer Tap System API Reference
 
 ## Overview
 
@@ -106,9 +106,9 @@ Update guest information.
 **Request Body:**
 ```json
 {
-  "last_name": "РџРµС‚СЂРѕРІ",
-  "first_name": "РџРµС‚СЂ",
-  "patronymic": "РџРµС‚СЂРѕРІРёС‡",
+  "last_name": "Петров",
+  "first_name": "Петр",
+  "patronymic": "Петрович",
   "phone_number": "+79217654321",
   "date_of_birth": "1991-02-16",
   "id_document": "4511 654321",
@@ -192,7 +192,7 @@ Create a new tap.
 **Request Body:**
 ```json
 {
-  "display_name": "РљСЂР°РЅ в„–1"
+  "display_name": "Кран в„–1"
 }
 ```
 
@@ -214,7 +214,7 @@ Update tap information.
 **Request Body:**
 ```json
 {
-  "display_name": "РљСЂР°РЅ в„–1 (РѕР±РЅРѕРІР»РµРЅРЅС‹Р№)",
+  "display_name": "Кран в„–1 (обновленный)",
   "status": "active"
 }
 ```

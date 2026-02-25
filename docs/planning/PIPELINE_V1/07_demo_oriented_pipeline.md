@@ -1,4 +1,4 @@
-﻿# Pilot-Ready Demo Pipeline вЂ” OPERATIONAL_MODEL_V1 Alignment
+# Pilot-Ready Demo Pipeline — OPERATIONAL_MODEL_V1 Alignment
 
 ## 1) Executive Summary
 
@@ -28,7 +28,7 @@ Out of scope (intentionally):
 
 ## 2) Refined Milestones (Pilot-Ready)
 
-## M1 вЂ” Migration baseline + additive schema guardrails
+## M1 — Migration baseline + additive schema guardrails
 **Goal**
 - Introduce real migration discipline before pilot-critical behavior changes.
 
@@ -66,7 +66,7 @@ Out of scope (intentionally):
 
 ---
 
-## M2 вЂ” Visit model as invariant root
+## M2 — Visit model as invariant root
 **Goal**
 - Make Visit the canonical operational session.
 
@@ -103,7 +103,7 @@ Out of scope (intentionally):
 
 ---
 
-## M3 вЂ” Active tap lock semantics (anti-simultaneous usage)
+## M3 — Active tap lock semantics (anti-simultaneous usage)
 **Goal**
 - Enforce anti-cloning behavior in real-time authorization.
 
@@ -126,7 +126,7 @@ Out of scope (intentionally):
 - Replace list-scan card auth with backend authorization call.
 
 **Admin UI changes**
-- Read-only lock indicator (e.g., вЂњCard in use on Tap XвЂќ).
+- Read-only lock indicator (e.g., “Card in use on Tap X”).
 
 **Operational risk level**
 - **High** (lock lifecycle consistency).
@@ -140,7 +140,7 @@ Out of scope (intentionally):
 
 ---
 
-## M3.5 вЂ” Visit-Centric Operator UI (Functional Layer)
+## M3.5 — Visit-Centric Operator UI (Functional Layer)
 **Goal**
 - Make visit the operational center of operator workflows in admin-app.
 
@@ -178,13 +178,13 @@ Out of scope (intentionally):
 - Force unlock requires reason and is executable from visit card.
 - Visit can be closed from visit card.
 
-**РћРіСЂР°РЅРёС‡РµРЅРёСЏ M3.5**
-- Р’С‹РґР°С‡Р° РЅРѕРІРѕР№ РєР°СЂС‚С‹ РїСЂРё РѕС‚РєСЂС‹С‚РёРё РІРёР·РёС‚Р° (Issue Card) РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅР°; РІ UI РѕСЃС‚Р°РІР»РµРЅР° Р·Р°РіР»СѓС€РєР°.
-- Flow `Р’С‹РґР°С‚СЊ РєР°СЂС‚Сѓ` Р±СѓРґРµС‚ СЂРµР°Р»РёР·РѕРІР°РЅ СЃР»РµРґСѓСЋС‰РёРј С€Р°РіРѕРј РїРѕСЃР»Рµ M3.5 РєР°Рє РѕС‚РґРµР»СЊРЅС‹Р№ СЃС†РµРЅР°СЂРёР№.
+**Ограничения M3.5**
+- Выдача новой карты при открытии визита (Issue Card) не реализована; в UI оставлена заглушка.
+- Flow `Выдать карту` будет реализован следующим шагом после M3.5 как отдельный сценарий.
 
 ---
 
-## M4 вЂ” Minimal deterministic offline sync + manual close/reconcile (pilot scope)
+## M4 — Minimal deterministic offline sync + manual close/reconcile (pilot scope)
 **Goal**
 - Handle network loss safely without building a complex reconciliation engine.
 
@@ -201,7 +201,7 @@ Out of scope (intentionally):
    - controller retries sync,
    - backend keeps card locked (`active_tap_id` not cleared) until sync/reconcile,
    - new pours on other taps are blocked by design.
-3. If sync does not complete within timeout window (target 1вЂ“5 minutes):
+3. If sync does not complete within timeout window (target 1–5 minutes):
    - tap remains `processing_sync`,
    - controller UI shows `volume_ml`, `cost`, and short pour identifier (e.g., 6-digit code),
    - staff may manually enter this pour in POS/admin terminal to unlock continued use.
@@ -245,7 +245,7 @@ Out of scope (intentionally):
 
 ---
 
-## M5 вЂ” Backend-backed Shift lifecycle (minimal daily discipline)
+## M5 — Backend-backed Shift lifecycle (minimal daily discipline)
 **Goal**
 - Introduce daily operational discipline before security enhancements.
 
@@ -285,7 +285,7 @@ Out of scope (intentionally):
 
 ---
 
-## M6 вЂ” Simplified LostCard registry + enforcement
+## M6 — Simplified LostCard registry + enforcement
 **Goal**
 - Add pragmatic card-loss abuse prevention for pilot operation.
 
@@ -307,7 +307,7 @@ Out of scope (intentionally):
 - Show clear deny reason and keep valve closed.
 
 **Admin UI changes**
-- вЂњReport Lost CardвЂќ action + basic list.
+- “Report Lost Card” action + basic list.
 
 **Operational risk level**
 - **Med**.
@@ -321,7 +321,7 @@ Out of scope (intentionally):
 
 ---
 
-## M7 вЂ” FIFO keg suggestion + POSAdapter boundary (stub mode)
+## M7 — FIFO keg suggestion + POSAdapter boundary (stub mode)
 **Goal**
 - Complete pilot demo story: inventory guidance + POS-ready architecture seam.
 
@@ -352,7 +352,7 @@ Out of scope (intentionally):
 - **Low-Med**.
 
 **Demo value gained**
-- вЂњPOS-ready, not POS-dependentвЂќ positioning.
+- “POS-ready, not POS-dependent” positioning.
 
 **Acceptance criteria**
 - FIFO suggestion deterministic for same beer type candidates.
@@ -363,13 +363,13 @@ Out of scope (intentionally):
 ## Safe rollout order and feature flags
 
 ## Safe rollout order
-1. M1 вЂ” Migration baseline
-2. M2 вЂ” Visit model
-3. M3 вЂ” Active tap lock
-4. M4 вЂ” Offline sync + manual close/reconcile
-5. M5 вЂ” Backend Shift lifecycle
-6. M6 вЂ” LostCard enforcement
-7. M7 вЂ” FIFO + POSAdapter stub
+1. M1 — Migration baseline
+2. M2 — Visit model
+3. M3 — Active tap lock
+4. M4 — Offline sync + manual close/reconcile
+5. M5 — Backend Shift lifecycle
+6. M6 — LostCard enforcement
+7. M7 — FIFO + POSAdapter stub
 
 ## Recommended feature flags
 - `FF_VISIT_ENFORCEMENT` (M2)

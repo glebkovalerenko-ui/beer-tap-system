@@ -1,4 +1,4 @@
-﻿<script>
+<script>
   import { onMount } from 'svelte';
   import { visitStore } from '../stores/visitStore.js';
   import { uiStore } from '../stores/uiStore.js';
@@ -35,7 +35,7 @@
   $: suggestManualReconcile = lockAgeSeconds >= 60;
 
   const fullName = (guestLike) => {
-    if (!guestLike) return 'вЂ”';
+    if (!guestLike) return '—';
     if (guestLike.guest_full_name) return guestLike.guest_full_name;
     return [guestLike.last_name, guestLike.first_name, guestLike.patronymic].filter(Boolean).join(' ');
   };
@@ -89,10 +89,10 @@
       const opened = await visitStore.openVisit({ guestId: guest.guest_id });
       visitStore.setCurrentVisit(opened);
       await refreshVisits();
-      uiStore.notifySuccess('Р’РёР·РёС‚ РѕС‚РєСЂС‹С‚.');
+      uiStore.notifySuccess('Визит открыт.');
       openFlowVisible = false;
     } catch (error) {
-      const message = error?.message || error?.toString?.() || 'РћС€РёР±РєР° РѕС‚РєСЂС‹С‚РёСЏ РІРёР·РёС‚Р°';
+      const message = error?.message || error?.toString?.() || 'Ошибка открытия визита';
       openFlowError = message;
     }
   }
@@ -111,7 +111,7 @@
     actionError = '';
     if (!visit) return;
     if (!forceUnlockReason.trim()) {
-      uiStore.notifyWarning('РџСЂРёС‡РёРЅР° РѕР±СЏР·Р°С‚РµР»СЊРЅР° РґР»СЏ СЃРЅСЏС‚РёСЏ Р±Р»РѕРєРёСЂРѕРІРєРё.');
+      uiStore.notifyWarning('Причина обязательна для снятия блокировки.');
       return;
     }
 
@@ -123,11 +123,11 @@
       });
       visitStore.setCurrentVisit(updated);
       await refreshVisits();
-      uiStore.notifySuccess('Р‘Р»РѕРєРёСЂРѕРІРєР° СЃРЅСЏС‚Р°.');
+      uiStore.notifySuccess('Блокировка снята.');
       forceUnlockReason = '';
       forceUnlockComment = '';
     } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'РћС€РёР±РєР° СЃРЅСЏС‚РёСЏ Р±Р»РѕРєРёСЂРѕРІРєРё';
+      actionError = error?.message || error?.toString?.() || 'Ошибка снятия блокировки';
     }
   }
 
@@ -143,9 +143,9 @@
       });
       visitStore.setCurrentVisit(closed);
       await refreshVisits();
-      uiStore.notifySuccess('Р’РёР·РёС‚ Р·Р°РєСЂС‹С‚.');
+      uiStore.notifySuccess('Визит закрыт.');
     } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'РћС€РёР±РєР° Р·Р°РєСЂС‹С‚РёСЏ РІРёР·РёС‚Р°';
+      actionError = error?.message || error?.toString?.() || 'Ошибка закрытия визита';
     }
   }
 
@@ -192,9 +192,9 @@
     try {
       await visitStore.assignCardToVisit({ visitId: visit.visit_id, cardUid: event.detail.uid });
       await refreshVisits();
-      uiStore.notifySuccess('РљР°СЂС‚Р° СѓСЃРїРµС€РЅРѕ РїСЂРёРІСЏР·Р°РЅР° Рє РІРёР·РёС‚Сѓ.');
+      uiStore.notifySuccess('Карта успешно привязана к визиту.');
     } catch (error) {
-      nfcError = error?.message || error?.toString?.() || 'РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРІСЏР·Р°С‚СЊ РєР°СЂС‚Сѓ Рє РІРёР·РёС‚Сѓ';
+      nfcError = error?.message || error?.toString?.() || 'Не удалось привязать карту к визиту';
     }
   }
 
@@ -210,31 +210,31 @@
       await guestStore.topUpBalance(visit.guest_id, event.detail);
       await refreshVisits();
       isTopUpModalOpen = false;
-      uiStore.notifySuccess(`Р‘Р°Р»Р°РЅСЃ РїРѕРїРѕР»РЅРµРЅ РЅР° ${event.detail.amount}`);
+      uiStore.notifySuccess(`Баланс пополнен на ${event.detail.amount}`);
     } catch (error) {
-      topUpError = error?.message || error?.toString?.() || 'РћС€РёР±РєР° РїРѕРїРѕР»РЅРµРЅРёСЏ Р±Р°Р»Р°РЅСЃР°';
+      topUpError = error?.message || error?.toString?.() || 'Ошибка пополнения баланса';
     }
   }
 </script>
 
 {#if !$roleStore.permissions.guests}
   <section class="access-denied ui-card">
-    <h2>Р”РѕСЃС‚СѓРї РѕРіСЂР°РЅРёС‡РµРЅ</h2>
-    <p>РўРµРєСѓС‰Р°СЏ СЂРѕР»СЊ РЅРµ РїСЂРµРґСѓСЃРјР°С‚СЂРёРІР°РµС‚ СЂР°Р±РѕС‚Сѓ СЃ РІРёР·РёС‚Р°РјРё.</p>
+    <h2>Доступ ограничен</h2>
+    <p>Текущая роль не предусматривает работу с визитами.</p>
   </section>
 {:else}
   <section class="ui-card open-section">
-    <h1>РђРєС‚РёРІРЅС‹Рµ РІРёР·РёС‚С‹</h1>
-    <button class="primary-open" on:click={startOpenFlow}>РћС‚РєСЂС‹С‚СЊ РЅРѕРІС‹Р№ РІРёР·РёС‚</button>
+    <h1>Активные визиты</h1>
+    <button class="primary-open" on:click={startOpenFlow}>Открыть новый визит</button>
 
     {#if openFlowVisible}
       <div class="open-flow">
-        <h2>РћС‚РєСЂС‹С‚РёРµ РІРёР·РёС‚Р°</h2>
-        <p class="hint">РќР°Р№РґРёС‚Рµ РіРѕСЃС‚СЏ РїРѕ Р¤РРћ РёР»Рё С‚РµР»РµС„РѕРЅСѓ Рё РІС‹Р±РµСЂРёС‚Рµ РµРіРѕ РёР· СЃРїРёСЃРєР°.</p>
-        <input type="text" bind:value={guestQuery} placeholder="Р¤РРћ / С‚РµР»РµС„РѕРЅ" />
+        <h2>Открытие визита</h2>
+        <p class="hint">Найдите гостя по Р¤РРћ или телефону и выберите его из списка.</p>
+        <input type="text" bind:value={guestQuery} placeholder="Р¤РРћ / телефон" />
 
         {#if guestQuery.trim() && openCandidates.length === 0}
-          <p class="not-found">Р“РѕСЃС‚СЊ РЅРµ РЅР°Р№РґРµРЅ</p>
+          <p class="not-found">Гость не найден</p>
         {/if}
 
         {#if openCandidates.length > 0}
@@ -242,13 +242,13 @@
             {#each openCandidates as candidate}
               <button class="candidate-item" on:click={() => openVisitWithoutCard(candidate)} disabled={$visitStore.loading}>
                 <div><strong>{fullName(candidate)}</strong></div>
-                <div>{candidate.phone_number} В· Р‘Р°Р»Р°РЅСЃ: {candidate.balance}</div>
+                <div>{candidate.phone_number} В· Баланс: {candidate.balance}</div>
               </button>
             {/each}
           </div>
         {/if}
 
-        <button disabled title="Р’С‹РґР°С‡Р° РєР°СЂС‚С‹ Р±СѓРґРµС‚ РґРѕР±Р°РІР»РµРЅР° РѕС‚РґРµР»СЊРЅС‹Рј С€Р°РіРѕРј">Р’С‹РґР°С‡Р° РєР°СЂС‚С‹ Р±СѓРґРµС‚ РґРѕР±Р°РІР»РµРЅР° РѕС‚РґРµР»СЊРЅС‹Рј С€Р°РіРѕРј</button>
+        <button disabled title="Выдача карты будет добавлена отдельным шагом">Выдача карты будет добавлена отдельным шагом</button>
 
         {#if openFlowError}
           <p class="error">{openFlowError}</p>
@@ -260,22 +260,22 @@
   <div class="visits-layout">
     <section class="ui-card list-panel">
       <div class="list-header">
-        <h2>РЎРїРёСЃРѕРє Р°РєС‚РёРІРЅС‹С… РІРёР·РёС‚РѕРІ</h2>
-        <button on:click={refreshVisits} disabled={$visitStore.loading}>РћР±РЅРѕРІРёС‚СЊ</button>
+        <h2>Список активных визитов</h2>
+        <button on:click={refreshVisits} disabled={$visitStore.loading}>Обновить</button>
       </div>
-      <input type="text" bind:value={filterQuery} placeholder="Р¤РёР»СЊС‚СЂ: Р¤РРћ / С‚РµР»РµС„РѕРЅ / РєР°СЂС‚Р° / ID РІРёР·РёС‚Р°" />
+      <input type="text" bind:value={filterQuery} placeholder="Фильтр: Р¤РРћ / телефон / карта / ID визита" />
 
       {#if $visitStore.loading && $visitStore.activeVisits.length === 0}
-        <p>Р—Р°РіСЂСѓР·РєР° Р°РєС‚РёРІРЅС‹С… РІРёР·РёС‚РѕРІ...</p>
+        <p>Загрузка активных визитов...</p>
       {:else if filteredVisits.length === 0}
-        <p class="not-found">Р’РёР·РёС‚ РЅРµ РЅР°Р№РґРµРЅ</p>
+        <p class="not-found">Визит не найден</p>
       {:else}
         <div class="visit-list">
           {#each filteredVisits as item}
             <button class="visit-item" on:click={() => selectVisit(item)}>
               <div><strong>{item.guest_full_name}</strong></div>
               <div>{item.phone_number}</div>
-              <div>{item.card_uid ? `РљР°СЂС‚Р°: ${item.card_uid}` : 'Р‘РµР· РєР°СЂС‚С‹'}</div>
+              <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Р‘РµР· карты'}</div>
               {#if item.active_tap_id}
                 <div class="sync-indicator">processing_sync (tap {item.active_tap_id})</div>
               {/if}
@@ -287,49 +287,49 @@
 
     <section class="ui-card detail-panel">
       {#if visit}
-        <h2>РљР°СЂС‚РѕС‡РєР° РІРёР·РёС‚Р°</h2>
+        <h2>Карточка визита</h2>
         <div class="visit-fields">
-          <div><strong>Р“РѕСЃС‚СЊ:</strong> {fullName(selectedGuest || visit)}</div>
-          <div><strong>РўРµР»РµС„РѕРЅ:</strong> {selectedGuest?.phone_number || visit.phone_number || 'вЂ”'}</div>
-          <div><strong>РљР°СЂС‚Р°:</strong> {visit.card_uid || 'РќРµ РїСЂРёРІСЏР·Р°РЅР°'}</div>
-          <div><strong>РЎС‚Р°С‚СѓСЃ:</strong> {visit.status}</div>
-          <div><strong>Р‘Р°Р»Р°РЅСЃ:</strong> {selectedGuest?.balance ?? visit.balance ?? 'вЂ”'}</div>
+          <div><strong>Гость:</strong> {fullName(selectedGuest || visit)}</div>
+          <div><strong>Телефон:</strong> {selectedGuest?.phone_number || visit.phone_number || '—'}</div>
+          <div><strong>Карта:</strong> {visit.card_uid || 'Не привязана'}</div>
+          <div><strong>Статус:</strong> {visit.status}</div>
+          <div><strong>Баланс:</strong> {selectedGuest?.balance ?? visit.balance ?? '—'}</div>
         </div>
 
         <div class="lock-state" class:locked={lockActive} class:free={!lockActive}>
           {#if lockActive}
-            <strong>Р‘Р»РѕРєРёСЂРѕРІРєР° РЅР° РєСЂР°РЅРµ в„–{visit.active_tap_id}</strong>
+            <strong>Блокировка на кране в„–{visit.active_tap_id}</strong>
             {#if visit.lock_set_at}
               <div>lock_set_at: {new Date(visit.lock_set_at).toLocaleString()}</div>
               <div>age: ~{Math.floor(lockAgeSeconds / 60)} min</div>
             {/if}
             <div>Синхронизация: {suggestManualReconcile ? 'Нужна ручная сверка' : 'Ожидается sync'}</div>
           {:else}
-            <strong>РљСЂР°РЅ СЃРІРѕР±РѕРґРµРЅ</strong>
+            <strong>Кран свободен</strong>
           {/if}
         </div>
 
         <div class="actions-grid">
           <div class="action-panel">
-            <h3>РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕ СЃРЅСЏС‚СЊ Р±Р»РѕРєРёСЂРѕРІРєСѓ</h3>
-            <input type="text" bind:value={forceUnlockReason} placeholder="РџСЂРёС‡РёРЅР° (РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)" />
-            <textarea bind:value={forceUnlockComment} rows="2" placeholder="РљРѕРјРјРµРЅС‚Р°СЂРёР№ (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)"></textarea>
-            <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive}>РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕ СЃРЅСЏС‚СЊ Р±Р»РѕРєРёСЂРѕРІРєСѓ</button>
+            <h3>Принудительно снять блокировку</h3>
+            <input type="text" bind:value={forceUnlockReason} placeholder="Причина (обязательно)" />
+            <textarea bind:value={forceUnlockComment} rows="2" placeholder="Комментарий (опционально)"></textarea>
+            <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive}>Принудительно снять блокировку</button>
             <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive}>Ручная сверка / разблокировать</button>
           </div>
 
           <div class="action-panel">
-            <h3>Р—Р°РєСЂС‹С‚СЊ РІРёР·РёС‚</h3>
-            <input type="text" bind:value={closeReason} placeholder="РџСЂРёС‡РёРЅР° Р·Р°РєСЂС‹С‚РёСЏ" />
-            <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active'}>Р—Р°РєСЂС‹С‚СЊ РІРёР·РёС‚</button>
+            <h3>Закрыть визит</h3>
+            <input type="text" bind:value={closeReason} placeholder="Причина закрытия" />
+            <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active'}>Закрыть визит</button>
           </div>
 
           <div class="action-panel">
-            <h3>РћРїРµСЂР°С†РёРё</h3>
+            <h3>Операции</h3>
             {#if !visit.card_uid}
-              <button on:click={handleBindCard} disabled={$visitStore.loading}>РџСЂРёРІСЏР·Р°С‚СЊ РєР°СЂС‚Сѓ</button>
+              <button on:click={handleBindCard} disabled={$visitStore.loading}>Привязать карту</button>
             {/if}
-            <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>РџРѕРїРѕР»РЅРёС‚СЊ Р±Р°Р»Р°РЅСЃ</button>
+            <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>Пополнить баланс</button>
           </div>
         </div>
 
@@ -338,8 +338,8 @@
         {/if}
       {:else}
         <div class="empty-state">
-          <h3>Р’РёР·РёС‚ РЅРµ РІС‹Р±СЂР°РЅ</h3>
-          <p>Р’С‹Р±РµСЂРёС‚Рµ РІРёР·РёС‚ РёР· СЃРїРёСЃРєР° СЃР»РµРІР°.</p>
+          <h3>Визит не выбран</h3>
+          <p>Выберите визит из списка слева.</p>
         </div>
       {/if}
     </section>

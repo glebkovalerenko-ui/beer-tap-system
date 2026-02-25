@@ -1,4 +1,4 @@
-﻿# Beer Tap System
+# Beer Tap System
 # Operational Model v1
 ## (Integrated Self-Pour Core)
 
