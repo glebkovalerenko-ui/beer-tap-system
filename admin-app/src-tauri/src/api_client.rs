@@ -158,6 +158,7 @@ pub struct Visit {
     pub closed_at: Option<String>,
     pub closed_reason: Option<String>,
     pub active_tap_id: Option<i32>,
+    pub lock_set_at: Option<String>,
     pub card_returned: bool,
     pub guest: Option<VisitGuest>,
 }
@@ -190,12 +191,23 @@ pub struct VisitActiveListItem {
     pub status: String,
     pub card_uid: Option<String>,
     pub active_tap_id: Option<i32>,
+    pub lock_set_at: Option<String>,
     pub opened_at: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VisitAssignCardPayload {
     pub card_uid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitReconcilePourPayload {
+    pub tap_id: i32,
+    pub short_id: String,
+    pub volume_ml: i32,
+    pub amount: String,
+    pub reason: String,
+    pub comment: Option<String>,
 }
 
 // --- Kegs, Taps, Beverages ---
@@ -596,16 +608,6 @@ pub async fn assign_card_to_visit(token: &str, visit_id: &str, payload: &VisitAs
     }
 }
 
-pub async fn open_visit(token: &str, payload: &VisitOpenPayload) -> Result<Visit, String> {
-    let url = format!("{}/visits/open", API_BASE_URL);
-    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
-    if response.status().is_success() {
-        response.json::<Visit>().await.map_err(|e| e.to_string())
-    } else {
-        Err(handle_api_error(response).await)
-    }
-}
-
 pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForceUnlockPayload) -> Result<Visit, String> {
     let url = format!("{}/visits/{}/force-unlock", API_BASE_URL, visit_id);
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
@@ -618,6 +620,16 @@ pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForc
 
 pub async fn close_visit(token: &str, visit_id: &str, payload: &VisitClosePayload) -> Result<Visit, String> {
     let url = format!("{}/visits/{}/close", API_BASE_URL, visit_id);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn reconcile_pour(token: &str, visit_id: &str, payload: &VisitReconcilePourPayload) -> Result<Visit, String> {
+    let url = format!("{}/visits/{}/reconcile-pour", API_BASE_URL, visit_id);
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Visit>().await.map_err(|e| e.to_string())
