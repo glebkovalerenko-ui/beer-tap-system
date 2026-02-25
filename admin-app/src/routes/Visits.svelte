@@ -223,7 +223,7 @@
         <h2>Список активных визитов</h2>
         <button on:click={refreshVisits} disabled={$visitStore.loading}>Обновить</button>
       </div>
-      <input type="text" bind:value={filterQuery} placeholder="Фильтр: ФИО / телефон / карта / ID визита" />
+      <input type="text" bind:value={filterQuery} placeholder="Фильтр: ФИО / телефон / карта / идентификатор визита" />
 
       {#if $visitStore.loading && $visitStore.activeVisits.length === 0}
         <p>Загрузка активных визитов...</p>
