@@ -75,6 +75,50 @@ def get_visit(db: Session, visit_id: uuid.UUID):
     return db.query(models.Visit).filter(models.Visit.visit_id == visit_id).first()
 
 
+def _get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: int):
+    return (
+        db.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+            models.Pour.is_manual_reconcile.is_(False),
+        )
+        .order_by(models.Pour.created_at.desc())
+        .first()
+    )
+
+
+def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_id: int):
+    existing = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
+    if existing:
+        return existing
+
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    if not tap or not tap.keg_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tap is not configured with keg")
+
+    pending_client_tx_id = f"pending-sync:{visit.visit_id}:{tap_id}:{uuid.uuid4().hex[:8]}"
+    db.add(
+        models.Pour(
+            client_tx_id=pending_client_tx_id,
+            card_uid=visit.card_uid,
+            tap_id=tap_id,
+            visit_id=visit.visit_id,
+            volume_ml=0,
+            poured_at=datetime.now(timezone.utc),
+            amount_charged=Decimal("0.00"),
+            price_per_ml_at_pour=Decimal("0.0000"),
+            guest_id=visit.guest_id,
+            keg_id=tap.keg_id,
+            sync_status="pending_sync",
+            short_id=None,
+            is_manual_reconcile=False,
+        )
+    )
+    return None
+
+
 def get_active_visits_list(db: Session):
     visits = db.query(models.Visit).join(models.Guest, models.Visit.guest_id == models.Guest.guest_id).filter(
         models.Visit.status == "active"
@@ -195,6 +239,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if tap and tap.status == "active":
         tap.status = "processing_sync"
+    _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
 
     db.commit()
     db.refresh(active_visit)
@@ -369,26 +414,38 @@ def reconcile_pour(
     if keg.current_volume_ml < volume_ml:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Insufficient keg volume for manual reconcile")
 
-    manual_client_tx_id = f"manual-reconcile:{visit_id}:{short_id}"
     price_per_ml = (Decimal(amount) / Decimal(volume_ml)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-
-    db.add(
-        models.Pour(
-            client_tx_id=manual_client_tx_id,
-            card_uid=visit.card_uid,
-            tap_id=tap_id,
-            visit_id=visit_id,
-            volume_ml=volume_ml,
-            poured_at=datetime.now(timezone.utc),
-            amount_charged=amount,
-            price_per_ml_at_pour=price_per_ml,
-            guest_id=visit.guest_id,
-            keg_id=tap.keg_id,
-            sync_status="reconciled",
-            short_id=short_id,
-            is_manual_reconcile=True,
+    pending_pour = _get_pending_pour_for_visit_tap(db=db, visit_id=visit_id, tap_id=tap_id)
+    if pending_pour:
+        pending_pour.card_uid = visit.card_uid
+        pending_pour.guest_id = visit.guest_id
+        pending_pour.keg_id = tap.keg_id
+        pending_pour.volume_ml = volume_ml
+        pending_pour.poured_at = datetime.now(timezone.utc)
+        pending_pour.amount_charged = amount
+        pending_pour.price_per_ml_at_pour = price_per_ml
+        pending_pour.sync_status = "reconciled"
+        pending_pour.short_id = short_id
+        pending_pour.is_manual_reconcile = True
+    else:
+        manual_client_tx_id = f"manual-reconcile:{visit_id}:{short_id}"
+        db.add(
+            models.Pour(
+                client_tx_id=manual_client_tx_id,
+                card_uid=visit.card_uid,
+                tap_id=tap_id,
+                visit_id=visit_id,
+                volume_ml=volume_ml,
+                poured_at=datetime.now(timezone.utc),
+                amount_charged=amount,
+                price_per_ml_at_pour=price_per_ml,
+                guest_id=visit.guest_id,
+                keg_id=tap.keg_id,
+                sync_status="reconciled",
+                short_id=short_id,
+                is_manual_reconcile=True,
+            )
         )
-    )
 
     guest.balance -= amount
     keg.current_volume_ml -= volume_ml

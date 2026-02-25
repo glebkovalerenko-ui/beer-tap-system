@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import models
+
 
 def _login(client):
     response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
@@ -129,6 +131,69 @@ def test_lock_kept_until_backend_accepts_sync(client):
     after_sync = client.get("/api/visits/active/by-card/CARD-M4-001", headers=headers)
     assert after_sync.status_code == 200
     assert after_sync.json()["active_tap_id"] is None
+
+
+def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92005", card_uid="CARD-M4-005")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-005", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+
+    pending = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .one()
+    )
+    pending_pour_id = pending.pour_id
+    assert pending.volume_ml == 0
+    assert pending.short_id is None
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m4-sync-005",
+                    "card_uid": "CARD-M4-005",
+                    "tap_id": tap_id,
+                    "short_id": "E52005",
+                    "start_ts": "2026-01-01T10:00:00Z",
+                    "end_ts": "2026-01-01T10:00:05Z",
+                    "volume_ml": 180,
+                    "price_cents": 0,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    assert sync_resp.json()["results"][0]["status"] == "accepted"
+
+    db_session.expire_all()
+    resolved = db_session.query(models.Pour).filter(models.Pour.pour_id == pending_pour_id).one()
+    assert resolved.sync_status == "synced"
+    assert resolved.client_tx_id == "m4-sync-005"
+    assert resolved.short_id == "E52005"
+    assert resolved.volume_ml == 180
+    assert resolved.is_manual_reconcile is False
+
+    pending_after = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_after == 0
 
 
 def test_manual_reconcile_unlocks_visit_and_is_idempotent(client):

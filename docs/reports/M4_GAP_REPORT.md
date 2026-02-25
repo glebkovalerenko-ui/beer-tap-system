@@ -7,15 +7,12 @@ This report checks M4 requirements from `docs/planning/PIPELINE_V1/07_demo_orien
 
 | Requirement | Implemented? | Where in code | How to verify |
 |---|---|---|---|
-| `pours.sync_status` model with deterministic states (`pending_sync` / `synced` / `reconciled`) | no (partial) | `backend/alembic/versions/0004_m4_offline_sync_reconcile.py`; `backend/models.py`; `backend/crud/pour_crud.py`; `backend/crud/visit_crud.py` | Run `pytest backend/tests/test_m4_offline_sync_reconcile.py`. Column and constraints exist, `synced` and `reconciled` are used, but there is no runtime path that persists `pending_sync`. |
+| `pours.sync_status` model with deterministic states (`pending_sync` / `synced` / `reconciled`) | yes | `backend/alembic/versions/0004_m4_offline_sync_reconcile.py`; `backend/models.py`; `backend/crud/visit_crud.py` (`authorize_pour_lock`, `reconcile_pour`); `backend/crud/pour_crud.py` (`process_pour`) | Run `pytest backend/tests/test_m4_offline_sync_reconcile.py`. Runtime path now creates `pending_sync` on pour authorization and transitions that row to `synced` on accepted sync (or `reconciled` on manual reconcile). |
 | Tap domain includes `processing_sync` and blocks normal flow until resolution | yes | `backend/crud/visit_crud.py` (`authorize_pour_lock`, `reconcile_pour`, `force_unlock_visit`, `close_visit`); `backend/crud/pour_crud.py` | `test_lock_kept_until_backend_accepts_sync` in `backend/tests/test_m4_offline_sync_reconcile.py` plus manual API flow (`authorize-pour` then `sync`). |
 | Lock clear rules: `active_tap_id` and `lock_set_at` clear only on accepted sync / manual reconcile (or explicit admin paths) | yes | `backend/crud/pour_crud.py` (accepted sync), `backend/crud/visit_crud.py` (`reconcile_pour`, `force_unlock_visit`, `close_visit`) | `test_lock_kept_until_backend_accepts_sync`, `test_manual_reconcile_unlocks_visit_and_is_idempotent` (`backend/tests/test_m4_offline_sync_reconcile.py`). |
 | Manual reconcile path for timeout cases | yes | `POST /api/visits/{visit_id}/reconcile-pour` in `backend/api/visits.py`; implementation in `backend/crud/visit_crud.py` | `test_manual_reconcile_unlocks_visit_and_is_idempotent` (`backend/tests/test_m4_offline_sync_reconcile.py`). |
 | Late sync handling with match / mismatch after manual reconcile, no second charge | yes | `backend/crud/pour_crud.py` (`late_sync_matched`, `late_sync_mismatch`) | `test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge` (`backend/tests/test_m4_offline_sync_reconcile.py`). |
 | Minimal review event for mismatch | yes | Audit log write in `backend/crud/pour_crud.py` (`action="late_sync_mismatch"`) | Check `/api/audit/` after mismatch; covered by `test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge`. |
-
-## Not fully implemented
-- `pours.sync_status = pending_sync` has schema/constraints support, but no runtime persistence path currently writes `pending_sync`; active paths use `synced` and `reconciled`.
 
 ## B) Follow-up Issue Card: "Open visit and issue card"
 

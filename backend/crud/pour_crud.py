@@ -46,6 +46,20 @@ def get_manual_pour_by_visit_short_id(db: Session, visit_id: uuid.UUID, short_id
     )
 
 
+def get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: int):
+    return (
+        db.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+            models.Pour.is_manual_reconcile.is_(False),
+        )
+        .order_by(models.Pour.created_at.desc())
+        .first()
+    )
+
+
 def _create_pour_record(
     db: Session,
     *,
@@ -190,16 +204,32 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     if keg.current_volume_ml < pour_data.volume_ml:
         return {"status": "rejected", "reason": f"Insufficient volume in Keg {keg.keg_id}."}
 
-    _create_pour_record(
-        db=db,
-        pour_data=pour_data,
-        guest_id=guest.guest_id,
-        visit_id=active_visit.visit_id,
-        keg_id=keg.keg_id,
-        amount_charged=amount_to_charge,
-        price_per_ml=price_per_ml,
-        sync_status="synced",
-    )
+    pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
+    if pending_pour:
+        pending_pour.client_tx_id = pour_data.client_tx_id
+        pending_pour.card_uid = pour_data.card_uid
+        pending_pour.tap_id = pour_data.tap_id
+        pending_pour.visit_id = active_visit.visit_id
+        pending_pour.volume_ml = pour_data.volume_ml
+        pending_pour.poured_at = pour_data.start_ts
+        pending_pour.amount_charged = amount_to_charge
+        pending_pour.price_per_ml_at_pour = price_per_ml
+        pending_pour.guest_id = guest.guest_id
+        pending_pour.keg_id = keg.keg_id
+        pending_pour.sync_status = "synced"
+        pending_pour.short_id = pour_data.short_id
+        pending_pour.is_manual_reconcile = False
+    else:
+        _create_pour_record(
+            db=db,
+            pour_data=pour_data,
+            guest_id=guest.guest_id,
+            visit_id=active_visit.visit_id,
+            keg_id=keg.keg_id,
+            amount_charged=amount_to_charge,
+            price_per_ml=price_per_ml,
+            sync_status="synced",
+        )
 
     guest.balance -= amount_to_charge
     keg.current_volume_ml -= pour_data.volume_ml
