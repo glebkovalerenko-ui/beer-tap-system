@@ -8,7 +8,7 @@ The project had mojibake UI text and hidden Unicode control characters. This che
 - files that are not valid UTF-8,
 - mojibake signatures (broken UTF-8/cp1251 mixes, replacement chars, corrupted Cyrillic pairs),
 - Unicode bidi/control characters (`Cf` + common bidi controls).
-- explicit bad markers (shown escaped to avoid false positives in this file): `\u0432\u0402`, `\u0420\u2026`, `\u00D0`, `\u00D1`, `\uFFFD`.
+- explicit bad markers (shown escaped to avoid false positives in this file): `\u0432\u0402`, `\u0420\u2026`, `\u0420\u00A4`, `\u0420\u0452`, `\u0420\u045F`, `\u00D0`, `\u00D1`, `\uFFFD`.
 
 ## Install Git hooks
 
