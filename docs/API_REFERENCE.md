@@ -647,3 +647,7 @@ Behavior:
 - clears lock (`active_tap_id = null`, `lock_set_at = null`);
 - idempotent by `(visit_id, short_id)`.
 
+### POST `/api/visits/{visit_id}/close`
+Card ownership behavior depends on `card_returned`:
+- `card_returned=true`: card is set to `inactive` and unbound from the guest (`cards.guest_id = null`) in the same close transaction.
+- `card_returned=false`: card is set to `inactive`, but guest binding is preserved (card remains owned by the same guest).

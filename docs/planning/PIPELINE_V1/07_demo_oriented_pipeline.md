@@ -490,3 +490,8 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
   2. manual reconcile unlocks visit and is idempotent;
   3. late sync never creates a second charge.
 
+## M4 Stability Patch Update (2026-02-25)
+- `POST /api/visits/{visit_id}/close` card release behavior is explicit:
+  - `card_returned=true` -> close visit and unbind card from guest (`cards.guest_id=NULL`) in the same transaction.
+  - `card_returned=false` -> close visit and keep card bound to the same guest.
+- Regression coverage must include card reuse after close (`true`) and blocked reuse after close (`false`) on PostgreSQL.

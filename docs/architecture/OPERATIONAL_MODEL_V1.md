@@ -135,6 +135,9 @@ Rules:
 - One guest = one active visit.
 - One visit = one active card.
 - Card is deactivated when visit closes.
+- Close visit card binding rule (atomic with visit close):
+  - `card_returned=true` -> set card `status=inactive`, clear `card.guest_id` (card is reusable by another guest).
+  - `card_returned=false` -> set card `status=inactive`, keep `card.guest_id` (card remains owned by the same guest).
 - Active visits prevent shift closure.
 
 ---
