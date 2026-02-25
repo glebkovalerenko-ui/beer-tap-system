@@ -6,6 +6,22 @@ on:
     branches: [main, master]
 
 jobs:
+  encoding-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run encoding guard on PR diff
+        if: github.event_name == 'pull_request'
+        run: python scripts/encoding_guard.py --diff-base "${{ github.event.pull_request.base.sha }}"
+      - name: Run encoding guard on push
+        if: github.event_name != 'pull_request'
+        run: python scripts/encoding_guard.py --all
+
   backend-smoke:
     runs-on: ubuntu-latest
     steps:

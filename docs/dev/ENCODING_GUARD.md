@@ -8,6 +8,7 @@ The project had mojibake UI text and hidden Unicode control characters. This che
 - files that are not valid UTF-8,
 - mojibake signatures (broken UTF-8/cp1251 mixes, replacement chars, corrupted Cyrillic pairs),
 - Unicode bidi/control characters (`Cf` + common bidi controls).
+- explicit bad markers: `\\u0432\\u0402`, `\\u0420\\u00A4`, `\\u0420\\u0452`, `\\u0420\\u045F`, `\\u00D0`, `\\u00D1`, `\\uFFFD`.
 
 ## Install Git hooks
 
@@ -24,6 +25,22 @@ powershell -ExecutionPolicy Bypass -File scripts/install_git_hooks.ps1
 ```bash
 python scripts/encoding_guard.py
 ```
+
+Mode flags:
+
+```bash
+# staged files only (used by pre-commit)
+python scripts/encoding_guard.py --staged
+
+# CI pull_request diff
+python scripts/encoding_guard.py --diff-base <base_sha>
+
+# full repository scan
+python scripts/encoding_guard.py --all
+```
+
+CI integration:
+- `.github/workflows/quality.yml` runs encoding guard on every PR and on push to `main/master`.
 
 ## If issues are found
 
