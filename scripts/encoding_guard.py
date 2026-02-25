@@ -36,15 +36,13 @@ EXCLUDED_DIRS = {
 }
 
 # Explicit required markers:
-# - "вЂ", "Р¤", "Рђ", "Рџ", "Ð", "Ñ", "�"
+# - "вЂ", "Р…", "Ð", "Ñ", "�"
 REQUIRED_MOJIBAKE_MARKERS = [
-    "\u0432\u0402",  # вЂ
-    "\u0420\u00A4",  # Р¤
-    "\u0420\u0452",  # Рђ
-    "\u0420\u045F",  # Рџ
-    "\u00D0",  # Ð
-    "\u00D1",  # Ñ
-    "\uFFFD",  # �
+    "вЂ",
+    "Р…",
+    "Ð",
+    "Ñ",
+    "�",
 ]
 
 ADDITIONAL_MOJIBAKE_MARKERS = [
@@ -203,11 +201,11 @@ def collect_issues(root: Path, candidates: list[Path]) -> list[tuple[Path, int, 
 
                 match = R_LATIN_RE.search(line)
                 if match:
-                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р' next to Latin"))
+                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р ' next to Latin"))
 
                 match = R_OR_S_NON_CYRILLIC_RE.search(line)
                 if match:
-                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р/С + non-cyrillic'"))
+                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р /РЎ + non-cyrillic'"))
 
             for col_no, ch in enumerate(line, start=1):
                 code = ord(ch)
@@ -252,3 +250,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
