@@ -3,7 +3,7 @@
 from pytest_bdd import scenarios, when, parsers, given, then
 import uuid, models, json
 from sqlalchemy.orm import Session
-from models import SystemState, Guest, Card, Beverage, Keg, Tap, Pour
+from models import SystemState, Guest, Card, Beverage, Keg, Tap, Pour, Visit
 from decimal import Decimal
 import datetime
 from datetime import datetime, date, timezone, timedelta
@@ -19,7 +19,7 @@ def register_new_controller(client, context: dict, field: str):
     Шаг выполнения: отправляет запрос на регистрацию контроллера.
     """
     # Генерируем уникальный ID для каждого запуска теста
-    controller_id = f"test-controller-{uuid.uuid4()}"
+    controller_id = f"ctl-{uuid.uuid4().hex[:16]}"
     payload = {
         "controller_id": controller_id,
         "ip_address": "192.168.1.100",
@@ -279,7 +279,10 @@ def create_processed_pour(client, db_session: Session, tx_id: str, context: dict
     pour_record = Pour(
         client_tx_id=tx_id, card_uid=card.card_uid, tap_id=tap.tap_id,
         guest_id=guest.guest_id, keg_id=keg.keg_id,
-        volume_ml=100, amount_charged=Decimal("45.00"), poured_at=datetime.now(timezone.utc)
+        volume_ml=100,
+        amount_charged=Decimal("45.00"),
+        price_per_ml_at_pour=Decimal("0.4500"),
+        poured_at=datetime.now(timezone.utc),
     )
     db_session.add(pour_record)
     db_session.commit()
@@ -371,6 +374,18 @@ def setup_for_insufficient_funds(client, db_session: Session, context: dict):
     tap.keg_id = keg.keg_id
     keg.status = "in_use"
     tap.status = "active"
+    db_session.commit()
+
+    # Для M4 путь sync/pours требует активный визит с lock на tap.
+    visit = Visit(
+        guest_id=guest.guest_id,
+        card_uid=card.card_uid,
+        status="active",
+        active_tap_id=tap.tap_id,
+        lock_set_at=datetime.now(timezone.utc),
+        card_returned=True,
+    )
+    db_session.add(visit)
     db_session.commit()
     
     # Сохраняем данные для context

@@ -4,8 +4,9 @@ import pytest
 import os
 from fastapi.testclient import TestClient
 from fastapi import BackgroundTasks
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.engine import make_url
 from sqlalchemy.pool import StaticPool
 from httpx import Response
 from pytest_bdd import given, when, then, parsers
@@ -20,8 +21,42 @@ from database import Base, get_db, DATABASE_URL
 # =============================================================================
 
 USE_POSTGRES = os.getenv("TEST_USE_POSTGRES", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _derive_postgres_test_url(base_url: str) -> str:
+    url = make_url(base_url)
+    if not url.database:
+        raise RuntimeError("DATABASE_URL must include a database name for Postgres tests")
+    if url.database.endswith("_test"):
+        return url.render_as_string(hide_password=False)
+    return url.set(database=f"{url.database}_test").render_as_string(hide_password=False)
+
+
+def _ensure_postgres_database_exists(database_url: str) -> None:
+    target = make_url(database_url)
+    admin_db = os.getenv("TEST_ADMIN_DATABASE", "postgres")
+    admin = target.set(database=admin_db)
+
+    engine_admin = create_engine(admin, isolation_level="AUTOCOMMIT")
+    db_name = target.database
+    if db_name is None:
+        raise RuntimeError("Derived Postgres test database name is empty")
+
+    safe_db_name = db_name.replace('"', '""')
+    with engine_admin.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+            {"db_name": db_name},
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{safe_db_name}"'))
+    engine_admin.dispose()
+
+
 if USE_POSTGRES:
-    engine = create_engine(DATABASE_URL)
+    TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip() or _derive_postgres_test_url(DATABASE_URL)
+    _ensure_postgres_database_exists(TEST_DATABASE_URL)
+    engine = create_engine(TEST_DATABASE_URL)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 else:
     TEST_DATABASE_URL = "sqlite:///:memory:"

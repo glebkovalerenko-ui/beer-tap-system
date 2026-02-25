@@ -14,6 +14,9 @@ This report checks M4 requirements from `docs/planning/PIPELINE_V1/07_demo_orien
 | Late sync handling with match / mismatch after manual reconcile, no second charge | yes | `backend/crud/pour_crud.py` (`late_sync_matched`, `late_sync_mismatch`) | `test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge` (`backend/tests/test_m4_offline_sync_reconcile.py`). |
 | Minimal review event for mismatch | yes | Audit log write in `backend/crud/pour_crud.py` (`action="late_sync_mismatch"`) | Check `/api/audit/` after mismatch; covered by `test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge`. |
 
+## Not fully implemented
+- `pours.sync_status = pending_sync` has schema/constraints support, but no runtime persistence path currently writes `pending_sync`; active paths use `synced` and `reconciled`.
+
 ## B) Follow-up Issue Card: "Open visit and issue card"
 
 Target button flow: `Read NFC UID -> bind card to guest (if needed) -> assign card to visit -> UI confirmation`.
@@ -39,3 +42,13 @@ Target button flow: `Read NFC UID -> bind card to guest (if needed) -> assign ca
 Proposed dedicated milestone: **M3.6 - Visit Open + Card Issue Operator Flow**.
 - Why here: this is a visit orchestration UX/transaction gap, independent from M4 offline sync semantics.
 - Exit criteria: single-click operator flow works end-to-end with deterministic conflict messaging and idempotent retries.
+
+## How to verify (operator)
+1. Log in as admin, create two guests (A and B), create a beverage/keg/tap, top up guest A, and bind one card UID to guest A via `POST /api/guests/{guest_id}/cards`.
+2. Open a visit for guest A with that card (`POST /api/visits/open`) and authorize pour on the prepared tap (`POST /api/visits/authorize-pour`).
+3. Confirm the visit is locked for sync: `active_tap_id` equals tap id and `lock_set_at` is not null (also visible via `GET /api/visits/active/by-card/{card_uid}`).
+4. Reproduce offline timeout by not sending controller sync (`POST /api/sync/pours`) and waiting for the operator timeout decision point.
+5. Run manual reconcile: `POST /api/visits/{visit_id}/reconcile-pour` with `reason=sync_timeout`, `tap_id`, `short_id`, `volume_ml`, and `amount`; verify response clears lock (`active_tap_id=null`).
+6. Repeat the same reconcile request once more and verify idempotency: still `200`, still unlocked, and only one pour record with that `short_id`, `sync_status=reconciled`, `is_manual_reconcile=true`.
+7. Close the visit with card return flag: `POST /api/visits/{visit_id}/close` and payload `{ "closed_reason": "checkout", "card_returned": true }`.
+8. Verify card release by binding and assigning the same card UID to guest B in a new visit (`POST /api/guests/{guest_b}/cards` + `POST /api/visits/{visit_b}/assign-card`); both operations must return `200`.
