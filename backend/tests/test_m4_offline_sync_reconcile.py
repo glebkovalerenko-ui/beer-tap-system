@@ -195,6 +195,47 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     )
     assert pending_after == 0
 
+    pours_resp = client.get("/api/pours/", headers=headers)
+    assert pours_resp.status_code == 200
+    matched = [row for row in pours_resp.json() if row["short_id"] == "E52005"]
+    assert len(matched) == 1
+    assert matched[0]["sync_status"] == "synced"
+
+
+def test_sync_without_authorize_returns_audit_only_and_does_not_write_pour(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92006", card_uid="CARD-M4-006")
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m4-sync-006-late",
+                    "card_uid": "CARD-M4-006",
+                    "tap_id": tap_id,
+                    "short_id": "F62006",
+                    "start_ts": "2026-01-01T10:00:00Z",
+                    "end_ts": "2026-01-01T10:00:05Z",
+                    "volume_ml": 160,
+                    "price_cents": 0,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    assert sync_resp.json()["results"][0]["status"] == "audit_only"
+    assert sync_resp.json()["results"][0]["outcome"] == "audit_late_recorded"
+    assert sync_resp.json()["results"][0]["reason"] == "late_sync_mismatch_recorded"
+
+    db_session.expire_all()
+    late_pours = (
+        db_session.query(models.Pour)
+        .filter(models.Pour.visit_id == visit_id, models.Pour.short_id == "F62006")
+        .count()
+    )
+    assert late_pours == 0
+
 
 def test_manual_reconcile_unlocks_visit_and_is_idempotent(client):
     headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92002", card_uid="CARD-M4-002")
@@ -274,6 +315,8 @@ def test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge(cl
         },
     )
     assert late_match.status_code == 200
+    assert late_match.json()["results"][0]["status"] == "audit_only"
+    assert late_match.json()["results"][0]["outcome"] == "audit_late_matched"
     assert late_match.json()["results"][0]["reason"] == "late_sync_matched"
 
     late_mismatch = client.post(
@@ -295,6 +338,8 @@ def test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge(cl
         },
     )
     assert late_mismatch.status_code == 200
+    assert late_mismatch.json()["results"][0]["status"] == "audit_only"
+    assert late_mismatch.json()["results"][0]["outcome"] == "audit_late_recorded"
     assert late_mismatch.json()["results"][0]["reason"] == "late_sync_mismatch_recorded"
 
     guest_after_late = client.get(f"/api/guests/{guest_id}", headers=headers).json()

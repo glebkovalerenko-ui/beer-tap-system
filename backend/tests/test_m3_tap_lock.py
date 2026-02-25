@@ -277,7 +277,8 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
         },
     )
     assert late_sync.status_code == 200
-    assert late_sync.json()["results"][0]["status"] == "accepted"
+    assert late_sync.json()["results"][0]["status"] == "audit_only"
+    assert late_sync.json()["results"][0]["outcome"] == "audit_late_recorded"
     assert late_sync.json()["results"][0]["reason"] == "late_sync_mismatch_recorded"
 
     audit_resp = client.get("/api/audit/", headers=headers)

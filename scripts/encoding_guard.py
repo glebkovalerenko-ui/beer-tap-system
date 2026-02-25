@@ -36,15 +36,16 @@ EXCLUDED_DIRS = {
 }
 
 # Explicit required markers:
-# - "вЂ", "Р¤", "Рђ", "Рџ", "Ð", "Ñ", "�"
+# - "\u0432\u0402", "\u0420\u2026", "\u0420\u00A4", "\u0420\u0452", "\u0420\u045F", "\u00D0", "\u00D1", "\uFFFD"
 REQUIRED_MOJIBAKE_MARKERS = [
-    "\u0432\u0402",  # вЂ
-    "\u0420\u00A4",  # Р¤
-    "\u0420\u0452",  # Рђ
-    "\u0420\u045F",  # Рџ
-    "\u00D0",  # Ð
-    "\u00D1",  # Ñ
-    "\uFFFD",  # �
+    "\u0432\u0402",  # РІР‚
+    "\u0420\u2026",  # Р вЂ¦
+    "\u0420\u00A4",  # Р В¤
+    "\u0420\u0452",  # Р С’
+    "\u0420\u045F",  # Р Сџ
+    "\u00D0",  # Гђ
+    "\u00D1",  # Г‘
+    "\uFFFD",  # пїЅ
 ]
 
 ADDITIONAL_MOJIBAKE_MARKERS = [
@@ -203,12 +204,11 @@ def collect_issues(root: Path, candidates: list[Path]) -> list[tuple[Path, int, 
 
                 match = R_LATIN_RE.search(line)
                 if match:
-                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р' next to Latin"))
+                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious '\\u0420' next to Latin"))
 
                 match = R_OR_S_NON_CYRILLIC_RE.search(line)
                 if match:
-                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious 'Р/С + non-cyrillic'"))
-
+                    issues.append((rel, line_no, match.start() + 1, "mojibake", "suspicious '\\u0420/\\u0421 + non-cyrillic'"))
             for col_no, ch in enumerate(line, start=1):
                 code = ord(ch)
                 if code in BIDI_CONTROL_POINTS:
@@ -252,3 +252,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+
