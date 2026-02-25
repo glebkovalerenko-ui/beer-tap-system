@@ -596,16 +596,6 @@ pub async fn assign_card_to_visit(token: &str, visit_id: &str, payload: &VisitAs
     }
 }
 
-pub async fn open_visit(token: &str, payload: &VisitOpenPayload) -> Result<Visit, String> {
-    let url = format!("{}/visits/open", API_BASE_URL);
-    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
-    if response.status().is_success() {
-        response.json::<Visit>().await.map_err(|e| e.to_string())
-    } else {
-        Err(handle_api_error(response).await)
-    }
-}
-
 pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForceUnlockPayload) -> Result<Visit, String> {
     let url = format!("{}/visits/{}/force-unlock", API_BASE_URL, visit_id);
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
