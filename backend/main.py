@@ -104,6 +104,13 @@ def sync_pours(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
 
             result = pour_crud.process_pour(db, pour_data=pour_data)
 
+            if result["status"] == "conflict":
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=result.get("reason", "Sync conflict"),
+                )
+
             response_results.append(schemas.SyncResult(
                 client_tx_id=pour_data.client_tx_id,
                 status=result["status"],

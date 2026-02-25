@@ -70,6 +70,26 @@ def force_unlock_visit(
     )
 
 
+@router.post("/{visit_id}/reconcile-pour", response_model=schemas.Visit, summary="Manually reconcile pour and unlock visit")
+def reconcile_pour(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitReconcilePourRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    return visit_crud.reconcile_pour(
+        db=db,
+        visit_id=visit_id,
+        tap_id=payload.tap_id,
+        short_id=payload.short_id,
+        volume_ml=payload.volume_ml,
+        amount=payload.amount,
+        reason=payload.reason,
+        comment=payload.comment,
+        actor_id=current_user["username"] if current_user else "operator",
+    )
+
+
 @router.get("/active/by-card/{card_uid}", response_model=schemas.Visit, summary="Get active visit by card UID")
 def get_active_visit_by_card(
     card_uid: str,

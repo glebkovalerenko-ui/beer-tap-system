@@ -1,12 +1,13 @@
-# backend/crud/pour_crud.py
-from sqlalchemy.orm import Session, joinedload
 from decimal import Decimal, ROUND_HALF_UP
-from fastapi import HTTPException, status
 import json
+import uuid
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session, joinedload
+
 import models
 import schemas
 from crud import visit_crud
-import uuid
 
 
 def _add_audit_log(
@@ -30,20 +31,32 @@ def _add_audit_log(
 
 
 def get_pour_by_client_tx_id(db: Session, client_tx_id: str):
-    """Проверяет, существует ли уже транзакция с таким ID от клиента."""
+    return db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
+
+
+def get_manual_pour_by_visit_short_id(db: Session, visit_id: uuid.UUID, short_id: str):
     return (
-        db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
+        db.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.short_id == short_id,
+            models.Pour.is_manual_reconcile.is_(True),
+        )
+        .first()
     )
 
 
 def _create_pour_record(
     db: Session,
+    *,
     pour_data: schemas.PourData,
     guest_id: uuid.UUID,
     visit_id: uuid.UUID,
     keg_id: uuid.UUID,
     amount_charged: Decimal,
     price_per_ml: Decimal,
+    sync_status: str,
+    is_manual_reconcile: bool = False,
 ):
     db_pour = models.Pour(
         client_tx_id=pour_data.client_tx_id,
@@ -56,6 +69,9 @@ def _create_pour_record(
         price_per_ml_at_pour=price_per_ml,
         guest_id=guest_id,
         keg_id=keg_id,
+        sync_status=sync_status,
+        short_id=pour_data.short_id,
+        is_manual_reconcile=is_manual_reconcile,
     )
     db.add(db_pour)
     return db_pour
@@ -91,67 +107,76 @@ def process_pour(db: Session, pour_data: schemas.PourData):
             "reason": f"Guest {guest.guest_id} or Card {card.card_uid} is not active.",
         }
 
-    active_visit = visit_crud.get_active_visit_by_card_uid(
-        db=db, card_uid=card.card_uid
-    )
+    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=card.card_uid)
     if not active_visit:
         return {
             "status": "rejected",
             "reason": f"No active visit for Card {card.card_uid}.",
         }
 
+    # No double charge path: lock was already cleared (manual reconcile or prior accept).
     if active_visit.active_tap_id is None:
-        price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
-        reported_amount = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
+        matched_manual = get_manual_pour_by_visit_short_id(
+            db=db,
+            visit_id=active_visit.visit_id,
+            short_id=pour_data.short_id,
         )
+        if matched_manual:
+            _add_audit_log(
+                db,
+                actor_id="internal_rpi",
+                action="late_sync_matched",
+                target_entity="Visit",
+                target_id=str(active_visit.visit_id),
+                details={
+                    "short_id": pour_data.short_id,
+                    "client_tx_id": pour_data.client_tx_id,
+                    "manual_pour_id": str(matched_manual.pour_id),
+                    "tap_id": pour_data.tap_id,
+                },
+            )
+            return {"status": "accepted", "reason": "late_sync_matched"}
+
         _add_audit_log(
             db,
             actor_id="internal_rpi",
-            action="late_sync_received",
+            action="late_sync_mismatch",
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
-                "reason": "late_sync_received",
-                "card_uid": card.card_uid,
-                "tap_id": pour_data.tap_id,
+                "short_id": pour_data.short_id,
                 "client_tx_id": pour_data.client_tx_id,
+                "tap_id": pour_data.tap_id,
                 "volume_ml": pour_data.volume_ml,
-                "start_ts": pour_data.start_ts.isoformat(),
-                "end_ts": pour_data.end_ts.isoformat(),
-                "amount": str(reported_amount),
                 "price_cents": pour_data.price_cents,
             },
         )
-        return {
-            "status": "accepted",
-            "reason": "accepted_late_sync_recorded",
-        }
+        return {"status": "accepted", "reason": "late_sync_mismatch_recorded"}
 
     if active_visit.active_tap_id != pour_data.tap_id:
         _add_audit_log(
             db,
             actor_id="internal_rpi",
-            action="card_in_use_on_other_tap",
+            action="sync_conflict",
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
                 "card_uid": card.card_uid,
                 "requested_tap_id": pour_data.tap_id,
                 "active_tap_id": active_visit.active_tap_id,
-                "event": "sync_conflict",
                 "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
             },
         )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Card already in use on Tap {active_visit.active_tap_id}",
-        )
+        return {
+            "status": "conflict",
+            "reason": f"Card already in use on Tap {active_visit.active_tap_id}",
+        }
 
-    if tap.status != "active" or keg.status != "in_use":
+    if tap.status not in {"active", "processing_sync"} or keg.status != "in_use":
         return {
             "status": "rejected",
-            "reason": f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active'/'in_use' state.",
+            "reason": f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active/processing_sync'/'in_use' state.",
         }
 
     price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
@@ -160,40 +185,35 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     )
 
     if guest.balance < amount_to_charge:
-        return {
-            "status": "rejected",
-            "reason": f"Insufficient funds for Guest {guest.guest_id}.",
-        }
+        return {"status": "rejected", "reason": f"Insufficient funds for Guest {guest.guest_id}."}
 
     if keg.current_volume_ml < pour_data.volume_ml:
-        return {
-            "status": "rejected",
-            "reason": f"Insufficient volume in Keg {keg.keg_id}.",
-        }
+        return {"status": "rejected", "reason": f"Insufficient volume in Keg {keg.keg_id}."}
 
-    try:
-        _create_pour_record(
-            db,
-            pour_data,
-            guest.guest_id,
-            active_visit.visit_id,
-            keg.keg_id,
-            amount_to_charge,
-            price_per_ml,
-        )
-        guest.balance -= amount_to_charge
-        keg.current_volume_ml -= pour_data.volume_ml
-        active_visit.active_tap_id = None
+    _create_pour_record(
+        db=db,
+        pour_data=pour_data,
+        guest_id=guest.guest_id,
+        visit_id=active_visit.visit_id,
+        keg_id=keg.keg_id,
+        amount_charged=amount_to_charge,
+        price_per_ml=price_per_ml,
+        sync_status="synced",
+    )
 
-        if keg.current_volume_ml <= 0:
-            keg.status = "empty"
-            tap.status = "empty"
-            keg.finished_at = pour_data.end_ts
+    guest.balance -= amount_to_charge
+    keg.current_volume_ml -= pour_data.volume_ml
+    active_visit.active_tap_id = None
+    active_visit.lock_set_at = None
 
-        return {"status": "accepted", "reason": "Pour processed successfully."}
+    if keg.current_volume_ml <= 0:
+        keg.status = "empty"
+        tap.status = "empty"
+        keg.finished_at = pour_data.end_ts
+    else:
+        tap.status = "active"
 
-    except Exception as e:
-        return {"status": "rejected", "reason": f"Internal server error: {str(e)}"}
+    return {"status": "accepted", "reason": "Pour processed successfully."}
 
 
 def get_pours(db: Session, skip: int = 0, limit: int = 20):

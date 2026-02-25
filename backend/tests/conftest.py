@@ -1,6 +1,7 @@
 # backend/tests/conftest.py
 
 import pytest
+import os
 from fastapi.testclient import TestClient
 from fastapi import BackgroundTasks
 from sqlalchemy import create_engine
@@ -12,15 +13,20 @@ import models
 
 # Импортируем ключевые компоненты нашего приложения
 from main import app
-from database import Base, get_db
+from database import Base, get_db, DATABASE_URL
 
 # =============================================================================
 # === Секция 1: Конфигурация тестовой среды и фикстуры Pytest ===
 # =============================================================================
 
-TEST_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+USE_POSTGRES = os.getenv("TEST_USE_POSTGRES", "").strip().lower() in {"1", "true", "yes"}
+if USE_POSTGRES:
+    engine = create_engine(DATABASE_URL)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+else:
+    TEST_DATABASE_URL = "sqlite:///:memory:"
+    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def override_get_db():
     try:
