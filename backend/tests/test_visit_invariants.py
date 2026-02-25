@@ -101,3 +101,82 @@ def test_topup_allowed_without_active_visit(client):
     )
     assert topup_resp.status_code == 200
     assert float(topup_resp.json()["balance"]) == 100.0
+
+
+def test_open_visit_without_card_and_search_by_guest_query(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81005")
+
+    open_resp = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert open_resp.status_code == 200
+    assert open_resp.json()["card_uid"] is None
+    assert open_resp.json()["active_tap_id"] is None
+
+    search_resp = client.get("/api/visits/active/search", headers=headers, params={"q": "Guest81005"})
+    assert search_resp.status_code == 200
+    assert search_resp.json()["guest_id"] == guest_id
+
+
+def test_open_visit_conflict_includes_existing_visit_id(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81006")
+
+    first_open = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert first_open.status_code == 200
+
+    second_open = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id},
+    )
+    assert second_open.status_code == 409
+    assert second_open.json()["detail"]["message"] == "Guest already has an active visit"
+    assert second_open.json()["detail"]["visit_id"] == first_open.json()["visit_id"]
+
+
+def test_active_visits_list_includes_cardless_visit(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81007")
+
+    open_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
+    assert open_resp.status_code == 200
+
+    list_resp = client.get("/api/visits/active", headers=headers)
+    assert list_resp.status_code == 200
+    assert any(v["guest_id"] == guest_id for v in list_resp.json())
+
+
+def test_assign_card_to_active_visit_in_single_flow(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81008")
+
+    open_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
+    assert open_resp.status_code == 200
+    visit_id = open_resp.json()["visit_id"]
+
+    assign_resp = client.post(f"/api/visits/{visit_id}/assign-card", headers=headers, json={"card_uid": "CARD-M35-81008"})
+    assert assign_resp.status_code == 200
+    assert assign_resp.json()["card_uid"] == "CARD-M35-81008"
+
+
+def test_assign_card_conflict_when_card_busy(client):
+    headers = _login(client)
+    guest_1 = _create_guest(client, headers, suffix="81009")
+    guest_2 = _create_guest(client, headers, suffix="81010")
+
+    visit_1 = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1}).json()["visit_id"]
+    visit_2 = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2}).json()["visit_id"]
+
+    ok = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": "CARD-M35-BUSY"})
+    assert ok.status_code == 200
+
+    conflict = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": "CARD-M35-BUSY"})
+    assert conflict.status_code == 409

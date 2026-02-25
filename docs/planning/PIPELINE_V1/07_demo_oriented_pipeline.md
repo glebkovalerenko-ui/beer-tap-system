@@ -140,6 +140,50 @@ Out of scope (intentionally):
 
 ---
 
+## M3.5 — Visit-Centric Operator UI (Functional Layer)
+**Goal**
+- Make visit the operational center of operator workflows in admin-app.
+
+**Scope**
+- Primary action: open new visit by guest (card is optional at open step).
+- Active visit search by one universal query input (backend determines query type).
+- Central visit card with guest identity, status, balance, and active tap lock visibility.
+- Manual operator actions: force unlock (with reason) and close visit.
+- Keep existing admin-app shell/layout; no global redesign and no final POS styling.
+- Card issuance/binding remains a separate later step.
+
+**UI strategy note**
+- This is a functional operator layer that mirrors backend invariants.
+- Final demo POS UI is intentionally deferred to a later milestone.
+
+**Backend changes**
+- None (consume existing visit APIs only).
+
+**Controller changes**
+- None.
+
+**Admin UI changes**
+- Visit-centric route/page with explicit lock-state visibility and manual intervention controls.
+
+**Operational risk level**
+- **Med**.
+
+**Demo value gained**
+- Operator can manage active visits deterministically through UI with explicit lock handling.
+
+**Acceptance criteria**
+- Operator can start from "Open new visit", find a guest, and open visit card.
+- Operator can find an active visit via one search field and open visit card.
+- Lock state is clearly visible (`Locked on tap #X` / `No active tap`).
+- Force unlock requires reason and is executable from visit card.
+- Visit can be closed from visit card.
+
+**Ограничения M3.5**
+- Выдача новой карты при открытии визита (Issue Card) не реализована; в UI оставлена заглушка.
+- Flow `Выдать карту` будет реализован следующим шагом после M3.5 как отдельный сценарий.
+
+---
+
 ## M4 — Minimal deterministic offline sync + manual close/reconcile (pilot scope)
 **Goal**
 - Handle network loss safely without building a complex reconciliation engine.

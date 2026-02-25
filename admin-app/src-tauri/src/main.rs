@@ -236,6 +236,47 @@ async fn set_emergency_stop(token: String, value: String) -> Result<api_client::
     api_client::set_emergency_stop(&token, &payload).await.map_err(AppError::from)
 }
 
+
+#[tauri::command]
+async fn get_active_visits(token: String) -> Result<Vec<api_client::VisitActiveListItem>, AppError> {
+    info!("[COMMAND] Запрос списка активных визитов...");
+    api_client::get_active_visits(&token).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn search_active_visit(token: String, query: String) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Поиск активного визита по строке запроса...");
+    api_client::search_active_visit(&token, &query).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn open_visit(token: String, guest_id: String, card_uid: Option<String>) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Открытие визита для гостя ID: {}", guest_id);
+    let payload = api_client::VisitOpenPayload { guest_id, card_uid };
+    api_client::open_visit(&token, &payload).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn assign_card_to_visit(token: String, visit_id: String, card_uid: String) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Привязка карты к визиту ID: {}", visit_id);
+    let payload = api_client::VisitAssignCardPayload { card_uid };
+    api_client::assign_card_to_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn force_unlock_visit(token: String, visit_id: String, reason: String, comment: Option<String>) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Force unlock для визита ID: {}", visit_id);
+    let payload = api_client::VisitForceUnlockPayload { reason, comment };
+    api_client::force_unlock_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn close_visit(token: String, visit_id: String, closed_reason: String, card_returned: bool) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] Закрытие визита ID: {}", visit_id);
+    let payload = api_client::VisitClosePayload { closed_reason, card_returned };
+    api_client::close_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
 // =============================================================================
 // ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
 // =============================================================================
@@ -290,7 +331,14 @@ fn main() {
             update_tap,
             // API - System
             get_system_status,
-            set_emergency_stop
+            set_emergency_stop,
+            // API - Visits
+            get_active_visits,
+            search_active_visit,
+            open_visit,
+            assign_card_to_visit,
+            force_unlock_visit,
+            close_visit
         ])
         .setup(move |app| {
             // ... (фоновый поток NFC без изменений)

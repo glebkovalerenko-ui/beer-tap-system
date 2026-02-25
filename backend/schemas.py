@@ -90,7 +90,7 @@ class CardStatusUpdate(BaseModel):
 
 class VisitOpenRequest(BaseModel):
     guest_id: uuid.UUID
-    card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})
+    card_uid: Optional[str] = Field(default=None, json_schema_extra={'example': "04AB7815CD6B80"})
 
 
 class VisitCloseRequest(BaseModel):
@@ -101,7 +101,7 @@ class VisitCloseRequest(BaseModel):
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
-    card_uid: str
+    card_uid: Optional[str]
     status: str
     opened_at: datetime
     closed_at: Optional[datetime] = None
@@ -110,6 +110,23 @@ class Visit(BaseModel):
     card_returned: bool
     model_config = ConfigDict(from_attributes=True)
 
+
+
+
+class VisitAssignCardRequest(BaseModel):
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+
+
+class VisitActiveListItem(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: str
+    balance: Decimal
+    status: str
+    card_uid: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    opened_at: datetime
 
 class VisitPourAuthorizeRequest(BaseModel):
     card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})

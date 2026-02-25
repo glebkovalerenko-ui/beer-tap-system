@@ -104,3 +104,21 @@ def search_active_visit(
     if not visit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active visit not found")
     return visit
+
+
+@router.get("/active", response_model=list[schemas.VisitActiveListItem], summary="List all active visits")
+def list_active_visits(
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    return visit_crud.get_active_visits_list(db=db)
+
+
+@router.post("/{visit_id}/assign-card", response_model=schemas.Visit, summary="Assign card to active visit")
+def assign_card_to_visit(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitAssignCardRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    return visit_crud.assign_card_to_active_visit(db=db, visit_id=visit_id, card_uid=payload.card_uid)

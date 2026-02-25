@@ -145,7 +145,7 @@ class Visit(Base):
 
     visit_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
-    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
+    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=True, index=True)
     status = Column(String(20), nullable=False, default="active", index=True)
     opened_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)
