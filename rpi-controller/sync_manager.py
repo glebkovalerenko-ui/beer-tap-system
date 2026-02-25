@@ -28,7 +28,13 @@ class SyncManager:
             return
 
         logging.info(f"Found {len(pours)} records for synchronization...")
-        payload = {"pours": [dict(row) for row in pours]}
+        payload_rows = []
+        for row in pours:
+            item = dict(row)
+            if not item.get("short_id"):
+                item["short_id"] = str(item.get("client_tx_id", "")).replace("-", "")[:8].upper()
+            payload_rows.append(item)
+        payload = {"pours": payload_rows}
         url = "/".join([self.server_url, "api", "sync", "pours"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}
         try:
@@ -41,8 +47,8 @@ class SyncManager:
                         db_handler.update_status(client_tx_id, "confirmed")
                     else:
                         reason = res.get("reason", "Not specified")
-                        db_handler.update_status(client_tx_id, "failed")
-                        logging.warning(f"Transaction {client_tx_id} rejected by server. Reason: {reason}")
+                        db_handler.mark_retry(client_tx_id)
+                        logging.warning(f"Transaction {client_tx_id} not accepted yet. Will retry. Reason: {reason}")
                 logging.info("Синхронизация завершена успешно")
             else:
                 logging.error(f"Sync failed with status code {response.status_code}")
