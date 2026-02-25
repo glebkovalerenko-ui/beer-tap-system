@@ -1,25 +1,25 @@
-# Interface Contract
+﻿# Interface Contract
 
-**Источник правды:** `admin-app/src-tauri/src/lib.rs`, `admin-app/src-tauri/src/main.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
+**РСЃС‚РѕС‡РЅРёРє РїСЂР°РІРґС‹:** `admin-app/src-tauri/src/lib.rs`, `admin-app/src-tauri/src/main.rs`, `admin-app/src/stores/*.js`, `backend/api/*.py`
 
-**Версия:** 1.0  
-**Дата:** 2026-02-17
+**Р’РµСЂСЃРёСЏ:** 1.0  
+**Р”Р°С‚Р°:** 2026-02-17
 
-## Архитектура взаимодействия
+## РђСЂС…РёС‚РµРєС‚СѓСЂР° РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёСЏ
 
 ```
-Svelte 5 Frontend ←→ Tauri 2.0 (Rust) ←→ FastAPI Backend
-     ↓                    ↓                    ↓
+Svelte 5 Frontend в†ђв†’ Tauri 2.0 (Rust) в†ђв†’ FastAPI Backend
+     в†“                    в†“                    в†“
   Stores            Commands          HTTP Endpoints
 ```
 
-## 1. Таблица маппинга команд
+## 1. РўР°Р±Р»РёС†Р° РјР°РїРїРёРЅРіР° РєРѕРјР°РЅРґ
 
 ### Authentication & Session
 
 | Svelte Store Action | Tauri Command | Rust HTTP Client | FastAPI Endpoint |
 |-------------------|---------------|------------------|------------------|
-| `sessionStore.setToken()` | `login` | `api_client::login()` | `POST /api/token` (публичный) |
+| `sessionStore.setToken()` | `login` | `api_client::login()` | `POST /api/token` (РїСѓР±Р»РёС‡РЅС‹Р№) |
 
 ### Guests Management
 
@@ -68,29 +68,29 @@ Svelte 5 Frontend ←→ Tauri 2.0 (Rust) ←→ FastAPI Backend
 
 | Svelte Store Action | Tauri Command | Rust Implementation | FastAPI Endpoint |
 |-------------------|---------------|-------------------|------------------|
-| `nfcReaderStore.setupListener()` | `list_readers` | `nfc_handler::list_readers_internal()` | — |
-| — | `read_mifare_block` | `nfc_handler::connect_and_authenticate()` | — |
-| — | `write_mifare_block` | `nfc_handler::connect_and_authenticate()` | — |
-| — | `change_sector_keys` | `nfc_handler::connect_and_authenticate()` | — |
+| `nfcReaderStore.setupListener()` | `list_readers` | `nfc_handler::list_readers_internal()` | вЂ” |
+| вЂ” | `read_mifare_block` | `nfc_handler::connect_and_authenticate()` | вЂ” |
+| вЂ” | `write_mifare_block` | `nfc_handler::connect_and_authenticate()` | вЂ” |
+| вЂ” | `change_sector_keys` | `nfc_handler::connect_and_authenticate()` | вЂ” |
 
-## 2. События NFC: `card-status-changed`
+## 2. РЎРѕР±С‹С‚РёСЏ NFC: `card-status-changed`
 
-### Основной способ получения данных NFC
+### РћСЃРЅРѕРІРЅРѕР№ СЃРїРѕСЃРѕР± РїРѕР»СѓС‡РµРЅРёСЏ РґР°РЅРЅС‹С… NFC
 
-**Направление:** Rust → Svelte  
-**Механизм:** Tauri Events  
-**Частота:** 500ms polling с идемпотентной отправкой
+**РќР°РїСЂР°РІР»РµРЅРёРµ:** Rust в†’ Svelte  
+**РњРµС…Р°РЅРёР·Рј:** Tauri Events  
+**Р§Р°СЃС‚РѕС‚Р°:** 500ms polling СЃ РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕР№ РѕС‚РїСЂР°РІРєРѕР№
 
-#### Структура payload:
+#### РЎС‚СЂСѓРєС‚СѓСЂР° payload:
 
 ```typescript
 interface CardStatusPayload {
-  uid?: string;      // HEX UID карты или null
-  error?: string;    // Ошибка PC/SC или null
+  uid?: string;      // HEX UID РєР°СЂС‚С‹ РёР»Рё null
+  error?: string;    // РћС€РёР±РєР° PC/SC РёР»Рё null
 }
 ```
 
-#### Логика обработки в `nfcReaderStore`:
+#### Р›РѕРіРёРєР° РѕР±СЂР°Р±РѕС‚РєРё РІ `nfcReaderStore`:
 
 ```javascript
 const handleEvent = (payload) => {
@@ -114,18 +114,18 @@ const handleEvent = (payload) => {
 };
 ```
 
-#### Сценарии статуса:
+#### РЎС†РµРЅР°СЂРёРё СЃС‚Р°С‚СѓСЃР°:
 
-| Сценарий | UID | Error | Status | Описание |
+| РЎС†РµРЅР°СЂРёР№ | UID | Error | Status | РћРїРёСЃР°РЅРёРµ |
 |----------|-----|-------|--------|----------|
-| Карта на ридере | HEX string | null | 'ok' | Карта обнаружена и прочитана |
-| Ридер пуст | null | null | 'ok' | Ридер доступен, карты нет |
-| Ошибка PC/SC | null | string | 'error' | Аппаратная ошибка ридера |
-| Ридер не найден | null | "Считыватель не найден" | 'error' | Ридер отключен |
+| РљР°СЂС‚Р° РЅР° СЂРёРґРµСЂРµ | HEX string | null | 'ok' | РљР°СЂС‚Р° РѕР±РЅР°СЂСѓР¶РµРЅР° Рё РїСЂРѕС‡РёС‚Р°РЅР° |
+| Р РёРґРµСЂ РїСѓСЃС‚ | null | null | 'ok' | Р РёРґРµСЂ РґРѕСЃС‚СѓРїРµРЅ, РєР°СЂС‚С‹ РЅРµС‚ |
+| РћС€РёР±РєР° PC/SC | null | string | 'error' | РђРїРїР°СЂР°С‚РЅР°СЏ РѕС€РёР±РєР° СЂРёРґРµСЂР° |
+| Р РёРґРµСЂ РЅРµ РЅР°Р№РґРµРЅ | null | "РЎС‡РёС‚С‹РІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ" | 'error' | Р РёРґРµСЂ РѕС‚РєР»СЋС‡РµРЅ |
 
-#### Идемпотентность:
+#### РРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚СЊ:
 
-Событие отправляется только при изменении payload. Сравнение происходит через JSON сериализацию:
+РЎРѕР±С‹С‚РёРµ РѕС‚РїСЂР°РІР»СЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РёР·РјРµРЅРµРЅРёРё payload. РЎСЂР°РІРЅРµРЅРёРµ РїСЂРѕРёСЃС…РѕРґРёС‚ С‡РµСЂРµР· JSON СЃРµСЂРёР°Р»РёР·Р°С†РёСЋ:
 
 ```rust
 if current_payload_json != last_payload_json {
@@ -134,86 +134,86 @@ if current_payload_json != last_payload_json {
 }
 ```
 
-## 3. Классификация эндпоинтов API
+## 3. РљР»Р°СЃСЃРёС„РёРєР°С†РёСЏ СЌРЅРґРїРѕРёРЅС‚РѕРІ API
 
-### Публичные эндпоинты (для RPi)
+### РџСѓР±Р»РёС‡РЅС‹Рµ СЌРЅРґРїРѕРёРЅС‚С‹ (РґР»СЏ RPi)
 
-| Endpoint | Method | Описание | Использование |
+| Endpoint | Method | РћРїРёСЃР°РЅРёРµ | РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ |
 |----------|--------|----------|---------------|
-| `/api/token` | POST | Аутентификация | Получение JWT токена |
-| `/api/system/status` | GET | Статус экстренной остановки | Опрос RPi контроллерами |
-| `/api/guests/{id}` | GET | Получение гостя по ID | RPi для проверки баланса |
-| `/api/controllers/register` | POST | Регистрация контроллера | Check-in RPi контроллеров |
-| `/api/sync/pours` | POST | Синхронизация наливов | Отправка данных о наливах |
+| `/api/token` | POST | РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ | РџРѕР»СѓС‡РµРЅРёРµ JWT С‚РѕРєРµРЅР° |
+| `/api/system/status` | GET | РЎС‚Р°С‚СѓСЃ СЌРєСЃС‚СЂРµРЅРЅРѕР№ РѕСЃС‚Р°РЅРѕРІРєРё | РћРїСЂРѕСЃ RPi РєРѕРЅС‚СЂРѕР»Р»РµСЂР°РјРё |
+| `/api/guests/{id}` | GET | РџРѕР»СѓС‡РµРЅРёРµ РіРѕСЃС‚СЏ РїРѕ ID | RPi РґР»СЏ РїСЂРѕРІРµСЂРєРё Р±Р°Р»Р°РЅСЃР° |
+| `/api/controllers/register` | POST | Р РµРіРёСЃС‚СЂР°С†РёСЏ РєРѕРЅС‚СЂРѕР»Р»РµСЂР° | Check-in RPi РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ |
+| `/api/sync/pours` | POST | РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РЅР°Р»РёРІРѕРІ | РћС‚РїСЂР°РІРєР° РґР°РЅРЅС‹С… Рѕ РЅР°Р»РёРІР°С… |
 
-**Особенности:**
-- Не требуют JWT аутентификации
-- Оптимизированы для частого опроса
-- Возвращают минимально необходимые данные
-- **Требование заголовка `X-Internal-Token`** для эндпоинтов контроллеров (см. раздел 7)
+**РћСЃРѕР±РµРЅРЅРѕСЃС‚Рё:**
+- РќРµ С‚СЂРµР±СѓСЋС‚ JWT Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёРё
+- РћРїС‚РёРјРёР·РёСЂРѕРІР°РЅС‹ РґР»СЏ С‡Р°СЃС‚РѕРіРѕ РѕРїСЂРѕСЃР°
+- Р’РѕР·РІСЂР°С‰Р°СЋС‚ РјРёРЅРёРјР°Р»СЊРЅРѕ РЅРµРѕР±С…РѕРґРёРјС‹Рµ РґР°РЅРЅС‹Рµ
+- **РўСЂРµР±РѕРІР°РЅРёРµ Р·Р°РіРѕР»РѕРІРєР° `X-Internal-Token`** РґР»СЏ СЌРЅРґРїРѕРёРЅС‚РѕРІ РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ (СЃРј. СЂР°Р·РґРµР» 7)
 
-### Эндпоинты требующие JWT (для Admin App)
+### Р­РЅРґРїРѕРёРЅС‚С‹ С‚СЂРµР±СѓСЋС‰РёРµ JWT (РґР»СЏ Admin App)
 
 #### Guests API
-- `GET /api/guests/` - Список гостей
-- `POST /api/guests/` - Создание гостя
-- `PUT /api/guests/{id}` - Обновление гостя
-- `POST /api/guests/{id}/cards` - Привязка карты
-- `POST /api/guests/{id}/topup` - Пополнение баланса
-- `GET /api/guests/{id}/history` - История операций
+- `GET /api/guests/` - РЎРїРёСЃРѕРє РіРѕСЃС‚РµР№
+- `POST /api/guests/` - РЎРѕР·РґР°РЅРёРµ РіРѕСЃС‚СЏ
+- `PUT /api/guests/{id}` - РћР±РЅРѕРІР»РµРЅРёРµ РіРѕСЃС‚СЏ
+- `POST /api/guests/{id}/cards` - РџСЂРёРІСЏР·РєР° РєР°СЂС‚С‹
+- `POST /api/guests/{id}/topup` - РџРѕРїРѕР»РЅРµРЅРёРµ Р±Р°Р»Р°РЅСЃР°
+- `GET /api/guests/{id}/history` - РСЃС‚РѕСЂРёСЏ РѕРїРµСЂР°С†РёР№
 
 #### Kegs API
-- `GET /api/kegs/` - Список кег
-- `POST /api/kegs/` - Создание кеги
-- `PUT /api/kegs/{id}` - Обновление кеги
-- `DELETE /api/kegs/{id}` - Удаление кеги
+- `GET /api/kegs/` - РЎРїРёСЃРѕРє РєРµРі
+- `POST /api/kegs/` - РЎРѕР·РґР°РЅРёРµ РєРµРіРё
+- `PUT /api/kegs/{id}` - РћР±РЅРѕРІР»РµРЅРёРµ РєРµРіРё
+- `DELETE /api/kegs/{id}` - РЈРґР°Р»РµРЅРёРµ РєРµРіРё
 
 #### Taps API
-- `GET /api/taps/` - Список кранов
-- `PUT /api/taps/{id}/keg` - Назначение кеги
-- `DELETE /api/taps/{id}/keg` - Снятие кеги
-- `PUT /api/taps/{id}` - Обновление крана
+- `GET /api/taps/` - РЎРїРёСЃРѕРє РєСЂР°РЅРѕРІ
+- `PUT /api/taps/{id}/keg` - РќР°Р·РЅР°С‡РµРЅРёРµ РєРµРіРё
+- `DELETE /api/taps/{id}/keg` - РЎРЅСЏС‚РёРµ РєРµРіРё
+- `PUT /api/taps/{id}` - РћР±РЅРѕРІР»РµРЅРёРµ РєСЂР°РЅР°
 
 #### Beverages API
-- `GET /api/beverages/` - Список напитков
-- `POST /api/beverages/` - Создание напитка
+- `GET /api/beverages/` - РЎРїРёСЃРѕРє РЅР°РїРёС‚РєРѕРІ
+- `POST /api/beverages/` - РЎРѕР·РґР°РЅРёРµ РЅР°РїРёС‚РєР°
 
 #### System API
-- `POST /api/system/emergency_stop` - Управление экстренной остановкой
-- `GET /api/system/states/all` - Все флаги системы (debug)
+- `POST /api/system/emergency_stop` - РЈРїСЂР°РІР»РµРЅРёРµ СЌРєСЃС‚СЂРµРЅРЅРѕР№ РѕСЃС‚Р°РЅРѕРІРєРѕР№
+- `GET /api/system/states/all` - Р’СЃРµ С„Р»Р°РіРё СЃРёСЃС‚РµРјС‹ (debug)
 
 #### Cards API
-- `GET /api/cards/` - Список всех карт
-- `POST /api/cards/` - Регистрация карты
-- `PUT /api/cards/{uid}/status` - Изменение статуса карты
+- `GET /api/cards/` - РЎРїРёСЃРѕРє РІСЃРµС… РєР°СЂС‚
+- `POST /api/cards/` - Р РµРіРёСЃС‚СЂР°С†РёСЏ РєР°СЂС‚С‹
+- `PUT /api/cards/{uid}/status` - РР·РјРµРЅРµРЅРёРµ СЃС‚Р°С‚СѓСЃР° РєР°СЂС‚С‹
 
 #### Pours API
-- `GET /api/pours/` - История наливов
+- `GET /api/pours/` - РСЃС‚РѕСЂРёСЏ РЅР°Р»РёРІРѕРІ
 
-## 4. Потоки данных
+## 4. РџРѕС‚РѕРєРё РґР°РЅРЅС‹С…
 
-### Аутентификация:
+### РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ:
 ```
-UI → sessionStore → invoke('login') → api_client::login() → POST /api/token
-                                            ↓
-UI ← sessionStore ← JWT токен ←───────────────────
-```
-
-### CRUD операции:
-```
-UI → store → invoke('command') → api_client::function() → HTTP endpoint
-                                            ↓
-UI ← store ← Обновленные данные ←───────────────────────
+UI в†’ sessionStore в†’ invoke('login') в†’ api_client::login() в†’ POST /api/token
+                                            в†“
+UI в†ђ sessionStore в†ђ JWT С‚РѕРєРµРЅ в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
-### NFC события:
+### CRUD РѕРїРµСЂР°С†РёРё:
 ```
-Rust NFC thread → card-status-changed → nfcReaderStore → UI
+UI в†’ store в†’ invoke('command') в†’ api_client::function() в†’ HTTP endpoint
+                                            в†“
+UI в†ђ store в†ђ РћР±РЅРѕРІР»РµРЅРЅС‹Рµ РґР°РЅРЅС‹Рµ в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
-## 5. Обработка ошибок
+### NFC СЃРѕР±С‹С‚РёСЏ:
+```
+Rust NFC thread в†’ card-status-changed в†’ nfcReaderStore в†’ UI
+```
 
-### Rust → Svelte:
+## 5. РћР±СЂР°Р±РѕС‚РєР° РѕС€РёР±РѕРє
+
+### Rust в†’ Svelte:
 ```rust
 #[derive(Debug, Serialize, Clone)]
 pub struct AppError { 
@@ -221,16 +221,16 @@ pub struct AppError {
 }
 ```
 
-### Svelte → UI:
+### Svelte в†’ UI:
 ```javascript
 try {
   await store.action();
 } catch (error) {
-  // error.message или error.toString()
+  // error.message РёР»Рё error.toString()
 }
 ```
 
-### HTTP ошибки:
+### HTTP РѕС€РёР±РєРё:
 ```rust
 async fn handle_api_error(response: Response) -> String {
     if let Ok(error_body) = response.json::<ApiErrorDetail>().await {
@@ -241,46 +241,46 @@ async fn handle_api_error(response: Response) -> String {
 }
 ```
 
-## 6. Конфигурация
+## 6. РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ
 
 ### API Base URL:
 ```rust
 const API_BASE_URL: &str = "http://localhost:8000/api";
 ```
 
-### JWT токен:
+### JWT С‚РѕРєРµРЅ:
 ```javascript
-// Хранится в localStorage
+// РҐСЂР°РЅРёС‚СЃСЏ РІ localStorage
 localStorage.setItem('jwt_token', token);
 ```
 
-### NFC опрос:
+### NFC РѕРїСЂРѕСЃ:
 ```rust
 thread::sleep(Duration::from_millis(500));
 ```
 
-## 7. Аутентификация контроллеров (X-Internal-Token)
+## 7. РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ (X-Internal-Token)
 
-### Требование для эндпоинтов контроллеров
+### РўСЂРµР±РѕРІР°РЅРёРµ РґР»СЏ СЌРЅРґРїРѕРёРЅС‚РѕРІ РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ
 
-Следующие публичные эндпоинты требуют заголовок `X-Internal-Token` для аутентификации RPi контроллеров:
+РЎР»РµРґСѓСЋС‰РёРµ РїСѓР±Р»РёС‡РЅС‹Рµ СЌРЅРґРїРѕРёРЅС‚С‹ С‚СЂРµР±СѓСЋС‚ Р·Р°РіРѕР»РѕРІРѕРє `X-Internal-Token` РґР»СЏ Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёРё RPi РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ:
 
-- `POST /api/controllers/register` - Регистрация контроллера
-- `POST /api/sync/pours` - Синхронизация наливов
+- `POST /api/controllers/register` - Р РµРіРёСЃС‚СЂР°С†РёСЏ РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
+- `POST /api/sync/pours` - РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РЅР°Р»РёРІРѕРІ
 
-### Формат заголовка
+### Р¤РѕСЂРјР°С‚ Р·Р°РіРѕР»РѕРІРєР°
 
 ```http
 X-Internal-Token: <secret_token_string>
 ```
 
-### Механизм проверки
+### РњРµС…Р°РЅРёР·Рј РїСЂРѕРІРµСЂРєРё
 
-1. **Серверная валидация:** Токен проверяется на соответствие предопределенному значению
-2. **Безопасность:** Токен хранится в переменных окружения сервера
-3. **Цель:** Предотвращение несанкционированного доступа к эндпоинтам контроллеров
+1. **РЎРµСЂРІРµСЂРЅР°СЏ РІР°Р»РёРґР°С†РёСЏ:** РўРѕРєРµРЅ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РЅР° СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ РїСЂРµРґРѕРїСЂРµРґРµР»РµРЅРЅРѕРјСѓ Р·РЅР°С‡РµРЅРёСЋ
+2. **Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ:** РўРѕРєРµРЅ С…СЂР°РЅРёС‚СЃСЏ РІ РїРµСЂРµРјРµРЅРЅС‹С… РѕРєСЂСѓР¶РµРЅРёСЏ СЃРµСЂРІРµСЂР°
+3. **Р¦РµР»СЊ:** РџСЂРµРґРѕС‚РІСЂР°С‰РµРЅРёРµ РЅРµСЃР°РЅРєС†РёРѕРЅРёСЂРѕРІР°РЅРЅРѕРіРѕ РґРѕСЃС‚СѓРїР° Рє СЌРЅРґРїРѕРёРЅС‚Р°Рј РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРІ
 
-### Пример запроса
+### РџСЂРёРјРµСЂ Р·Р°РїСЂРѕСЃР°
 
 ```http
 POST /api/sync/pours
@@ -303,13 +303,48 @@ X-Internal-Token: rpi_controller_secret_2024
 }
 ```
 
-### Переменные окружения
+### РџРµСЂРµРјРµРЅРЅС‹Рµ РѕРєСЂСѓР¶РµРЅРёСЏ
 
 ```bash
-# На сервере backend
+# РќР° СЃРµСЂРІРµСЂРµ backend
 INTERNAL_CONTROLLER_TOKEN=rpi_controller_secret_2024
 ```
 
 ---
 
-**Примечание:** Этот документ является источником правды для всех взаимодействий между компонентами системы. При изменении архитектуры необходимо обновлять данный контракт.
+**РџСЂРёРјРµС‡Р°РЅРёРµ:** Р­С‚РѕС‚ РґРѕРєСѓРјРµРЅС‚ СЏРІР»СЏРµС‚СЃСЏ РёСЃС‚РѕС‡РЅРёРєРѕРј РїСЂР°РІРґС‹ РґР»СЏ РІСЃРµС… РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёР№ РјРµР¶РґСѓ РєРѕРјРїРѕРЅРµРЅС‚Р°РјРё СЃРёСЃС‚РµРјС‹. РџСЂРё РёР·РјРµРЅРµРЅРёРё Р°СЂС…РёС‚РµРєС‚СѓСЂС‹ РЅРµРѕР±С…РѕРґРёРјРѕ РѕР±РЅРѕРІР»СЏС‚СЊ РґР°РЅРЅС‹Р№ РєРѕРЅС‚СЂР°РєС‚.
+
+## M4 API Contract Addendum (2026-02-25)
+
+### Updated sync payload
+`POST /api/sync/pours` now requires `short_id` for every pour item:
+- `client_tx_id` (string)
+- `card_uid` (string)
+- `tap_id` (int)
+- `short_id` (string, 6-8)
+- `start_ts` (datetime)
+- `end_ts` (datetime)
+- `volume_ml` (int)
+- `price_cents` (int)
+
+### New manual reconcile endpoint
+`POST /api/visits/{visit_id}/reconcile-pour`
+Payload:
+- `tap_id` (int)
+- `short_id` (string, 6-8)
+- `volume_ml` (int)
+- `amount` (decimal)
+- `reason` (required string)
+- `comment` (optional string)
+
+Behavior:
+- idempotent by `(visit_id, short_id)`;
+- first successful call creates reconciled pour and unlocks visit;
+- repeated call returns existing reconciled result.
+
+### Audit actions used in M4
+- `reconcile_done`
+- `late_sync_matched`
+- `late_sync_mismatch`
+- `sync_conflict`
+

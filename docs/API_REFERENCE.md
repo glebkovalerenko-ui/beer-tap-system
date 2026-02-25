@@ -1,4 +1,4 @@
-# Beer Tap System API Reference
+﻿# Beer Tap System API Reference
 
 ## Overview
 
@@ -79,9 +79,9 @@ Create a new guest account.
 **Request Body:**
 ```json
 {
-  "last_name": "Иванов",
-  "first_name": "Иван",
-  "patronymic": "Иванович",
+  "last_name": "РРІР°РЅРѕРІ",
+  "first_name": "РРІР°РЅ",
+  "patronymic": "РРІР°РЅРѕРІРёС‡",
   "phone_number": "+79211234567",
   "date_of_birth": "1990-01-15",
   "id_document": "4510 123456"
@@ -106,9 +106,9 @@ Update guest information.
 **Request Body:**
 ```json
 {
-  "last_name": "Петров",
-  "first_name": "Петр",
-  "patronymic": "Петрович",
+  "last_name": "РџРµС‚СЂРѕРІ",
+  "first_name": "РџРµС‚СЂ",
+  "patronymic": "РџРµС‚СЂРѕРІРёС‡",
   "phone_number": "+79217654321",
   "date_of_birth": "1991-02-16",
   "id_document": "4511 654321",
@@ -192,7 +192,7 @@ Create a new tap.
 **Request Body:**
 ```json
 {
-  "display_name": "Кран №1"
+  "display_name": "РљСЂР°РЅ в„–1"
 }
 ```
 
@@ -214,7 +214,7 @@ Update tap information.
 **Request Body:**
 ```json
 {
-  "display_name": "Кран №1 (обновленный)",
+  "display_name": "РљСЂР°РЅ в„–1 (РѕР±РЅРѕРІР»РµРЅРЅС‹Р№)",
   "status": "active"
 }
 ```
@@ -615,3 +615,35 @@ The API returns standard HTTP status codes:
 - Batch processing in `/api/sync/pours` handles multiple pours efficiently
 - Pagination is available on list endpoints to manage large datasets
 - Database connections use connection pooling for optimal performance
+
+## M4 Endpoint Update (2026-02-25)
+
+### POST `/api/sync/pours`
+Additional required field in each pour item:
+- `short_id` (string, 6-8 chars)
+
+Late-sync rule:
+- when lock is already cleared, sync is accepted but must not create another charge;
+- backend emits `late_sync_matched` or `late_sync_mismatch` audit event.
+
+### POST `/api/visits/{visit_id}/reconcile-pour`
+Manual timeout recovery endpoint.
+
+Request body:
+```json
+{
+  "tap_id": 1,
+  "short_id": "A1B2C3",
+  "volume_ml": 250,
+  "amount": 125.00,
+  "reason": "sync_timeout",
+  "comment": "operator entry"
+}
+```
+
+Behavior:
+- validates active visit lock on the same tap;
+- creates manual reconciled pour (`sync_status = reconciled`);
+- clears lock (`active_tap_id = null`, `lock_set_at = null`);
+- idempotent by `(visit_id, short_id)`.
+

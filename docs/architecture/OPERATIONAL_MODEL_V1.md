@@ -1,4 +1,4 @@
-# Beer Tap System
+﻿# Beer Tap System
 # Operational Model v1
 ## (Integrated Self-Pour Core)
 
@@ -158,7 +158,7 @@ LostCard
 
 Behavior:
 
-- If lost card UID is used → block + critical alert.
+- If lost card UID is used в†’ block + critical alert.
 - Visit entity is not overloaded with historical card records.
 
 ---
@@ -312,7 +312,7 @@ Before pour begins, backend verifies:
 - Card UID matches visit.
 - Card UID not in LostCard.
 - active_tap_id is null.
-- Balance ≥ minimal_pour_cost.
+- Balance в‰Ґ minimal_pour_cost.
 
 If valid:
 
@@ -339,7 +339,7 @@ If controller loses connection mid-session:
 - Continue pour until completion.
 - Deduct locally stored balance.
 - Mark session as pending_sync.
-- Tap → processing_sync.
+- Tap в†’ processing_sync.
 - No new card accepted.
 
 ---
@@ -353,7 +353,7 @@ When connection restored:
 - active_tap_id cleared.
 - Tap returns to active.
 
-If mismatch with manual entry → create BalanceMismatch alert.
+If mismatch with manual entry в†’ create BalanceMismatch alert.
 
 ---
 
@@ -377,14 +377,14 @@ Future: primary + secondary server replication.
 
 When keg is empty:
 
-1. Tap → out_of_keg.
+1. Tap в†’ out_of_keg.
 2. System suggests next keg using FIFO:
    - Same BeerType
    - Status = warehouse
    - Oldest received_at.
 3. Staff confirms replacement.
-4. Keg → connected.
-5. Tap → active.
+4. Keg в†’ connected.
+5. Tap в†’ active.
 
 ---
 
@@ -486,3 +486,25 @@ Must include:
 ---
 
 # End of Document
+# 11. M4 Offline + Manual Reconcile State Machine (2026-02-25)
+
+Operational source of truth:
+- Controller detects and reports pour completion.
+- Backend is the only component that changes operational lock state (`visit.active_tap_id`, `visit.lock_set_at`).
+
+State transitions:
+1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=now`, tap domain shown as `processing_sync`.
+2. Normal sync accepted (`/api/sync/pours`) -> pour stored with `sync_status='synced'`, lock cleared.
+3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour stored with `sync_status='reconciled'`, lock cleared.
+4. Late sync after manual reconcile:
+   - same `short_id` -> `late_sync_matched` audit event, no second debit.
+   - different/missing `short_id` -> `late_sync_mismatch` audit event, no second debit.
+
+No-double-charge invariant:
+- If visit is already unlocked and a late sync arrives, backend must not perform a second balance deduction.
+
+Data keys introduced by M4:
+- `pours.sync_status` (`pending_sync | synced | reconciled`)
+- `pours.short_id` (6-8 chars)
+- `visits.lock_set_at` (timestamp for UI-side timeout policy)
+
