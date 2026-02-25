@@ -144,6 +144,7 @@ def test_sync_releases_lock_and_next_authorize_on_other_tap_succeeds(client):
                     "client_tx_id": "m3-sync-001",
                     "card_uid": "CARD-M3-002",
                     "tap_id": tap_id,
+                    "short_id": "M30001",
                     "start_ts": "2026-01-01T10:00:00Z",
                     "end_ts": "2026-01-01T10:00:05Z",
                     "volume_ml": 200,
@@ -239,6 +240,7 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
                     "client_tx_id": "m3-sync-002",
                     "card_uid": "CARD-M3-004",
                     "tap_id": conflict_tap_id,
+                    "short_id": "M30002",
                     "start_ts": "2026-01-01T10:00:00Z",
                     "end_ts": "2026-01-01T10:00:05Z",
                     "volume_ml": 200,
@@ -265,6 +267,7 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
                     "client_tx_id": "m3-sync-003",
                     "card_uid": "CARD-M3-004",
                     "tap_id": tap_id,
+                    "short_id": "M30003",
                     "start_ts": "2026-01-01T10:00:00Z",
                     "end_ts": "2026-01-01T10:00:05Z",
                     "volume_ml": 200,
@@ -275,18 +278,15 @@ def test_sync_with_other_tap_returns_409_and_late_sync_is_rejected(client):
     )
     assert late_sync.status_code == 200
     assert late_sync.json()["results"][0]["status"] == "accepted"
-    assert late_sync.json()["results"][0]["reason"] == "accepted_late_sync_recorded"
+    assert late_sync.json()["results"][0]["reason"] == "late_sync_mismatch_recorded"
 
     audit_resp = client.get("/api/audit/", headers=headers)
     assert audit_resp.status_code == 200
-    late_entries = [
-        log for log in audit_resp.json() if log["action"] == "late_sync_received"
-    ]
+    late_entries = [log for log in audit_resp.json() if log["action"] == "late_sync_mismatch"]
     assert late_entries
     details = json.loads(late_entries[0]["details"])
-    assert details["reason"] == "late_sync_received"
+    assert details["short_id"] == "M30003"
     assert details["client_tx_id"] == "m3-sync-003"
-    assert details["card_uid"] == "CARD-M3-004"
     assert details["tap_id"] == tap_id
     assert details["volume_ml"] == 200
 

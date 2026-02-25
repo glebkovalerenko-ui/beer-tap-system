@@ -107,6 +107,7 @@ class Visit(BaseModel):
     closed_at: Optional[datetime] = None
     closed_reason: Optional[str] = None
     active_tap_id: Optional[int] = None
+    lock_set_at: Optional[datetime] = None
     card_returned: bool
     model_config = ConfigDict(from_attributes=True)
 
@@ -126,6 +127,7 @@ class VisitActiveListItem(BaseModel):
     status: str
     card_uid: Optional[str] = None
     active_tap_id: Optional[int] = None
+    lock_set_at: Optional[datetime] = None
     opened_at: datetime
 
 class VisitPourAuthorizeRequest(BaseModel):
@@ -142,6 +144,15 @@ class VisitPourAuthorizeResponse(BaseModel):
 class VisitForceUnlockRequest(BaseModel):
     reason: str = Field(..., min_length=1, json_schema_extra={'example': "controller_offline_recovery"})
     comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Manual unlock after timeout"})
+
+
+class VisitReconcilePourRequest(BaseModel):
+    tap_id: int = Field(..., ge=1, json_schema_extra={'example': 1})
+    short_id: str = Field(..., min_length=6, max_length=8, json_schema_extra={'example': "A1B2C3"})
+    volume_ml: int = Field(..., ge=1, json_schema_extra={'example': 250})
+    amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 175.00})
+    reason: str = Field(..., min_length=1, json_schema_extra={'example': "sync_timeout"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Operator entered from controller screen"})
 
 class TopUpRequest(BaseModel):
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 500.00}, description="Сумма пополнения, должна быть больше нуля")
@@ -179,6 +190,9 @@ class Pour(BaseModel):
     pour_id: uuid.UUID
     volume_ml: int
     amount_charged: Decimal
+    sync_status: str
+    short_id: Optional[str] = None
+    is_manual_reconcile: bool = False
     poured_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -237,6 +251,7 @@ class PourData(BaseModel):
     client_tx_id: str
     card_uid: str
     tap_id: int
+    short_id: str = Field(..., min_length=6, max_length=8)
     start_ts: datetime
     end_ts: datetime
     volume_ml: int

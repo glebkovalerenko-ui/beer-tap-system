@@ -443,7 +443,10 @@ def create_guest_with_mixed_history(db_session: Session, context: dict):
     pour = models.Pour(
         client_tx_id=f"history-pour-{uuid.uuid4()}",  # Добавлено
         guest_id=guest.guest_id, card_uid=card.card_uid, tap_id=tap.tap_id, keg_id=keg.keg_id,
-        volume_ml=500, amount_charged=Decimal("200.00"), poured_at=pour_time
+        volume_ml=500,
+        amount_charged=Decimal("200.00"),
+        price_per_ml_at_pour=Decimal("0.4000"),
+        poured_at=pour_time,
     )
     db_session.add(pour)
 

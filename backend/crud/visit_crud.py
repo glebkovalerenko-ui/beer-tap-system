@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, date
 import json
 import uuid
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_, update
@@ -74,6 +75,50 @@ def get_visit(db: Session, visit_id: uuid.UUID):
     return db.query(models.Visit).filter(models.Visit.visit_id == visit_id).first()
 
 
+def _get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: int):
+    return (
+        db.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+            models.Pour.is_manual_reconcile.is_(False),
+        )
+        .order_by(models.Pour.created_at.desc())
+        .first()
+    )
+
+
+def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_id: int):
+    existing = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
+    if existing:
+        return existing
+
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    if not tap or not tap.keg_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tap is not configured with keg")
+
+    pending_client_tx_id = f"pending-sync:{visit.visit_id}:{tap_id}:{uuid.uuid4().hex[:8]}"
+    db.add(
+        models.Pour(
+            client_tx_id=pending_client_tx_id,
+            card_uid=visit.card_uid,
+            tap_id=tap_id,
+            visit_id=visit.visit_id,
+            volume_ml=0,
+            poured_at=datetime.now(timezone.utc),
+            amount_charged=Decimal("0.00"),
+            price_per_ml_at_pour=Decimal("0.0000"),
+            guest_id=visit.guest_id,
+            keg_id=tap.keg_id,
+            sync_status="pending_sync",
+            short_id=None,
+            is_manual_reconcile=False,
+        )
+    )
+    return None
+
+
 def get_active_visits_list(db: Session):
     visits = db.query(models.Visit).join(models.Guest, models.Visit.guest_id == models.Guest.guest_id).filter(
         models.Visit.status == "active"
@@ -92,6 +137,7 @@ def get_active_visits_list(db: Session):
             "status": visit.status,
             "card_uid": visit.card_uid,
             "active_tap_id": visit.active_tap_id,
+            "lock_set_at": visit.lock_set_at,
             "opened_at": visit.opened_at,
         })
     return result
@@ -165,7 +211,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             models.Visit.status == "active",
             or_(models.Visit.active_tap_id.is_(None), models.Visit.active_tap_id == tap_id),
         )
-        .values(active_tap_id=tap_id)
+        .values(active_tap_id=tap_id, lock_set_at=datetime.now(timezone.utc))
     )
 
     if lock_attempt.rowcount == 0:
@@ -190,6 +236,11 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             detail=f"Card already in use on Tap {current_tap_id}",
         )
 
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    if tap and tap.status == "active":
+        tap.status = "processing_sync"
+    _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
+
     db.commit()
     db.refresh(active_visit)
     return active_visit
@@ -205,6 +256,12 @@ def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: s
 
     previous_tap_id = visit.active_tap_id
     visit.active_tap_id = None
+    visit.lock_set_at = None
+
+    if previous_tap_id is not None:
+        tap = db.query(models.Tap).filter(models.Tap.tap_id == previous_tap_id).first()
+        if tap and tap.status == "processing_sync":
+            tap.status = "active"
 
     _add_audit_log(
         db,
@@ -237,12 +294,21 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
     visit.closed_reason = closed_reason
     visit.closed_at = datetime.now(timezone.utc)
     visit.card_returned = card_returned
+    previous_tap_id = visit.active_tap_id
     visit.active_tap_id = None
+    visit.lock_set_at = None
+
+    if previous_tap_id is not None:
+        tap = db.query(models.Tap).filter(models.Tap.tap_id == previous_tap_id).first()
+        if tap and tap.status == "processing_sync":
+            tap.status = "active"
 
     if visit.card_uid is not None:
         card = db.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
         if card:
             card.status = "inactive"
+            if card_returned:
+                card.guest_id = None
 
     db.commit()
     db.refresh(visit)
@@ -282,3 +348,128 @@ def assign_card_to_active_visit(db: Session, visit_id: uuid.UUID, card_uid: str)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+
+
+def reconcile_pour(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    tap_id: int,
+    short_id: str,
+    volume_ml: int,
+    amount,
+    reason: str,
+    comment: str | None,
+    actor_id: str,
+):
+    visit = get_visit(db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+
+    existing = (
+        db.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.short_id == short_id,
+            models.Pour.is_manual_reconcile.is_(True),
+        )
+        .first()
+    )
+    if existing:
+        if visit.active_tap_id == tap_id:
+            visit.active_tap_id = None
+            visit.lock_set_at = None
+            tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+            if tap and tap.status == "processing_sync":
+                tap.status = "active"
+        db.commit()
+        db.refresh(visit)
+        return visit
+
+    if visit.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can be reconciled")
+    if visit.active_tap_id != tap_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Visit is not locked on Tap {tap_id}")
+    if not visit.card_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit has no card assigned")
+
+    tap = (
+        db.query(models.Tap)
+        .filter(models.Tap.tap_id == tap_id)
+        .first()
+    )
+    if not tap or not tap.keg_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tap is not configured with keg")
+
+    guest = db.query(models.Guest).filter(models.Guest.guest_id == visit.guest_id).first()
+    if not guest:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Guest not found")
+
+    if guest.balance < amount:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Insufficient guest balance for manual reconcile")
+
+    keg = db.query(models.Keg).filter(models.Keg.keg_id == tap.keg_id).first()
+    if not keg:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Keg not found")
+    if keg.current_volume_ml < volume_ml:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Insufficient keg volume for manual reconcile")
+
+    price_per_ml = (Decimal(amount) / Decimal(volume_ml)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    pending_pour = _get_pending_pour_for_visit_tap(db=db, visit_id=visit_id, tap_id=tap_id)
+    if pending_pour:
+        pending_pour.card_uid = visit.card_uid
+        pending_pour.guest_id = visit.guest_id
+        pending_pour.keg_id = tap.keg_id
+        pending_pour.volume_ml = volume_ml
+        pending_pour.poured_at = datetime.now(timezone.utc)
+        pending_pour.amount_charged = amount
+        pending_pour.price_per_ml_at_pour = price_per_ml
+        pending_pour.sync_status = "reconciled"
+        pending_pour.short_id = short_id
+        pending_pour.is_manual_reconcile = True
+    else:
+        manual_client_tx_id = f"manual-reconcile:{visit_id}:{short_id}"
+        db.add(
+            models.Pour(
+                client_tx_id=manual_client_tx_id,
+                card_uid=visit.card_uid,
+                tap_id=tap_id,
+                visit_id=visit_id,
+                volume_ml=volume_ml,
+                poured_at=datetime.now(timezone.utc),
+                amount_charged=amount,
+                price_per_ml_at_pour=price_per_ml,
+                guest_id=visit.guest_id,
+                keg_id=tap.keg_id,
+                sync_status="reconciled",
+                short_id=short_id,
+                is_manual_reconcile=True,
+            )
+        )
+
+    guest.balance -= amount
+    keg.current_volume_ml -= volume_ml
+    visit.active_tap_id = None
+    visit.lock_set_at = None
+    if tap.status == "processing_sync":
+        tap.status = "active"
+
+    _add_audit_log(
+        db,
+        actor_id=actor_id,
+        action="reconcile_done",
+        target_entity="Visit",
+        target_id=str(visit.visit_id),
+        details={
+            "tap_id": tap_id,
+            "short_id": short_id,
+            "volume_ml": volume_ml,
+            "amount": str(amount),
+            "reason": reason,
+            "comment": comment,
+        },
+    )
+
+    db.commit()
+    db.refresh(visit)
+    return visit

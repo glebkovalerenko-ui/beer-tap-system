@@ -152,6 +152,7 @@ class Visit(Base):
     closed_reason = Column(Text, nullable=True)
     # M3 placeholder: intentionally no FK for M2.
     active_tap_id = Column(Integer, nullable=True)
+    lock_set_at = Column(DateTime(timezone=True), nullable=True)
     card_returned = Column(Boolean, nullable=False, default=True)
 
     guest = relationship("Guest", back_populates="visits")
@@ -185,6 +186,9 @@ class Pour(Base):
     # --- ИЗМЕНЕНИЕ: Убрал price_per_ml_at_pour, т.к. amount_charged достаточно. Можно вернуть при необходимости. ---
     amount_charged = Column(Numeric(10, 2), nullable=False, comment="Списанная сумма")
     price_per_ml_at_pour = Column(Numeric(10, 4), nullable=False, comment="Цена за мл на момент налива")
+    sync_status = Column(String(20), nullable=False, default="synced", index=True)
+    short_id = Column(String(8), nullable=True, index=True)
+    is_manual_reconcile = Column(Boolean, nullable=False, default=False)
     
     # Временные метки
     poured_at = Column(DateTime(timezone=True), nullable=False)

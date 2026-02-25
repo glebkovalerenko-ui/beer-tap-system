@@ -12,6 +12,12 @@
   let forceUnlockComment = '';
   let closeReason = 'guest_checkout';
   let actionError = '';
+  let reconcileOpen = false;
+  let reconcileShortId = '';
+  let reconcileVolumeMl = '';
+  let reconcileAmount = '';
+  let reconcileReason = 'sync_timeout';
+  let reconcileComment = '';
 
   let openFlowVisible = false;
   let guestQuery = '';
@@ -25,6 +31,8 @@
   $: visit = $visitStore.currentVisit;
   $: selectedGuest = visit ? $guestStore.guests.find((g) => g.guest_id === visit.guest_id) : null;
   $: lockActive = visit?.active_tap_id !== null && visit?.active_tap_id !== undefined;
+  $: lockAgeSeconds = visit?.lock_set_at ? Math.max(0, Math.floor((Date.now() - new Date(visit.lock_set_at).getTime()) / 1000)) : 0;
+  $: suggestManualReconcile = lockAgeSeconds >= 60;
 
   const fullName = (guestLike) => {
     if (!guestLike) return '—';
@@ -141,6 +149,38 @@
     }
   }
 
+  async function handleReconcilePour() {
+    actionError = '';
+    if (!visit) return;
+    if (!reconcileShortId.trim() || !reconcileVolumeMl || !reconcileAmount || !reconcileReason.trim()) {
+      uiStore.notifyWarning('Fill short_id, volume, amount and reason');
+      return;
+    }
+
+    try {
+      const updated = await visitStore.reconcilePour({
+        visitId: visit.visit_id,
+        tapId: visit.active_tap_id,
+        shortId: reconcileShortId.trim(),
+        volumeMl: Number(reconcileVolumeMl),
+        amount: String(reconcileAmount).trim(),
+        reason: reconcileReason.trim(),
+        comment: reconcileComment.trim() || null,
+      });
+      visitStore.setCurrentVisit(updated);
+      await refreshVisits();
+      reconcileOpen = false;
+      reconcileShortId = '';
+      reconcileVolumeMl = '';
+      reconcileAmount = '';
+      reconcileReason = 'sync_timeout';
+      reconcileComment = '';
+      uiStore.notifySuccess('Manual reconcile completed');
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Manual reconcile failed';
+    }
+  }
+
   function handleBindCard() {
     if (!visit) return;
     nfcError = '';
@@ -202,7 +242,7 @@
             {#each openCandidates as candidate}
               <button class="candidate-item" on:click={() => openVisitWithoutCard(candidate)} disabled={$visitStore.loading}>
                 <div><strong>{fullName(candidate)}</strong></div>
-                <div>{candidate.phone_number} · Баланс: {candidate.balance}</div>
+                <div>{candidate.phone_number} В· Баланс: {candidate.balance}</div>
               </button>
             {/each}
           </div>
@@ -236,6 +276,9 @@
               <div><strong>{item.guest_full_name}</strong></div>
               <div>{item.phone_number}</div>
               <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Без карты'}</div>
+              {#if item.active_tap_id}
+                <div class="sync-indicator">processing_sync (tap {item.active_tap_id})</div>
+              {/if}
             </button>
           {/each}
         </div>
@@ -255,7 +298,12 @@
 
         <div class="lock-state" class:locked={lockActive} class:free={!lockActive}>
           {#if lockActive}
-            <strong>Блокировка на кране №{visit.active_tap_id}</strong>
+            <strong>Блокировка на кране в„–{visit.active_tap_id}</strong>
+            {#if visit.lock_set_at}
+              <div>lock_set_at: {new Date(visit.lock_set_at).toLocaleString()}</div>
+              <div>age: ~{Math.floor(lockAgeSeconds / 60)} min</div>
+            {/if}
+            <div>Синхронизация: {suggestManualReconcile ? 'Нужна ручная сверка' : 'Ожидается sync'}</div>
           {:else}
             <strong>Кран свободен</strong>
           {/if}
@@ -267,6 +315,7 @@
             <input type="text" bind:value={forceUnlockReason} placeholder="Причина (обязательно)" />
             <textarea bind:value={forceUnlockComment} rows="2" placeholder="Комментарий (опционально)"></textarea>
             <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive}>Принудительно снять блокировку</button>
+            <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive}>Ручная сверка / разблокировать</button>
           </div>
 
           <div class="action-panel">
@@ -295,6 +344,21 @@
       {/if}
     </section>
   </div>
+
+  {#if reconcileOpen && visit}
+    <section class="ui-card reconcile-modal">
+      <h3>Ручная сверка налива</h3>
+      <input type="text" bind:value={reconcileShortId} placeholder="short_id (6-8)" maxlength="8" />
+      <input type="number" bind:value={reconcileVolumeMl} placeholder="volume_ml" min="1" />
+      <input type="number" bind:value={reconcileAmount} placeholder="amount" min="0.01" step="0.01" />
+      <input type="text" bind:value={reconcileReason} placeholder="reason" />
+      <textarea bind:value={reconcileComment} rows="2" placeholder="comment (optional)"></textarea>
+      <div class="modal-actions">
+        <button on:click={handleReconcilePour} disabled={$visitStore.loading}>Отправить</button>
+        <button on:click={() => (reconcileOpen = false)} disabled={$visitStore.loading}>Отмена</button>
+      </div>
+    </section>
+  {/if}
 
   {#if isNFCModalOpen}
     <NFCModal
@@ -348,6 +412,7 @@
     border: 1px solid var(--border-soft);
   }
 
+  .sync-indicator { color: #8a5a00; font-size: 0.85rem; font-weight: 600; }
   .visit-fields { display: grid; gap: 0.4rem; }
 
   .lock-state { border-radius: 10px; padding: 0.75rem 1rem; border: 1px solid var(--border-soft); }
@@ -368,4 +433,8 @@
   .error { color: #c61f35; }
   .not-found { color: var(--text-secondary); font-weight: 600; }
   .empty-state p { color: var(--text-secondary); }
+  .reconcile-modal { margin-top: 1rem; display: grid; gap: 0.5rem; }
+  .modal-actions { display: flex; gap: 0.5rem; }
 </style>
+
+

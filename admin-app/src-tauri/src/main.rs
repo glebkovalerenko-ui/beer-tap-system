@@ -277,6 +277,28 @@ async fn close_visit(token: String, visit_id: String, closed_reason: String, car
     api_client::close_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn reconcile_pour(
+    token: String,
+    visit_id: String,
+    tap_id: i32,
+    short_id: String,
+    volume_ml: i32,
+    amount: String,
+    reason: String,
+    comment: Option<String>,
+) -> Result<api_client::Visit, AppError> {
+    let payload = api_client::VisitReconcilePourPayload {
+        tap_id,
+        short_id,
+        volume_ml,
+        amount,
+        reason,
+        comment,
+    };
+    api_client::reconcile_pour(&token, &visit_id, &payload).await.map_err(AppError::from)
+}
+
 // =============================================================================
 // ТОЧКА ВХОДА ПРИЛОЖЕНИЯ
 // =============================================================================
@@ -338,7 +360,8 @@ fn main() {
             open_visit,
             assign_card_to_visit,
             force_unlock_visit,
-            close_visit
+            close_visit,
+            reconcile_pour
         ])
         .setup(move |app| {
             // ... (фоновый поток NFC без изменений)

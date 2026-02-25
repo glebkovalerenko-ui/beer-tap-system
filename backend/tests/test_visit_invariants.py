@@ -180,3 +180,74 @@ def test_assign_card_conflict_when_card_busy(client):
 
     conflict = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": "CARD-M35-BUSY"})
     assert conflict.status_code == 409
+
+
+def test_close_visit_card_returned_true_releases_card_for_another_guest(client):
+    headers = _login(client)
+    guest_1 = _create_guest(client, headers, suffix="81011")
+    guest_2 = _create_guest(client, headers, suffix="81012")
+    card_uid = "CARD-M4-REL-TRUE"
+
+    visit_1_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1})
+    assert visit_1_resp.status_code == 200
+    visit_1 = visit_1_resp.json()["visit_id"]
+
+    bind_1 = client.post(f"/api/guests/{guest_1}/cards", headers=headers, json={"card_uid": card_uid})
+    assert bind_1.status_code == 200
+
+    assign_1 = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": card_uid})
+    assert assign_1.status_code == 200
+
+    close_1 = client.post(
+        f"/api/visits/{visit_1}/close",
+        headers=headers,
+        json={"closed_reason": "checkout", "card_returned": True},
+    )
+    assert close_1.status_code == 200
+    assert close_1.json()["card_returned"] is True
+
+    bind_2 = client.post(f"/api/guests/{guest_2}/cards", headers=headers, json={"card_uid": card_uid})
+    assert bind_2.status_code == 200
+
+    visit_2_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2})
+    assert visit_2_resp.status_code == 200
+    visit_2 = visit_2_resp.json()["visit_id"]
+
+    assign_2 = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": card_uid})
+    assert assign_2.status_code == 200
+    assert assign_2.json()["card_uid"] == card_uid
+
+
+def test_close_visit_card_returned_false_keeps_card_bound(client):
+    headers = _login(client)
+    guest_1 = _create_guest(client, headers, suffix="81013")
+    guest_2 = _create_guest(client, headers, suffix="81014")
+    card_uid = "CARD-M4-REL-FALSE"
+
+    visit_1_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1})
+    assert visit_1_resp.status_code == 200
+    visit_1 = visit_1_resp.json()["visit_id"]
+
+    bind_1 = client.post(f"/api/guests/{guest_1}/cards", headers=headers, json={"card_uid": card_uid})
+    assert bind_1.status_code == 200
+
+    assign_1 = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": card_uid})
+    assert assign_1.status_code == 200
+
+    close_1 = client.post(
+        f"/api/visits/{visit_1}/close",
+        headers=headers,
+        json={"closed_reason": "checkout", "card_returned": False},
+    )
+    assert close_1.status_code == 200
+    assert close_1.json()["card_returned"] is False
+
+    bind_2 = client.post(f"/api/guests/{guest_2}/cards", headers=headers, json={"card_uid": card_uid})
+    assert bind_2.status_code == 409
+
+    visit_2_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2})
+    assert visit_2_resp.status_code == 200
+    visit_2 = visit_2_resp.json()["visit_id"]
+
+    assign_2 = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": card_uid})
+    assert assign_2.status_code == 409

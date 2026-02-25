@@ -8,7 +8,7 @@
 ## Архитектура взаимодействия
 
 ```
-Svelte 5 Frontend ←→ Tauri 2.0 (Rust) ←→ FastAPI Backend
+Svelte 5 Frontend в†ђв†’ Tauri 2.0 (Rust) в†ђв†’ FastAPI Backend
      ↓                    ↓                    ↓
   Stores            Commands          HTTP Endpoints
 ```
@@ -77,7 +77,7 @@ Svelte 5 Frontend ←→ Tauri 2.0 (Rust) ←→ FastAPI Backend
 
 ### Основной способ получения данных NFC
 
-**Направление:** Rust → Svelte  
+**Направление:** Rust в†’ Svelte  
 **Механизм:** Tauri Events  
 **Частота:** 500ms polling с идемпотентной отправкой
 
@@ -194,26 +194,26 @@ if current_payload_json != last_payload_json {
 
 ### Аутентификация:
 ```
-UI → sessionStore → invoke('login') → api_client::login() → POST /api/token
+UI в†’ sessionStore в†’ invoke('login') в†’ api_client::login() в†’ POST /api/token
                                             ↓
-UI ← sessionStore ← JWT токен ←───────────────────
+UI в†ђ sessionStore в†ђ JWT токен в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
 ### CRUD операции:
 ```
-UI → store → invoke('command') → api_client::function() → HTTP endpoint
+UI в†’ store в†’ invoke('command') в†’ api_client::function() в†’ HTTP endpoint
                                             ↓
-UI ← store ← Обновленные данные ←───────────────────────
+UI в†ђ store в†ђ Обновленные данные в†ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 ```
 
 ### NFC события:
 ```
-Rust NFC thread → card-status-changed → nfcReaderStore → UI
+Rust NFC thread в†’ card-status-changed в†’ nfcReaderStore в†’ UI
 ```
 
 ## 5. Обработка ошибок
 
-### Rust → Svelte:
+### Rust в†’ Svelte:
 ```rust
 #[derive(Debug, Serialize, Clone)]
 pub struct AppError { 
@@ -221,7 +221,7 @@ pub struct AppError {
 }
 ```
 
-### Svelte → UI:
+### Svelte в†’ UI:
 ```javascript
 try {
   await store.action();
@@ -313,3 +313,38 @@ INTERNAL_CONTROLLER_TOKEN=rpi_controller_secret_2024
 ---
 
 **Примечание:** Этот документ является источником правды для всех взаимодействий между компонентами системы. При изменении архитектуры необходимо обновлять данный контракт.
+
+## M4 API Contract Addendum (2026-02-25)
+
+### Updated sync payload
+`POST /api/sync/pours` now requires `short_id` for every pour item:
+- `client_tx_id` (string)
+- `card_uid` (string)
+- `tap_id` (int)
+- `short_id` (string, 6-8)
+- `start_ts` (datetime)
+- `end_ts` (datetime)
+- `volume_ml` (int)
+- `price_cents` (int)
+
+### New manual reconcile endpoint
+`POST /api/visits/{visit_id}/reconcile-pour`
+Payload:
+- `tap_id` (int)
+- `short_id` (string, 6-8)
+- `volume_ml` (int)
+- `amount` (decimal)
+- `reason` (required string)
+- `comment` (optional string)
+
+Behavior:
+- idempotent by `(visit_id, short_id)`;
+- first successful call creates reconciled pour and unlocks visit;
+- repeated call returns existing reconciled result.
+
+### Audit actions used in M4
+- `reconcile_done`
+- `late_sync_matched`
+- `late_sync_mismatch`
+- `sync_conflict`
+

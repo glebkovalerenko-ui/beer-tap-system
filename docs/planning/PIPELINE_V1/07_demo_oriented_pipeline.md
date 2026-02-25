@@ -473,3 +473,25 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
 
 ## No breaking of OPERATIONAL_MODEL_V1 invariants
 - Pipeline maintains visit lifecycle, anti-simultaneous use, offline sync discipline, shift closure discipline, and POS boundary isolation within pilot/demo scope.
+
+## M4 Implementation Contract Update (2026-02-25)
+- `pours.sync_status` default is `synced` (safe default for legacy and happy-path rows).
+- `pending_sync` is used only for explicit offline workflows.
+- `pours.short_id` is mandatory in sync payload and manual reconcile payload.
+- Manual reconcile is idempotent by `(visit_id, short_id)`; repeated requests return existing manual result.
+- Explicit no-double-charge rule:
+  - late sync checks existing manual pour by `(visit_id, short_id)`;
+  - match -> audit `late_sync_matched`, no additional debit;
+  - mismatch -> audit `late_sync_mismatch`, no additional debit.
+- Pilot-safe uniqueness: unique DB index `(visit_id, short_id)` (`short_id IS NOT NULL`).
+- Backend returns `visits.lock_set_at`; timeout/button decision is handled in UI/controller.
+- Acceptance criteria for M4 completion:
+  1. lock is kept until backend-accepted sync or manual reconcile;
+  2. manual reconcile unlocks visit and is idempotent;
+  3. late sync never creates a second charge.
+
+## M4 Stability Patch Update (2026-02-25)
+- `POST /api/visits/{visit_id}/close` card release behavior is explicit:
+  - `card_returned=true` -> close visit and unbind card from guest (`cards.guest_id=NULL`) in the same transaction.
+  - `card_returned=false` -> close visit and keep card bound to the same guest.
+- Regression coverage must include card reuse after close (`true`) and blocked reuse after close (`false`) on PostgreSQL.

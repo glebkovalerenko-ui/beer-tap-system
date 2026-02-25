@@ -97,6 +97,29 @@ function createVisitStore() {
         throw error;
       }
     },
+
+    reconcilePour: async ({ visitId, tapId, shortId, volumeMl, amount, reason, comment = null }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const visit = await invoke('reconcile_pour', {
+          token,
+          visitId,
+          tapId,
+          shortId,
+          volumeMl,
+          amount,
+          reason,
+          comment,
+        });
+        update((s) => ({ ...s, currentVisit: visit, loading: false }));
+        return visit;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw error;
+      }
+    },
   };
 }
 
