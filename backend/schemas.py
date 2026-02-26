@@ -139,6 +139,7 @@ class ShiftReportTotals(BaseModel):
     pours_count: int
     total_volume_ml: int
     total_amount_cents: int
+    new_guests_count: int
     pending_sync_count: int
     reconciled_count: int
     mismatch_count: int

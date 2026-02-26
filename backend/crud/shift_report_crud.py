@@ -68,6 +68,18 @@ def _get_mismatch_count(db: Session, shift: models.Shift, window_end: datetime) 
     return int(count or 0)
 
 
+def _get_new_guests_count(db: Session, shift: models.Shift, window_end: datetime) -> int:
+    count = (
+        db.query(func.count(models.Guest.guest_id))
+        .filter(
+            models.Guest.created_at >= shift.opened_at,
+            models.Guest.created_at <= window_end,
+        )
+        .scalar()
+    )
+    return int(count or 0)
+
+
 def build_shift_report_payload(
     db: Session,
     *,
@@ -137,6 +149,7 @@ def build_shift_report_payload(
     )
 
     mismatch_count = _get_mismatch_count(db=db, shift=shift, window_end=window_end)
+    new_guests_count = _get_new_guests_count(db=db, shift=shift, window_end=window_end)
 
     payload = schemas.ShiftReportPayload(
         meta=schemas.ShiftReportMeta(
@@ -150,6 +163,7 @@ def build_shift_report_payload(
             pours_count=int(totals_row.pours_count or 0),
             total_volume_ml=int(totals_row.total_volume_ml or 0),
             total_amount_cents=_amount_to_cents(totals_row.total_amount),
+            new_guests_count=new_guests_count,
             pending_sync_count=int(totals_row.pending_sync_count or 0),
             reconciled_count=int(totals_row.reconciled_count or 0),
             mismatch_count=mismatch_count,

@@ -28,6 +28,7 @@
         <p><strong>Наливов:</strong> {payload.totals?.pours_count ?? 0}</p>
         <p><strong>Объём (мл):</strong> {payload.totals?.total_volume_ml ?? 0}</p>
         <p><strong>Сумма (коп):</strong> {payload.totals?.total_amount_cents ?? 0}</p>
+        <p><strong>Новых гостей:</strong> {payload.totals?.new_guests_count ?? 0}</p>
         <p><strong>pending_sync:</strong> {payload.totals?.pending_sync_count ?? 0}</p>
         <p><strong>reconciled:</strong> {payload.totals?.reconciled_count ?? 0}</p>
         <p><strong>mismatch:</strong> {payload.totals?.mismatch_count ?? 0}</p>

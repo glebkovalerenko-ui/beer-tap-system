@@ -240,6 +240,7 @@ pub struct ShiftReportTotals {
     pub pours_count: i32,
     pub total_volume_ml: i32,
     pub total_amount_cents: i32,
+    pub new_guests_count: i32,
     pub pending_sync_count: i32,
     pub reconciled_count: i32,
     pub mismatch_count: i32,

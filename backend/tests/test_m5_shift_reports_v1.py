@@ -1,4 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
+import uuid
+
+import models
 
 
 def _login(client):
@@ -145,6 +148,7 @@ def test_x_report_computes_and_returns_payload(client):
     assert payload["totals"]["pours_count"] == 1
     assert payload["totals"]["total_volume_ml"] == 200
     assert payload["totals"]["total_amount_cents"] == 10000
+    assert payload["totals"]["new_guests_count"] == 1
     assert payload["totals"]["pending_sync_count"] == 0
     assert payload["totals"]["reconciled_count"] == 0
     assert payload["totals"]["mismatch_count"] == 0
@@ -179,6 +183,44 @@ def test_z_report_is_idempotent(client):
     assert first_json["report_id"] == second_json["report_id"]
     assert first_json["payload"] == second_json["payload"]
     assert first_json["report_type"] == "Z"
+
+
+def test_z_report_counts_only_guests_created_inside_shift_window(client, db_session):
+    headers = _login(client)
+    shift_id = _open_shift(client, headers)
+
+    guest_outside_before = _create_guest(client, headers, suffix="94110")
+    guest_inside_1 = _create_guest(client, headers, suffix="94111")
+    guest_inside_2 = _create_guest(client, headers, suffix="94112")
+
+    shift_uuid = uuid.UUID(shift_id)
+    shift = db_session.query(models.Shift).filter(models.Shift.id == shift_uuid).one()
+
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_outside_before)).update(
+        {"created_at": shift.opened_at - timedelta(minutes=10)}
+    )
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_1)).update(
+        {"created_at": shift.opened_at + timedelta(minutes=1)}
+    )
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_2)).update(
+        {"created_at": shift.opened_at + timedelta(minutes=2)}
+    )
+    db_session.commit()
+
+    close_shift = client.post("/api/shifts/close", headers=headers)
+    assert close_shift.status_code == 200
+
+    shift = db_session.query(models.Shift).filter(models.Shift.id == shift_uuid).one()
+    guest_outside_after = _create_guest(client, headers, suffix="94113")
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_outside_after)).update(
+        {"created_at": shift.closed_at + timedelta(minutes=10)}
+    )
+    db_session.commit()
+
+    z_report = client.post(f"/api/shifts/{shift_id}/reports/z", headers=headers)
+    assert z_report.status_code == 200
+    payload = z_report.json()["payload"]
+    assert payload["totals"]["new_guests_count"] == 2
 
 
 def test_z_report_date_range_listing(client):

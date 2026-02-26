@@ -713,6 +713,7 @@ Card ownership behavior depends on `card_returned`:
     "pours_count": 12,
     "total_volume_ml": 3450,
     "total_amount_cents": 172500,
+    "new_guests_count": 3,
     "pending_sync_count": 0,
     "reconciled_count": 1,
     "mismatch_count": 0
@@ -740,4 +741,7 @@ Card ownership behavior depends on `card_returned`:
 Notes:
 - `total_volume_ml` is the primary KPI for current pilot mode.
 - `total_amount_cents` is persisted for future POS/cash integration compatibility.
+- `new_guests_count` counts guests created in shift window:
+  - X report: `shift.opened_at .. now()`
+  - Z report: `shift.opened_at .. shift.closed_at`
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
