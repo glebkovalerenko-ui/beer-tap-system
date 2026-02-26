@@ -65,7 +65,10 @@ def authorize_pour(
         )
     except HTTPException as exc:
         outcome = "authorize_rejected"
-        if exc.status_code == status.HTTP_409_CONFLICT and isinstance(exc.detail, str):
+        if exc.status_code == status.HTTP_403_FORBIDDEN and isinstance(exc.detail, dict):
+            if exc.detail.get("reason") == "lost_card":
+                outcome = "rejected_lost_card"
+        elif exc.status_code == status.HTTP_409_CONFLICT and isinstance(exc.detail, str):
             if exc.detail.startswith("No active visit for Card "):
                 outcome = "rejected_no_active_visit"
             elif exc.detail.startswith("Card already in use on Tap "):
@@ -97,6 +100,32 @@ def authorize_pour(
         pending_outcome,
     )
     return schemas.VisitPourAuthorizeResponse(allowed=True, visit=visit)
+
+
+@router.post(
+    "/{visit_id}/report-lost-card",
+    response_model=schemas.VisitReportLostCardResponse,
+    summary="Report card as lost from active visit",
+)
+def report_lost_card_from_visit(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitReportLostCardRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    visit, lost_card, created = visit_crud.report_lost_card_from_visit(
+        db=db,
+        visit_id=visit_id,
+        reason=payload.reason,
+        comment=payload.comment,
+        actor_id=current_user["username"] if current_user else None,
+    )
+    return schemas.VisitReportLostCardResponse(
+        visit=visit,
+        lost_card=lost_card,
+        lost=True,
+        already_marked=not created,
+    )
 
 
 @router.post("/{visit_id}/force-unlock", response_model=schemas.Visit, summary="Force unlock active tap for visit")

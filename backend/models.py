@@ -160,6 +160,19 @@ class Visit(Base):
     pours = relationship("Pour", back_populates="visit")
 
 
+class LostCard(Base):
+    __tablename__ = "lost_cards"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    card_uid = Column(String(50), nullable=False, unique=True, index=True)
+    reported_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    reported_by = Column(String(100), nullable=True)
+    reason = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=True, index=True)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
+
+
 # --- ПРИНЦИП 3: Транзакционная модель для всех изменений ---
 # Все изменения баланса и объема являются неизменяемыми записями (транзакциями).
 
