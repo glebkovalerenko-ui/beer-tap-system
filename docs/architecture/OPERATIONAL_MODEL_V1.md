@@ -511,3 +511,30 @@ Data keys introduced by M4:
 - `pours.short_id` (6-8 chars)
 - `visits.lock_set_at` (timestamp for UI-side timeout policy)
 
+# 12. M5 Shift Operational Mode (2026-02-26)
+
+Pilot scope implements a minimal but strict backend shift lifecycle.
+
+Shift entity (implemented fields):
+- `id`
+- `opened_at` (not null)
+- `closed_at` (nullable)
+- `status` (`open | closed`)
+- `opened_by` (nullable)
+- `closed_by` (nullable)
+
+Invariants:
+- Only one `open` shift is allowed at a time.
+- If no shift is open, operations are blocked:
+  - `POST /api/visits/open` -> `403`
+  - `POST /api/visits/authorize-pour` -> `403`
+  - `POST /api/guests/{id}/topup` -> `403`
+
+Shift close precheck:
+- active visits exist -> `409` (`active_visits_exist`)
+- pending sync pours exist -> `409` (`pending_sync_pours_exist`)
+
+If precheck passes:
+- shift is transitioned to `closed`,
+- `closed_at` and `closed_by` are written by backend.
+

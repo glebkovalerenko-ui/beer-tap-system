@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 import schemas
 import security
-from crud import visit_crud
+from crud import shift_crud, visit_crud
 from database import get_db
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 
@@ -24,6 +24,7 @@ def open_visit(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
+    shift_crud.ensure_open_shift(db)
     return visit_crud.open_visit(db=db, guest_id=payload.guest_id, card_uid=payload.card_uid)
 
 
@@ -49,6 +50,7 @@ def authorize_pour(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
+    shift_crud.ensure_open_shift(db)
     request_id = get_request_id(request)
     db_identity = get_db_identity(db)
     alembic_revision = get_alembic_revision(db)

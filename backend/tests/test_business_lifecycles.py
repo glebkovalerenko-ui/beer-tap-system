@@ -94,6 +94,8 @@ def test_guest_and_finance_lifecycle(client):
     login_response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
+    open_shift_response = client.post("/api/shifts/open", headers=headers)
+    assert open_shift_response.status_code in (200, 409)
 
     # --- Шаг 1: Создание Гостя ---
     # --- ИЗМЕНЕНИЕ: Добавлены все обязательные поля для успешной валидации ---

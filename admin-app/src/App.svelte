@@ -9,6 +9,7 @@
   import { demoGuideStore } from './stores/demoGuideStore.js';
   import { demoModeStore } from './stores/demoModeStore.js';
   import { nfcReaderStore } from './stores/nfcReaderStore.js';
+  import { shiftStore } from './stores/shiftStore.js';
 
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
@@ -32,6 +33,17 @@
   };
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  let shiftLoadAttempted = false;
+
+  $: if ($sessionStore.token && !shiftLoadAttempted) {
+    shiftStore.fetchCurrent();
+    shiftLoadAttempted = true;
+  }
+
+  $: if (!$sessionStore.token && shiftLoadAttempted) {
+    shiftStore.reset();
+    shiftLoadAttempted = false;
+  }
 
   const updateOnline = () => {
     online = navigator.onLine;

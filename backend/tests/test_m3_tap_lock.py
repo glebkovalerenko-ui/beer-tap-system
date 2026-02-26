@@ -7,7 +7,10 @@ def _login(client):
     )
     assert response.status_code == 200
     token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}"}
+    shift_open = client.post("/api/shifts/open", headers=headers)
+    assert shift_open.status_code in (200, 409)
+    return headers
 
 
 def _create_guest(client, headers, suffix: str):

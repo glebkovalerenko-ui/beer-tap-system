@@ -2,6 +2,8 @@
   import { roleStore } from '../../stores/roleStore.js';
   import { sessionStore } from '../../stores/sessionStore.js';
   import { guestContextStore } from '../../stores/guestContextStore.js';
+  import { shiftStore } from '../../stores/shiftStore.js';
+  import { uiStore } from '../../stores/uiStore.js';
   import ShellStatusPills from './ShellStatusPills.svelte';
   import ShellGuestContextChip from './ShellGuestContextChip.svelte';
   import DemoModeToggle from '../system/DemoModeToggle.svelte';
@@ -10,6 +12,24 @@
 
   function changeRole(event) {
     roleStore.setRole(event.target.value);
+  }
+
+  async function handleOpenShift() {
+    try {
+      await shiftStore.openShift();
+      uiStore.notifySuccess('Смена открыта');
+    } catch (error) {
+      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть смену');
+    }
+  }
+
+  async function handleCloseShift() {
+    try {
+      await shiftStore.closeShift();
+      uiStore.notifySuccess('Смена закрыта');
+    } catch (error) {
+      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось закрыть смену');
+    }
   }
 </script>
 
@@ -25,6 +45,11 @@
 
   <div class="right">
     <ShellStatusPills />
+    {#if $shiftStore.isOpen}
+      <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
+    {:else}
+      <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
+    {/if}
     <DemoModeToggle />
     <select on:change={changeRole} value={$roleStore.key} aria-label="Role">
       {#each Object.entries(roleStore.roles) as [key, role]}

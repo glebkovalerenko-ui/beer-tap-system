@@ -4,7 +4,7 @@ import uuid
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 # =============================================================================
 # СХЕМЫ ДЛЯ БИЗНЕС-ЛОГИКИ
@@ -110,6 +110,21 @@ class Visit(BaseModel):
     lock_set_at: Optional[datetime] = None
     card_returned: bool
     model_config = ConfigDict(from_attributes=True)
+
+
+class Shift(BaseModel):
+    id: uuid.UUID
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    status: str
+    opened_by: Optional[str] = None
+    closed_by: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShiftCurrentResponse(BaseModel):
+    status: Literal["open", "closed"]
+    shift: Optional[Shift] = None
 
 
 

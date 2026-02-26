@@ -1,5 +1,5 @@
 <!-- admin-app/src/routes/Dashboard.svelte -->
- 
+
 <script>
   import { tapStore } from '../stores/tapStore.js';
   import { pourStore } from '../stores/pourStore.js';
@@ -15,17 +15,15 @@
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte';
   import { uiStore } from '../stores/uiStore.js';
-  import { get } from 'svelte/store';
 
   let initialLoadAttempted = false;
   let showConfirmModal = false;
-  let showShiftReportModal = false;
-  let lastShiftReport = null;
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
       tapStore.fetchTaps();
       kegStore.fetchKegs();
+      shiftStore.fetchCurrent();
       initialLoadAttempted = true;
     }
   }
@@ -40,31 +38,30 @@
     }
   }
 
-  function openShift() {
-    shiftStore.openShift($roleStore.roles[$roleStore.key]?.label || 'Кассир');
-    uiStore.notifySuccess('Смена открыта. Можно выполнять денежные операции.');
+  async function openShift() {
+    try {
+      await shiftStore.openShift();
+      uiStore.notifySuccess('Смена открыта.');
+    } catch (error) {
+      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть смену');
+    }
   }
 
-  function closeShift() {
-    const currentShift = get(shiftStore);
-    lastShiftReport = {
-      shiftId: currentShift.shiftId,
-      openedAt: currentShift.openedAt,
-      closedAt: new Date().toISOString(),
-      topUpsCount: currentShift.topUpsCount,
-      topUpsAmount: currentShift.topUpsAmount,
-    };
-    shiftStore.closeShift();
-    showShiftReportModal = true;
-    uiStore.notifySuccess('Смена закрыта. Краткий отчет сохранен.');
+  async function closeShift() {
+    try {
+      await shiftStore.closeShift();
+      uiStore.notifySuccess('Смена закрыта.');
+    } catch (error) {
+      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось закрыть смену');
+    }
   }
 </script>
 
 <div class="page-header">
   <h1>Дашборд</h1>
   {#if $roleStore.permissions.emergency}
-  <button 
-    class="emergency-button" 
+  <button
+    class="emergency-button"
     class:active={$systemStore.emergencyStop}
     on:click={() => showConfirmModal = true}
     disabled={$systemStore.loading}
@@ -87,16 +84,16 @@
     <h2>Смена</h2>
     <p>
       {#if $shiftStore.isOpen}
-        Открыта: {$shiftStore.shiftId} · Операций: {$shiftStore.topUpsCount} · Пополнений: {$shiftStore.topUpsAmount.toFixed(2)}
+        Открыта с {$shiftStore.shift?.opened_at ? new Date($shiftStore.shift.opened_at).toLocaleString() : '—'}
       {:else}
-        Смена закрыта. Откройте смену перед пополнениями.
+        Смена закрыта.
       {/if}
     </p>
   </div>
   {#if $shiftStore.isOpen}
-    <button on:click={closeShift}>Закрыть смену</button>
+    <button on:click={closeShift} disabled={$shiftStore.loading}>Закрыть смену</button>
   {:else}
-    <button on:click={openShift}>Открыть смену</button>
+    <button on:click={openShift} disabled={$shiftStore.loading}>Открыть смену</button>
   {/if}
 </section>
 
@@ -141,8 +138,8 @@
   <Modal on:close={() => showConfirmModal = false}>
     <h2 slot="header">Подтверждение действия</h2>
     <p>
-      Вы собираетесь 
-      <b>{$systemStore.emergencyStop ? 'ОТКЛЮЧИТЬ' : 'АКТИВИРОВАТЬ'}</b> 
+      Вы собираетесь
+      <b>{$systemStore.emergencyStop ? 'ОТКЛЮЧИТЬ' : 'АКТИВИРОВАТЬ'}</b>
       режим экстренной остановки.
     </p>
     <p>
@@ -155,29 +152,13 @@
     <p>Вы уверены, что хотите продолжить?</p>
     <div slot="footer" class="modal-actions">
       <button on:click={() => showConfirmModal = false}>Отмена</button>
-      <button 
-        class="confirm-button" 
+      <button
+        class="confirm-button"
         class:danger={!$systemStore.emergencyStop}
         on:click={handleEmergencyStopToggle}
       >
         Да, продолжить
       </button>
-    </div>
-  </Modal>
-{/if}
-
-{#if showShiftReportModal && lastShiftReport}
-  <Modal on:close={() => showShiftReportModal = false}>
-    <h2 slot="header">Краткий отчет по смене</h2>
-    <div class="shift-report">
-      <p><strong>ID смены:</strong> {lastShiftReport.shiftId || '—'}</p>
-      <p><strong>Открыта:</strong> {lastShiftReport.openedAt ? new Date(lastShiftReport.openedAt).toLocaleString() : '—'}</p>
-      <p><strong>Закрыта:</strong> {new Date(lastShiftReport.closedAt).toLocaleString()}</p>
-      <p><strong>Количество пополнений:</strong> {lastShiftReport.topUpsCount}</p>
-      <p><strong>Сумма пополнений:</strong> {Number(lastShiftReport.topUpsAmount || 0).toFixed(2)}</p>
-    </div>
-    <div slot="footer" class="modal-actions">
-      <button on:click={() => showShiftReportModal = false}>Закрыть</button>
     </div>
   </Modal>
 {/if}
@@ -220,6 +201,4 @@
   .error { color: #c61f35; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
   .confirm-button.danger { background-color: #d9534f; color: white; }
-  .shift-report { display: grid; gap: 0.35rem; }
-  .shift-report p { margin: 0; }
 </style>

@@ -290,6 +290,18 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
     if visit.status != "active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit is already closed")
 
+    pending_sync = (
+        db.query(models.Pour.pour_id)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.sync_status == "pending_sync",
+            models.Pour.is_manual_reconcile.is_(False),
+        )
+        .first()
+    )
+    if pending_sync:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="pending_sync_exists_for_visit")
+
     visit.status = "closed"
     visit.closed_reason = closed_reason
     visit.closed_at = datetime.now(timezone.utc)

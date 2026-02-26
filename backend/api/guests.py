@@ -7,7 +7,7 @@ from typing import List, Optional, Annotated
 from datetime import date
 import schemas
 import security
-from crud import guest_crud, transaction_crud, card_crud
+from crud import guest_crud, transaction_crud, card_crud, shift_crud
 from database import get_db
 import uuid
 
@@ -110,6 +110,7 @@ def topup_guest_balance(
     # --- ИЗМЕНЕНИЕ: Явно запрашиваем текущего пользователя. ---
     current_user: Annotated[dict, Depends(security.get_current_user)] = None
 ):
+    shift_crud.ensure_open_shift(db)
     return transaction_crud.create_topup_transaction(db=db, guest_id=guest_id, topup_data=topup_data)
 
 @router.get("/{guest_id}/history", response_model=schemas.GuestHistoryResponse, summary="Получить историю операций гостя")

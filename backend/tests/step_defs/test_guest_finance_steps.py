@@ -274,6 +274,9 @@ def topup_guest_balance(client, context: dict, amount: float):
     url = f"/api/guests/{guest_id}/topup"
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"amount": amount, "payment_method": "cash"} # Добавляем метод оплаты
+
+    shift_open = client.post("/api/shifts/open", headers=headers)
+    assert shift_open.status_code in (200, 409)
     
     print(f"[WHEN] Отправка POST-запроса на {url} с суммой {amount}")
     response = client.post(url, headers=headers, json=payload)
@@ -398,6 +401,9 @@ def attempt_topup_for_nonexistent_guest(client, context: dict):
     # 2. Тело запроса должно быть валидным, так как мы проверяем
     #    обработку URL, а не данных.
     payload = {"amount": 100.00, "payment_method": "cash"}
+
+    shift_open = client.post("/api/shifts/open", headers=headers)
+    assert shift_open.status_code in (200, 409)
 
     print(f"\n[WHEN] Попытка пополнить баланс для несуществующего гостя UUID: {non_existent_uuid}")
     response = client.post(url, headers=headers, json=payload)

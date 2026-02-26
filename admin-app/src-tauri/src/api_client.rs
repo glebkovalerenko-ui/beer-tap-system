@@ -210,6 +210,22 @@ pub struct VisitReconcilePourPayload {
     pub comment: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Shift {
+    pub id: String,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+    pub status: String,
+    pub opened_by: Option<String>,
+    pub closed_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftCurrentResponse {
+    pub status: String,
+    pub shift: Option<Shift>,
+}
+
 // --- Kegs, Taps, Beverages ---
 
 // --- ИЗМЕНЕНИЕ: Структура Beverage расширена до полного соответствия схеме API ---
@@ -562,6 +578,36 @@ pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload)
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_current_shift(token: &str) -> Result<ShiftCurrentResponse, String> {
+    let url = format!("{}/shifts/current", API_BASE_URL);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<ShiftCurrentResponse>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn open_shift(token: &str) -> Result<Shift, String> {
+    let url = format!("{}/shifts/open", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Shift>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn close_shift(token: &str) -> Result<Shift, String> {
+    let url = format!("{}/shifts/close", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Shift>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
