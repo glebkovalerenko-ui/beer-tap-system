@@ -182,3 +182,71 @@ def test_restore_lost_card_allows_authorize_again(client):
     assert authorized.status_code == 200
     assert authorized.json()["allowed"] is True
     assert authorized.json()["visit"]["active_tap_id"] == tap_id
+
+
+def test_resolve_lost_card_returns_lost_payload(client):
+    headers, _, visit_id, _, card_uid = _prepare_active_visit_with_tap(
+        client, suffix="96004", card_uid="CARD-M6-004"
+    )
+
+    report = client.post(
+        f"/api/visits/{visit_id}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss", "comment": "found near entrance"},
+    )
+    assert report.status_code == 200
+
+    resolve = client.get(f"/api/cards/{card_uid}/resolve", headers=headers)
+    assert resolve.status_code == 200
+    body = resolve.json()
+    assert body["is_lost"] is True
+    assert body["lost_card"] is not None
+    assert body["lost_card"]["visit_id"] == visit_id
+    assert body["lost_card"]["comment"] == "found near entrance"
+    assert body["recommended_action"] == "lost_restore"
+
+
+def test_resolve_card_in_active_visit_returns_active_visit(client):
+    headers, guest_id, visit_id, _, card_uid = _prepare_active_visit_with_tap(
+        client, suffix="96005", card_uid="CARD-M6-005"
+    )
+
+    resolve = client.get(f"/api/cards/{card_uid}/resolve", headers=headers)
+    assert resolve.status_code == 200
+    body = resolve.json()
+    assert body["is_lost"] is False
+    assert body["active_visit"] is not None
+    assert body["active_visit"]["visit_id"] == visit_id
+    assert body["active_visit"]["guest_id"] == guest_id
+    assert body["recommended_action"] == "open_active_visit"
+
+
+def test_resolve_card_bound_to_guest_without_active_visit(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="96006")
+    card_uid = "CARD-M6-006"
+    _bind_card(client, headers, guest_id, card_uid)
+
+    resolve = client.get(f"/api/cards/{card_uid}/resolve", headers=headers)
+    assert resolve.status_code == 200
+    body = resolve.json()
+    assert body["is_lost"] is False
+    assert body["active_visit"] is None
+    assert body["guest"] is not None
+    assert body["guest"]["guest_id"] == guest_id
+    assert body["card"] is not None
+    assert body["recommended_action"] == "open_new_visit"
+
+
+def test_resolve_unknown_card_returns_empty_payload(client):
+    headers = _login(client)
+    resolve = client.get("/api/cards/unknown-card-uid/resolve", headers=headers)
+    assert resolve.status_code == 200
+    body = resolve.json()
+    assert body["card_uid"] == "unknown-card-uid"
+    assert body["is_lost"] is False
+    assert body["lost_card"] is None
+    assert body["active_visit"] is None
+    assert body["guest"] is None
+    assert body["card"] is None
+    assert body["recommended_action"] == "unknown"
