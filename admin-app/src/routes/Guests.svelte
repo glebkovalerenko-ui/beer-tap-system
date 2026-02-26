@@ -14,6 +14,7 @@
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import { uiStore } from '../stores/uiStore.js';
+  import { normalizeError } from '../lib/errorUtils.js';
 
   let searchTerm = '';
   let selectedGuestId = null;
@@ -60,7 +61,7 @@
       isModalOpen = false;
       guestToEdit = null;
     } catch (error) {
-      formError = error.message || error.toString();
+      formError = normalizeError(error);
     }
   }
 
@@ -76,7 +77,7 @@
       await guestStore.bindCardToGuest(selectedGuestId, event.detail.uid);
       uiStore.notifySuccess('Карта привязана. Можно перейти к пополнению.');
     } catch (error) {
-      nfcError = error.message || error.toString();
+      nfcError = normalizeError(error);
     }
   }
 
@@ -98,7 +99,7 @@
       isTopUpModalOpen = false;
       uiStore.notifySuccess(`Баланс пополнен на ${event.detail.amount}`);
     } catch (error) {
-      topUpError = error.message || error.toString();
+      topUpError = normalizeError(error);
     }
   }
 </script>

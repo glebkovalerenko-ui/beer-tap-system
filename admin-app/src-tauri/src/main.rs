@@ -36,15 +36,15 @@ pub struct AppError {
 fn ensure_error_message(message: String) -> String {
     let trimmed = message.trim();
     if trimmed.is_empty() {
-        "Неизвестная ошибка (детали в логах)".to_string()
+        "Unknown error".to_string()
     } else {
         trimmed.to_string()
     }
 }
-impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: err.to_string() } } }
+impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
 impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: ensure_error_message(s) } } }
 impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: ensure_error_message(s.to_string()) } } }
-impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: err.to_string() } } }
+impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
 
 #[derive(Clone, serde::Serialize)]
 struct CardStatusPayload {

@@ -2,11 +2,17 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
+import { logError, normalizeError } from '../lib/errorUtils';
 
 /**
  * @typedef {import('../../../src-tauri/src/api_client').Beverage} Beverage
  * @typedef {import('../../../src-tauri/src/api_client').BeveragePayload} BeveragePayload
  */
+
+function toErrorMessage(context, error) {
+  logError(context, error);
+  return normalizeError(error);
+}
 
 function createBeverageStore() {
   /** @type {import('svelte/store').Writable<{beverages: Beverage[], loading: boolean, error: string | null}>} */
@@ -19,45 +25,37 @@ function createBeverageStore() {
   return {
     subscribe,
 
-    /**
-     * Запрашивает список всех напитков с бэкенда.
-     */
     fetchBeverages: async () => {
       const token = get(sessionStore).token;
       if (!token) return;
-      
-      update(s => ({ ...s, loading: true, error: null }));
+
+      update((s) => ({ ...s, loading: true, error: null }));
       try {
         /** @type {Beverage[]} */
         const beverages = await invoke('get_beverages', { token });
         set({ beverages, loading: false, error: null });
       } catch (error) {
-        const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
+        const errorMessage = toErrorMessage('beverageStore.fetchBeverages', error);
         set({ beverages: [], loading: false, error: errorMessage });
       }
     },
 
-    /**
-     * Создает новый напиток.
-     * @param {BeveragePayload} beverageData
-     */
     createBeverage: async (beverageData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error("Not authenticated");
-      
-      update(s => ({ ...s, loading: true, error: null }));
+      if (!token) throw new Error('Not authenticated');
+
+      update((s) => ({ ...s, loading: true, error: null }));
       try {
         const newBeverage = await invoke('create_beverage', { token, beverageData });
-        update(s => ({
+        update((s) => ({
           ...s,
-          // Паттерн "Оптимистичное обновление": добавляем новый элемент и сортируем
           beverages: [...s.beverages, newBeverage].sort((a, b) => a.name.localeCompare(b.name)),
           loading: false,
         }));
       } catch (error) {
-        const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
-        update(s => ({ ...s, loading: false, error: errorMessage }));
-        throw error; // Пробрасываем ошибку дальше, чтобы UI мог ее поймать
+        const errorMessage = toErrorMessage('beverageStore.createBeverage', error);
+        update((s) => ({ ...s, loading: false, error: errorMessage }));
+        throw new Error(errorMessage);
       }
     },
   };

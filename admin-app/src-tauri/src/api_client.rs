@@ -409,6 +409,8 @@ fn ensure_non_empty_message(message: String, fallback: &str) -> String {
 
 async fn handle_api_error(response: Response) -> String {
     let status = response.status();
+    let endpoint = response.url().path().to_string();
+    let fallback = format!("HTTP {} {}", status.as_u16(), endpoint);
     if let Ok(error_body) = response.json::<ApiErrorDetail>().await {
         let message = match error_body.detail {
             ApiDetail::Message(detail) => detail,
@@ -417,9 +419,9 @@ async fn handle_api_error(response: Response) -> String {
                 None => message,
             },
         };
-        ensure_non_empty_message(message, &format!("HTTP Error: {}", status))
+        ensure_non_empty_message(message, &fallback)
     } else {
-        format!("HTTP Error: {}", status)
+        fallback
     }
 }
 
