@@ -81,13 +81,18 @@ class FlowManager:
         card_uid = card_uid.replace(" ", "").lower()
         auth_result = self.sync_manager.authorize_pour(card_uid=card_uid, tap_id=TAP_ID)
         if not auth_result.get("allowed"):
+            reason_code = auth_result.get("reason_code")
             logging.warning(
                 "Authorize denied for card %s. status_code=%s reason=%s",
                 card_uid,
                 auth_result.get("status_code"),
                 auth_result.get("reason"),
             )
-            self._enter_card_must_be_removed("authorize_rejected")
+            if reason_code == "lost_card":
+                logging.warning("Карта помечена как потерянная. Налив запрещен, снимите карту с ридера.")
+                self._enter_card_must_be_removed("lost_card")
+            else:
+                self._enter_card_must_be_removed("authorize_rejected")
             return
 
         logging.info("Authorize OK for card %s on tap %s. Opening valve.", card_uid, TAP_ID)
