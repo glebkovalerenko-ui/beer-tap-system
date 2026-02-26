@@ -511,3 +511,19 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
   - active visits exist -> `409` (`active_visits_exist`)
   - pending sync pours exist -> `409` (`pending_sync_pours_exist`)
 - Admin-app shift state is now backend-authoritative (no local shift source of truth).
+
+## M5.X Implementation Update (2026-02-26)
+- Added Shift reports v1 as separate persisted documents (`shift_reports` table).
+- X report:
+  - computed on demand (`GET /api/shifts/{shift_id}/reports/x`);
+  - not persisted.
+- Z report:
+  - persisted (`POST /api/shifts/{shift_id}/reports/z`);
+  - only for closed shifts;
+  - idempotent (one Z per shift).
+- Added historical lookup:
+  - `GET /api/shifts/reports/z?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+- v1 report posture:
+  - volume-first operational KPI (`total_volume_ml`);
+  - money totals persisted too (`total_amount_cents`) for future POS/cash model;
+  - keg block is placeholder (`not_available_yet`) until keg/pour linkage expansion.

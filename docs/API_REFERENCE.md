@@ -678,3 +678,66 @@ Card ownership behavior depends on `card_returned`:
 - `card_returned=true`: card is set to `inactive` and unbound from the guest (`cards.guest_id = null`) in the same close transaction.
 - `card_returned=false`: card is set to `inactive`, but guest binding is preserved (card remains owned by the same guest).
 - `409 Conflict` with `detail=pending_sync_exists_for_visit` when unresolved `pending_sync` pours still exist for the visit.
+
+## M5.X Report Endpoints Update (2026-02-26)
+
+### GET `/api/shifts/{shift_id}/reports/x`
+- Computes X report on the fly.
+- Does not persist a record in `shift_reports`.
+
+### POST `/api/shifts/{shift_id}/reports/z`
+- Creates a persisted Z report for a closed shift.
+- `409 Conflict` with `detail="Shift must be closed for Z report"` when shift is not closed.
+- Idempotent: if Z exists for the shift, returns existing Z.
+
+### GET `/api/shifts/{shift_id}/reports/z`
+- Returns existing persisted Z report.
+- `404 Not Found` when no Z report exists.
+
+### GET `/api/shifts/reports/z?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- Returns compact list of Z reports by `generated_at` date range.
+- `422` when `from > to`.
+
+### Shift report payload v1
+
+```json
+{
+  "meta": {
+    "shift_id": "550e8400-e29b-41d4-a716-446655440000",
+    "report_type": "X",
+    "generated_at": "2026-02-26T12:00:00Z",
+    "opened_at": "2026-02-26T09:00:00Z",
+    "closed_at": null
+  },
+  "totals": {
+    "pours_count": 12,
+    "total_volume_ml": 3450,
+    "total_amount_cents": 172500,
+    "pending_sync_count": 0,
+    "reconciled_count": 1,
+    "mismatch_count": 0
+  },
+  "by_tap": [
+    {
+      "tap_id": 1,
+      "pours_count": 7,
+      "volume_ml": 2100,
+      "amount_cents": 105000,
+      "pending_sync_count": 0
+    }
+  ],
+  "visits": {
+    "active_visits_count": 1,
+    "closed_visits_count": 4
+  },
+  "kegs": {
+    "status": "not_available_yet",
+    "note": "Will be added when keg<->pour linkage is implemented"
+  }
+}
+```
+
+Notes:
+- `total_volume_ml` is the primary KPI for current pilot mode.
+- `total_amount_cents` is persisted for future POS/cash integration compatibility.
+- `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.

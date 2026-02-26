@@ -538,3 +538,21 @@ If precheck passes:
 - shift is transitioned to `closed`,
 - `closed_at` and `closed_by` are written by backend.
 
+# 13. M5.X Shift Reports: X vs Z (2026-02-26)
+
+X report:
+- operational/intermediate report for current shift state;
+- computed on demand;
+- not required to be persisted in database.
+
+Z report:
+- final closing report for a shift;
+- persisted in `shift_reports`;
+- exactly one Z report per shift (idempotent create);
+- available for historical lookup by date range.
+
+v1 report focus:
+- primary KPI is poured volume (`total_volume_ml`);
+- money totals are stored in parallel (`total_amount_cents`) for future POS/cash evolution;
+- keg section is currently placeholder (`not_available_yet`) until stable keg-to-pour linkage is expanded.
+
