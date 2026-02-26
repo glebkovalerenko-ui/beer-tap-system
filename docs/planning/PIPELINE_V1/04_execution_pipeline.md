@@ -215,6 +215,7 @@ Principles:
 
 **Exact scope**
 - LostCard CRUD/reporting.
+- Operator flow: `report lost` is executed from active visit card, UID source is `visit.card_uid` (no manual UID input and no tap of lost card).
 - Authorization-time check against LostCard registry.
 - Critical alert on lost-card usage attempt.
 
