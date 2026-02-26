@@ -745,3 +745,66 @@ Notes:
   - X report: `shift.opened_at .. now()`
   - Z report: `shift.opened_at .. shift.closed_at`
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
+
+## M6 Lost Cards Update (2026-02-26)
+
+### POST `/api/lost-cards`
+Create lost card record (idempotent by `card_uid`).
+- Authentication: JWT required
+- If the card is already marked lost, existing record is returned.
+
+Request body:
+```json
+{
+  "card_uid": "04AB7815CD6B80",
+  "reason": "guest_reported_loss",
+  "comment": "reported at front desk"
+}
+```
+
+### GET `/api/lost-cards`
+List lost cards with optional filters.
+- Authentication: JWT required
+- Query params:
+  - `uid` (optional, partial match)
+  - `reported_from` (optional, ISO datetime)
+  - `reported_to` (optional, ISO datetime)
+
+### POST `/api/lost-cards/{card_uid}/restore`
+Remove lost mark for card.
+- Authentication: JWT required
+- `404` when card is not in lost registry.
+
+Response:
+```json
+{
+  "card_uid": "04ab7815cd6b80",
+  "restored": true
+}
+```
+
+### POST `/api/visits/{visit_id}/report-lost-card`
+Operator action from active visit card.
+- Authentication: JWT required
+- Preconditions:
+  - visit exists and `status=active`
+  - `visit.card_uid` is not null
+- UID source is always `visit.card_uid` (no manual UID input and no lost-card tap required).
+- Creates (or reuses) `lost_cards` record and returns visit + lost-card payload.
+
+Response shape:
+```json
+{
+  "visit": { "visit_id": "uuid", "card_uid": "04AB...", "status": "active" },
+  "lost_card": { "card_uid": "04ab...", "reported_at": "2026-02-26T12:00:00Z" },
+  "lost": true,
+  "already_marked": false
+}
+```
+
+### Authorization deny for lost card
+
+`POST /api/visits/authorize-pour` performs hard check against `lost_cards`.
+- If card is lost: `403 Forbidden`.
+- Error body contains `detail.reason = "lost_card"`.
+- Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.
