@@ -251,6 +251,49 @@ class LostCardRestoreResponse(BaseModel):
     restored: bool = True
 
 
+class CardResolveLostCard(BaseModel):
+    reported_at: datetime
+    comment: Optional[str] = None
+    visit_id: Optional[uuid.UUID] = None
+    reported_by: Optional[str] = None
+    reason: Optional[str] = None
+    guest_id: Optional[uuid.UUID] = None
+
+
+class CardResolveActiveVisit(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: str
+    status: str
+    card_uid: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    opened_at: datetime
+
+
+class CardResolveGuest(BaseModel):
+    guest_id: uuid.UUID
+    full_name: str
+    phone_number: str
+    balance_cents: int
+
+
+class CardResolveCard(BaseModel):
+    uid: str
+    status: str
+    guest_id: Optional[uuid.UUID] = None
+
+
+class CardResolveResponse(BaseModel):
+    card_uid: str
+    is_lost: bool
+    lost_card: Optional[CardResolveLostCard] = None
+    active_visit: Optional[CardResolveActiveVisit] = None
+    guest: Optional[CardResolveGuest] = None
+    card: Optional[CardResolveCard] = None
+    recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
+
+
 class VisitReportLostCardResponse(BaseModel):
     visit: Visit
     lost_card: LostCard
