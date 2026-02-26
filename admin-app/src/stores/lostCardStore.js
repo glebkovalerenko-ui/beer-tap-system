@@ -75,6 +75,20 @@ function createLostCardStore() {
         throw new Error(message);
       }
     },
+
+    resolveCard: async (cardUid) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const result = await invoke('resolve_card', { token, cardUid });
+        update((s) => ({ ...s, loading: false }));
+        return result;
+      } catch (error) {
+        const message = toErrorMessage('lostCardStore.resolveCard', error);
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
   };
 }
 

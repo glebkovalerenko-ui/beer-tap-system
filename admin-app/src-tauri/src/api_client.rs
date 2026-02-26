@@ -253,6 +253,54 @@ pub struct LostCardRestoreResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CardResolveLostCard {
+    pub reported_at: String,
+    pub comment: Option<String>,
+    pub visit_id: Option<String>,
+    pub reported_by: Option<String>,
+    pub reason: Option<String>,
+    pub guest_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CardResolveActiveVisit {
+    pub visit_id: String,
+    pub guest_id: String,
+    pub guest_full_name: String,
+    pub phone_number: String,
+    pub status: String,
+    pub card_uid: Option<String>,
+    pub active_tap_id: Option<i32>,
+    pub opened_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CardResolveGuest {
+    pub guest_id: String,
+    pub full_name: String,
+    pub phone_number: String,
+    pub balance_cents: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CardResolveCard {
+    pub uid: String,
+    pub status: String,
+    pub guest_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CardResolveResponse {
+    pub card_uid: String,
+    pub is_lost: bool,
+    pub lost_card: Option<CardResolveLostCard>,
+    pub active_visit: Option<CardResolveActiveVisit>,
+    pub guest: Option<CardResolveGuest>,
+    pub card: Option<CardResolveCard>,
+    pub recommended_action: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Shift {
     pub id: String,
     pub opened_at: String,
@@ -922,6 +970,19 @@ pub async fn restore_lost_card(token: &str, card_uid: &str) -> Result<LostCardRe
     if response.status().is_success() {
         response
             .json::<LostCardRestoreResponse>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn resolve_card(token: &str, card_uid: &str) -> Result<CardResolveResponse, String> {
+    let url = format!("{}/cards/{}/resolve", API_BASE_URL, card_uid);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response
+            .json::<CardResolveResponse>()
             .await
             .map_err(|e| e.to_string())
     } else {
