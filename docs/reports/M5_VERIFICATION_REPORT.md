@@ -323,6 +323,51 @@ Conclusion:
 - Tauri unused import warning (`debug`) in `main.rs`.
 - Status: resolved in `711e004`.
 
+## Manual QA
+### 1) Terminal errors are never empty
+Use admin-app with backend running and check terminal logs (tauri + frontend console).
+
+Steps:
+1. Trigger `409`: call `POST /api/shifts/{id}/reports/z` while shift is still open.
+2. Trigger `404`: request non-existing report, e.g. `GET /api/shifts/<random-uuid>/reports/x`.
+3. Trigger `500`: simulate internal backend failure endpoint/path in local env.
+
+Expected:
+- Every error line contains non-empty text.
+- Example non-empty outputs from smoke check:
+  - `HTTP 404 /api/shifts/00000000-0000-0000-0000-000000000000/reports/x`
+  - `{"reason":"active_visits_exist"}`
+  - `HTTP 500 /api/sync/pours`
+
+### 2) Validate `new_guests_count` in X and Z
+Scenario:
+1. Open shift.
+2. Create 2 guests during open shift window.
+3. Close shift.
+4. Create 1 more guest after close.
+5. Request X report (during open shift) and Z report (after close).
+
+Expected:
+- X report counts guests created from `opened_at` to current time.
+- Z report counts guests created from `opened_at` to `closed_at`.
+- In this scenario, `new_guests_count = 2` for Z.
+
+## Container Postgres Verification (2026-02-26)
+Commands run:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm beer_backend_api alembic upgrade head
+docker compose run --rm beer_backend_api sh -lc "pip install -q pytest pytest-bdd httpx && TEST_USE_POSTGRES=1 python -m pytest -q tests/test_m5_shift_reports_v1.py"
+docker compose run --rm beer_backend_api sh -lc "pip install -q pytest pytest-bdd httpx && TEST_USE_POSTGRES=1 python -m pytest -q"
+python scripts/encoding_guard.py --all
+```
+
+Results:
+- `tests/test_m5_shift_reports_v1.py`: `5 passed`
+- Full suite in container: `77 passed, 5 skipped, 1 warning`
+- `encoding_guard --all`: `OK` (no UTF-8/mojibake/bidi-control issues)
+
 ## Final Recommendation
 **MERGE** (with fixes `4695b73` and `711e004` included).
 

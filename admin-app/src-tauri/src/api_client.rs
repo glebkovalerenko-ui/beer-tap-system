@@ -226,6 +226,77 @@ pub struct ShiftCurrentResponse {
     pub shift: Option<Shift>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportMeta {
+    pub shift_id: String,
+    pub report_type: String,
+    pub generated_at: String,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportTotals {
+    pub pours_count: i32,
+    pub total_volume_ml: i32,
+    pub total_amount_cents: i32,
+    pub new_guests_count: i32,
+    pub pending_sync_count: i32,
+    pub reconciled_count: i32,
+    pub mismatch_count: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportByTapItem {
+    pub tap_id: i32,
+    pub pours_count: i32,
+    pub volume_ml: i32,
+    pub amount_cents: i32,
+    pub pending_sync_count: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportVisits {
+    pub active_visits_count: i32,
+    pub closed_visits_count: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportKegs {
+    pub status: String,
+    pub note: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportPayload {
+    pub meta: ShiftReportMeta,
+    pub totals: ShiftReportTotals,
+    pub by_tap: Vec<ShiftReportByTapItem>,
+    pub visits: ShiftReportVisits,
+    pub kegs: ShiftReportKegs,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftReportDocument {
+    pub report_id: String,
+    pub shift_id: String,
+    pub report_type: String,
+    pub generated_at: String,
+    pub payload: ShiftReportPayload,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ShiftZReportListItem {
+    pub report_id: String,
+    pub shift_id: String,
+    pub generated_at: String,
+    pub total_volume_ml: i32,
+    pub total_amount_cents: i32,
+    pub pours_count: i32,
+    pub active_visits_count: i32,
+    pub closed_visits_count: i32,
+}
+
 // --- Kegs, Taps, Beverages ---
 
 // --- ИЗМЕНЕНИЕ: Структура Beverage расширена до полного соответствия схеме API ---
@@ -328,18 +399,30 @@ struct ApiErrorDetail {
     detail: ApiDetail,
 }
 
+fn ensure_non_empty_message(message: String, fallback: &str) -> String {
+    let trimmed = message.trim();
+    if trimmed.is_empty() {
+        fallback.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 async fn handle_api_error(response: Response) -> String {
     let status = response.status();
+    let endpoint = response.url().path().to_string();
+    let fallback = format!("HTTP {} {}", status.as_u16(), endpoint);
     if let Ok(error_body) = response.json::<ApiErrorDetail>().await {
-        match error_body.detail {
+        let message = match error_body.detail {
             ApiDetail::Message(detail) => detail,
             ApiDetail::Conflict { message, visit_id } => match visit_id {
                 Some(id) => format!("{} (visit_id={})", message, id),
                 None => message,
             },
-        }
+        };
+        ensure_non_empty_message(message, &fallback)
     } else {
-        format!("HTTP Error: {}", status)
+        fallback
     }
 }
 
@@ -608,6 +691,51 @@ pub async fn close_shift(token: &str) -> Result<Shift, String> {
     let response = CLIENT.post(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Shift>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_shift_x_report(token: &str, shift_id: &str) -> Result<ShiftReportPayload, String> {
+    let url = format!("{}/shifts/{}/reports/x", API_BASE_URL, shift_id);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<ShiftReportPayload>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn create_shift_z_report(token: &str, shift_id: &str) -> Result<ShiftReportDocument, String> {
+    let url = format!("{}/shifts/{}/reports/z", API_BASE_URL, shift_id);
+    let response = CLIENT.post(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<ShiftReportDocument>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_shift_z_report(token: &str, shift_id: &str) -> Result<ShiftReportDocument, String> {
+    let url = format!("{}/shifts/{}/reports/z", API_BASE_URL, shift_id);
+    let response = CLIENT.get(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<ShiftReportDocument>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn list_shift_z_reports(token: &str, from_date: &str, to_date: &str) -> Result<Vec<ShiftZReportListItem>, String> {
+    let url = format!("{}/shifts/reports/z", API_BASE_URL);
+    let response = CLIENT.get(&url)
+        .query(&[("from", from_date), ("to", to_date)])
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Vec<ShiftZReportListItem>>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

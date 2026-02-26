@@ -1,12 +1,16 @@
 // admin-app/src/stores/systemStore.js
-// --- ДЛЯ ПОЛНОЙ ЗАМЕНЫ ---
-
-import { writable, get } from 'svelte/store'; // <-- ИЗМЕНЕНО: Импортируем 'get'
+import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
+import { logError, normalizeError } from '../lib/errorUtils';
+
+function toErrorMessage(context, error) {
+  logError(context, error);
+  return normalizeError(error);
+}
 
 const createSystemStore = () => {
-  const { subscribe, set, update } = writable({
+  const { subscribe, update } = writable({
     emergencyStop: false,
     loading: false,
     error: null,
@@ -16,53 +20,50 @@ const createSystemStore = () => {
   const POLLING_RATE_MS = 10000;
 
   const fetchSystemStatus = async () => {
-    // --- ИЗМЕНЕНО: Получаем токен идиоматичным способом ---
     const token = get(sessionStore).token;
     if (!token) {
       console.warn('[SystemStore] No token found, skipping fetch.');
-      return; 
+      return;
     }
 
     try {
-      const statusItem = await invoke('get_system_status', { token }); 
+      const statusItem = await invoke('get_system_status', { token });
       if (statusItem && statusItem.key === 'emergency_stop_enabled') {
-        update(store => ({ ...store, emergencyStop: statusItem.value === 'true', error: null }));
+        update((store) => ({ ...store, emergencyStop: statusItem.value === 'true', error: null }));
       }
     } catch (err) {
-      console.error("Error fetching system status:", err);
-      update(store => ({ ...store, error: err }));
+      const message = toErrorMessage('systemStore.fetchSystemStatus', err);
+      update((store) => ({ ...store, error: message }));
     }
   };
 
   const setEmergencyStop = async (enabled) => {
-    // --- ИЗМЕНЕНО: Получаем токен идиоматичным способом ---
     const token = get(sessionStore).token;
     if (!token) {
-        const error = 'Authentication token not found.';
-        update(store => ({ ...store, error }));
-        throw new Error(error);
+      const error = 'Authentication token not found.';
+      update((store) => ({ ...store, error }));
+      throw new Error(error);
     }
 
-    update(store => ({ ...store, loading: true }));
+    update((store) => ({ ...store, loading: true }));
     try {
       const value = enabled ? 'true' : 'false';
-      // Передаем токен в Tauri-команду
       const updatedStatus = await invoke('set_emergency_stop', { token, value });
       if (updatedStatus && updatedStatus.key === 'emergency_stop_enabled') {
-         update(store => ({
+        update((store) => ({
           ...store,
           emergencyStop: updatedStatus.value === 'true',
           loading: false,
-          error: null
+          error: null,
         }));
       }
     } catch (err) {
-      console.error("Error setting emergency stop:", err);
-      update(store => ({ ...store, loading: false, error: err }));
-      throw err;
+      const message = toErrorMessage('systemStore.setEmergencyStop', err);
+      update((store) => ({ ...store, loading: false, error: message }));
+      throw new Error(message);
     }
   };
-  
+
   const startPolling = () => {
     if (pollingInterval) return;
     console.log('[SystemStore] Starting status polling.');
@@ -76,15 +77,12 @@ const createSystemStore = () => {
     clearInterval(pollingInterval);
     pollingInterval = null;
   };
-  
-  // --- ИЗМЕНЕНО: Убираем автоматическую подписку ---
-  // Теперь родительский компонент (App.svelte) будет отвечать за запуск/остановку.
 
   return {
     subscribe,
     setEmergencyStop,
-    startPolling, // <-- Экспортируем методы
-    stopPolling,  // <-- Экспортируем методы
+    startPolling,
+    stopPolling,
   };
 };
 

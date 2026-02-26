@@ -1,6 +1,12 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
+import { logError, normalizeError } from '../lib/errorUtils';
+
+function toErrorMessage(context, error) {
+  logError(context, error);
+  return normalizeError(error);
+}
 
 function createVisitStore() {
   const { subscribe, update } = writable({
@@ -31,9 +37,9 @@ function createVisitStore() {
         update((s) => ({ ...s, activeVisits, loading: false }));
         return activeVisits;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.fetchActiveVisits', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -50,9 +56,9 @@ function createVisitStore() {
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.openVisit', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -64,9 +70,9 @@ function createVisitStore() {
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.assignCardToVisit', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -78,9 +84,9 @@ function createVisitStore() {
         update((s) => ({ ...s, currentVisit: updatedVisit, loading: false }));
         return updatedVisit;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.forceUnlock', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -92,9 +98,9 @@ function createVisitStore() {
         update((s) => ({ ...s, currentVisit: closedVisit, loading: false }));
         return closedVisit;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.closeVisit', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -115,9 +121,9 @@ function createVisitStore() {
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = toErrorMessage('visitStore.reconcilePour', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
   };

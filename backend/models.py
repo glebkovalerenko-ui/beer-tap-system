@@ -5,7 +5,7 @@ import uuid
 # --- ИЗМЕНЕНИЕ: Импортируем универсальный UUID вместо специфичного для PostgreSQL ---
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime, Boolean, 
-    ForeignKey, text, Numeric, UUID, Text, Index, CheckConstraint
+    ForeignKey, text, Numeric, UUID, Text, Index, CheckConstraint, JSON
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -183,6 +183,18 @@ class Shift(Base):
     status = Column(String(20), nullable=False, default="open", index=True)
     opened_by = Column(String(100), nullable=True)
     closed_by = Column(String(100), nullable=True)
+
+
+class ShiftReport(Base):
+    __tablename__ = "shift_reports"
+
+    report_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    report_type = Column(String(1), nullable=False)
+    generated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    payload = Column(JSON, nullable=False)
+
+
 class Pour(Base):
     """
     ТРАНЗАКЦИЯ НАЛИВА.

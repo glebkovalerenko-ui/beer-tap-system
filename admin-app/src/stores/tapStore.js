@@ -2,8 +2,14 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
+import { logError, normalizeError } from '../lib/errorUtils';
 
 /** @typedef {import('../../../src-tauri/src/api_client').Tap} Tap */
+
+function toErrorMessage(context, error) {
+  logError(context, error);
+  return normalizeError(error);
+}
 
 function createTapStore() {
   /** @type {import('svelte/store').Writable<{taps: Tap[], loading: boolean, error: string | null}>} */
@@ -19,70 +25,68 @@ function createTapStore() {
     fetchTaps: async () => {
       const token = get(sessionStore).token;
       if (!token) return;
-      
-      update(s => ({ ...s, loading: true, error: null }));
+
+      update((s) => ({ ...s, loading: true, error: null }));
       try {
         const taps = await invoke('get_taps', { token });
         set({ taps, loading: false, error: null });
       } catch (error) {
-        const errorMessage = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Unknown error');
+        const errorMessage = toErrorMessage('tapStore.fetchTaps', error);
         set({ taps: [], loading: false, error: errorMessage });
       }
     },
 
-    /**
-     * Назначает кегу на кран и обновляет состояние.
-     * @param {number} tapId
-     * @param {string} kegId
-     * @returns {Promise<Tap>} Обновленный объект крана
-     */
     assignKegToTap: async (tapId, kegId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error("Not authenticated");
+      if (!token) throw new Error('Not authenticated');
 
-      // Не устанавливаем глобальный loading, чтобы не блокировать весь UI
       try {
         /** @type {Tap} */
         const updatedTap = await invoke('assign_keg_to_tap', { token, tapId, kegId });
-        
-        // Паттерн "Оптимистичное обновление"
-        update(s => {
-          const updatedTaps = s.taps.map(t => t.tap_id === tapId ? updatedTap : t);
+
+        update((s) => {
+          const updatedTaps = s.taps.map((t) => (t.tap_id === tapId ? updatedTap : t));
           return { ...s, taps: updatedTaps };
         });
 
-        return updatedTap; // Возвращаем для возможной доп. обработки в UI
+        return updatedTap;
       } catch (error) {
-        // Ошибку пробрасываем выше, чтобы модальное окно могло ее отобразить
-        throw error;
+        throw new Error(toErrorMessage('tapStore.assignKegToTap', error));
       }
     },
-    
+
     unassignKegFromTap: async (tapId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error("Not authenticated");
-      
-      const updatedTap = await invoke('unassign_keg_from_tap', { token, tapId });
-      update(s => {
-        const updatedTaps = s.taps.map(t => t.tap_id === tapId ? updatedTap : t);
-        return { ...s, taps: updatedTaps };
-      });
-      return updatedTap;
+      if (!token) throw new Error('Not authenticated');
+
+      try {
+        const updatedTap = await invoke('unassign_keg_from_tap', { token, tapId });
+        update((s) => {
+          const updatedTaps = s.taps.map((t) => (t.tap_id === tapId ? updatedTap : t));
+          return { ...s, taps: updatedTaps };
+        });
+        return updatedTap;
+      } catch (error) {
+        throw new Error(toErrorMessage('tapStore.unassignKegFromTap', error));
+      }
     },
 
     updateTapStatus: async (tapId, status) => {
-        const token = get(sessionStore).token;
-        if (!token) throw new Error("Not authenticated");
+      const token = get(sessionStore).token;
+      if (!token) throw new Error('Not authenticated');
 
+      try {
         const payload = { status };
         const updatedTap = await invoke('update_tap', { token, tapId, payload });
-        update(s => {
-            const updatedTaps = s.taps.map(t => t.tap_id === tapId ? updatedTap : t);
-            return { ...s, taps: updatedTaps };
+        update((s) => {
+          const updatedTaps = s.taps.map((t) => (t.tap_id === tapId ? updatedTap : t));
+          return { ...s, taps: updatedTaps };
         });
         return updatedTap;
+      } catch (error) {
+        throw new Error(toErrorMessage('tapStore.updateTapStatus', error));
+      }
     },
-
   };
 }
 

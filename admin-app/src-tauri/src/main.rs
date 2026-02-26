@@ -33,10 +33,18 @@ struct AppState {
 pub struct AppError { 
     message: String,
 }
-impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: err.to_string() } } }
-impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: s } } }
-impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: s.to_string() } } }
-impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: err.to_string() } } }
+fn ensure_error_message(message: String) -> String {
+    let trimmed = message.trim();
+    if trimmed.is_empty() {
+        "Unknown error".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
+impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: ensure_error_message(s) } } }
+impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: ensure_error_message(s.to_string()) } } }
+impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
 
 #[derive(Clone, serde::Serialize)]
 struct CardStatusPayload {
@@ -255,6 +263,34 @@ async fn close_shift(token: String) -> Result<api_client::Shift, AppError> {
     info!("[COMMAND]    ...");
     api_client::close_shift(&token).await.map_err(AppError::from)
 }
+
+#[tauri::command]
+async fn get_shift_x_report(token: String, shift_id: String) -> Result<api_client::ShiftReportPayload, AppError> {
+    info!("[COMMAND]   X-report shift_id={}", shift_id);
+    api_client::get_shift_x_report(&token, &shift_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn create_shift_z_report(token: String, shift_id: String) -> Result<api_client::ShiftReportDocument, AppError> {
+    info!("[COMMAND]   create Z-report shift_id={}", shift_id);
+    api_client::create_shift_z_report(&token, &shift_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_shift_z_report(token: String, shift_id: String) -> Result<api_client::ShiftReportDocument, AppError> {
+    info!("[COMMAND]   get Z-report shift_id={}", shift_id);
+    api_client::get_shift_z_report(&token, &shift_id).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn list_shift_z_reports(
+    token: String,
+    from_date: String,
+    to_date: String,
+) -> Result<Vec<api_client::ShiftZReportListItem>, AppError> {
+    info!("[COMMAND]   list Z-reports from={} to={}", from_date, to_date);
+    api_client::list_shift_z_reports(&token, &from_date, &to_date).await.map_err(AppError::from)
+}
 #[tauri::command]
 async fn get_active_visits(token: String) -> Result<Vec<api_client::VisitActiveListItem>, AppError> {
     info!("[COMMAND]    ...");
@@ -375,6 +411,10 @@ fn main() {
             get_current_shift,
             open_shift,
             close_shift,
+            get_shift_x_report,
+            create_shift_z_report,
+            get_shift_z_report,
+            list_shift_z_reports,
             // API - Visits
             get_active_visits,
             search_active_visit,
