@@ -25,11 +25,13 @@
   let openFlowError = '';
 
   let isNFCModalOpen = false;
+  let nfcMode = 'bind';
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
   let isCurrentCardLost = false;
   let lostCardStatusText = '';
+  let cardLookupResult = null;
 
   $: visit = $visitStore.currentVisit;
   $: selectedGuest = visit ? $guestStore.guests.find((g) => g.guest_id === visit.guest_id) : null;
@@ -41,6 +43,11 @@
     if (!guestLike) return '—';
     if (guestLike.guest_full_name) return guestLike.guest_full_name;
     return [guestLike.last_name, guestLike.first_name, guestLike.patronymic].filter(Boolean).join(' ');
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return '—';
+    return new Date(value).toLocaleString('ru-RU');
   };
 
   const matchesVisit = (item, query) => {
@@ -61,6 +68,15 @@
       guestStore.fetchGuests();
     }
     await visitStore.fetchActiveVisits();
+    const lookupVisitId = sessionStorage.getItem('visits.lookupVisitId');
+    if (lookupVisitId) {
+      sessionStorage.removeItem('visits.lookupVisitId');
+      const target = ($visitStore.activeVisits || []).find((item) => item.visit_id === lookupVisitId);
+      if (target) {
+        selectVisit(target);
+        filterQuery = lookupVisitId;
+      }
+    }
   });
 
   async function refreshVisits() {
@@ -207,12 +223,88 @@
 
   function handleBindCard() {
     if (!visit) return;
+    nfcMode = 'bind';
     nfcError = '';
     isNFCModalOpen = true;
   }
 
+  function handleLookupByCard() {
+    nfcMode = 'lookup';
+    nfcError = '';
+    isNFCModalOpen = true;
+  }
+
+  function hasLookupVisitTarget() {
+    return Boolean(cardLookupResult?.active_visit?.visit_id || cardLookupResult?.lost_card?.visit_id);
+  }
+
+  async function resolveByCardUid(cardUid) {
+    actionError = '';
+    try {
+      cardLookupResult = await lostCardStore.resolveCard(cardUid);
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Не удалось получить статус карты';
+      cardLookupResult = null;
+      throw error;
+    }
+  }
+
+  async function handleLookupRestoreLost() {
+    const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
+    if (!uid) return;
+    try {
+      await lostCardStore.restoreLostCard(uid);
+      await resolveByCardUid(uid);
+      await refreshVisits();
+      await refreshCurrentLostStatus();
+      uiStore.notifySuccess('Отметка потерянной карты снята');
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Не удалось снять отметку потерянной карты';
+    }
+  }
+
+  async function handleLookupOpenVisit() {
+    const targetVisitId = cardLookupResult?.active_visit?.visit_id || cardLookupResult?.lost_card?.visit_id;
+    if (!targetVisitId) return;
+    await refreshVisits();
+    const target = ($visitStore.activeVisits || []).find((item) => item.visit_id === targetVisitId);
+    if (!target) {
+      uiStore.notifyWarning('Визит не найден среди активных');
+      filterQuery = targetVisitId;
+      return;
+    }
+    selectVisit(target);
+    filterQuery = targetVisitId;
+    uiStore.notifySuccess('Открыт активный визит по карте');
+  }
+
+  async function handleLookupOpenNewVisit() {
+    const guestId = cardLookupResult?.guest?.guest_id;
+    if (!guestId) return;
+    try {
+      const opened = await visitStore.openVisit({ guestId });
+      visitStore.setCurrentVisit(opened);
+      await refreshVisits();
+      if (cardLookupResult?.card_uid) {
+        await resolveByCardUid(cardLookupResult.card_uid);
+      }
+      uiStore.notifySuccess('Открыт новый визит для гостя');
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Не удалось открыть новый визит';
+    }
+  }
+
   async function handleUidRead(event) {
     nfcError = '';
+    if (nfcMode === 'lookup') {
+      try {
+        await resolveByCardUid(event.detail.uid);
+      } catch (error) {
+        nfcError = error?.message || error?.toString?.() || 'Не удалось выполнить поиск по карте';
+      }
+      return;
+    }
+
     try {
       await visitStore.assignCardToVisit({ visitId: visit.visit_id, cardUid: event.detail.uid });
       await refreshVisits();
@@ -318,9 +410,69 @@
     <section class="ui-card list-panel">
       <div class="list-header">
         <h2>Список активных визитов</h2>
-        <button on:click={refreshVisits} disabled={$visitStore.loading}>Обновить</button>
+        <div class="list-actions">
+          <button on:click={refreshVisits} disabled={$visitStore.loading}>Обновить</button>
+          <button on:click={handleLookupByCard} disabled={$visitStore.loading}>Найти по карте (NFC)</button>
+        </div>
       </div>
       <input type="text" bind:value={filterQuery} placeholder="Фильтр: ФИО / телефон / карта / ID визита" />
+
+      {#if cardLookupResult}
+        <div class="lookup-card">
+          <h3>Результат поиска по карте</h3>
+          <div class="lookup-meta">
+            <div><strong>UID:</strong> {cardLookupResult.card_uid}</div>
+          </div>
+
+          {#if cardLookupResult.is_lost}
+            <p class="lookup-status lookup-status-danger">Карта отмечена как потерянная</p>
+            <div class="lookup-meta">
+              <div><strong>Дата отметки:</strong> {formatDateTime(cardLookupResult.lost_card?.reported_at)}</div>
+              <div><strong>Комментарий:</strong> {cardLookupResult.lost_card?.comment || '—'}</div>
+              <div><strong>Визит:</strong> {cardLookupResult.lost_card?.visit_id || '—'}</div>
+            </div>
+            <div class="lookup-actions">
+              <button class="danger-btn" on:click={handleLookupRestoreLost} disabled={$lostCardStore.loading}>
+                Снять отметку потерянной
+              </button>
+              {#if hasLookupVisitTarget()}
+                <button on:click={handleLookupOpenVisit}>Открыть визит</button>
+              {/if}
+            </div>
+          {:else if cardLookupResult.active_visit}
+            <p class="lookup-status lookup-status-warning">Карта используется в активном визите</p>
+            <div class="lookup-meta">
+              <div><strong>Гость:</strong> {cardLookupResult.active_visit.guest_full_name}</div>
+              <div><strong>Телефон:</strong> {cardLookupResult.active_visit.phone_number || '—'}</div>
+              <div><strong>Визит:</strong> {cardLookupResult.active_visit.visit_id}</div>
+              <div>
+                <strong>Лок:</strong>
+                {#if cardLookupResult.active_visit.active_tap_id}
+                  Занята на кране #{cardLookupResult.active_visit.active_tap_id}
+                {:else}
+                  Нет активного лока
+                {/if}
+              </div>
+            </div>
+            <div class="lookup-actions">
+              <button on:click={handleLookupOpenVisit}>Открыть карточку визита</button>
+            </div>
+          {:else if cardLookupResult.guest}
+            <p class="lookup-status lookup-status-info">Карта привязана к гостю, активного визита нет</p>
+            <div class="lookup-meta">
+              <div><strong>Гость:</strong> {cardLookupResult.guest.full_name}</div>
+              <div><strong>Телефон:</strong> {cardLookupResult.guest.phone_number || '—'}</div>
+            </div>
+            <div class="lookup-actions">
+              <button on:click={handleLookupOpenNewVisit}>Открыть новый визит этому гостю</button>
+            </div>
+          {:else if cardLookupResult.card}
+            <p class="lookup-status lookup-status-muted">Карта зарегистрирована, но не привязана к гостю</p>
+          {:else}
+            <p class="lookup-status lookup-status-muted">Карта не зарегистрирована в системе</p>
+          {/if}
+        </div>
+      {/if}
 
       {#if $visitStore.loading && $visitStore.activeVisits.length === 0}
         <p>Загрузка активных визитов...</p>
@@ -472,6 +624,24 @@
   .list-panel, .detail-panel { display: grid; gap: 0.75rem; align-content: start; }
   .list-header { display: flex; justify-content: space-between; align-items: center; }
   .list-header h2 { margin: 0; }
+  .list-actions { display: flex; gap: 0.5rem; }
+
+  .lookup-card {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--bg-surface-muted);
+    padding: 0.75rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .lookup-card h3 { margin: 0; }
+  .lookup-meta { display: grid; gap: 0.25rem; }
+  .lookup-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .lookup-status { margin: 0; font-weight: 700; }
+  .lookup-status-danger { color: #c61f35; }
+  .lookup-status-warning { color: #8a5a00; }
+  .lookup-status-info { color: #1f4a7c; }
+  .lookup-status-muted { color: var(--text-secondary); }
 
   .visit-list { display: grid; gap: 0.5rem; }
   .visit-item {
@@ -507,5 +677,3 @@
   .reconcile-modal { margin-top: 1rem; display: grid; gap: 0.5rem; }
   .modal-actions { display: flex; gap: 0.5rem; }
 </style>
-
-
