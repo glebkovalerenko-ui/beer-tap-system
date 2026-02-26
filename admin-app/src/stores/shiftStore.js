@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
+import { logError, normalizeErrorMessage } from '../lib/errorUtils';
 
 const INITIAL_STATE = {
   isOpen: false,
@@ -28,8 +29,13 @@ function createShiftStore() {
 
   const withAuth = () => {
     const token = get(sessionStore).token;
-    if (!token) throw new Error('Not authenticated');
+    if (!token) throw new Error('Не выполнен вход в систему');
     return token;
+  };
+
+  const mapError = (context, error) => {
+    logError(context, error);
+    return normalizeErrorMessage(error);
   };
 
   return {
@@ -46,9 +52,9 @@ function createShiftStore() {
         update((s) => ({ ...s, ...normalized, loading: false }));
         return normalized;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = mapError('shiftStore.fetchCurrent', error);
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -60,7 +66,7 @@ function createShiftStore() {
         update((s) => ({ ...s, isOpen: true, shift, loading: false }));
         return shift;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = mapError('shiftStore.openShift', error);
         if (message.includes('Shift already open')) {
           const current = await invoke('get_current_shift', { token });
           const normalized = normalizeCurrent(current);
@@ -68,7 +74,7 @@ function createShiftStore() {
           return normalized.shift;
         }
         update((s) => ({ ...s, loading: false, error: message }));
-        throw error;
+        throw new Error(message);
       }
     },
 
@@ -77,13 +83,49 @@ function createShiftStore() {
       update((s) => ({ ...s, loading: true, error: null, closeErrorReason: null }));
       try {
         const shift = await invoke('close_shift', { token });
-        update((s) => ({ ...s, isOpen: false, shift: null, loading: false, closeErrorReason: null }));
+        update((s) => ({ ...s, isOpen: false, shift, loading: false, closeErrorReason: null }));
         return shift;
       } catch (error) {
-        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const message = mapError('shiftStore.closeShift', error);
         const reason = closeReasonFromError(message);
         update((s) => ({ ...s, loading: false, error: message, closeErrorReason: reason }));
         throw new Error(reason || message);
+      }
+    },
+
+    fetchXReport: async (shiftId) => {
+      const token = withAuth();
+      try {
+        return await invoke('get_shift_x_report', { token, shiftId });
+      } catch (error) {
+        throw new Error(mapError('shiftStore.fetchXReport', error));
+      }
+    },
+
+    createZReport: async (shiftId) => {
+      const token = withAuth();
+      try {
+        return await invoke('create_shift_z_report', { token, shiftId });
+      } catch (error) {
+        throw new Error(mapError('shiftStore.createZReport', error));
+      }
+    },
+
+    fetchZReport: async (shiftId) => {
+      const token = withAuth();
+      try {
+        return await invoke('get_shift_z_report', { token, shiftId });
+      } catch (error) {
+        throw new Error(mapError('shiftStore.fetchZReport', error));
+      }
+    },
+
+    listZReports: async (fromDate, toDate) => {
+      const token = withAuth();
+      try {
+        return await invoke('list_shift_z_reports', { token, fromDate, toDate });
+      } catch (error) {
+        throw new Error(mapError('shiftStore.listZReports', error));
       }
     },
 
