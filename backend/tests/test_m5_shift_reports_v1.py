@@ -193,27 +193,26 @@ def test_z_report_counts_only_guests_created_inside_shift_window(client, db_sess
     guest_inside_1 = _create_guest(client, headers, suffix="94111")
     guest_inside_2 = _create_guest(client, headers, suffix="94112")
 
-    shift_uuid = uuid.UUID(shift_id)
-    shift = db_session.query(models.Shift).filter(models.Shift.id == shift_uuid).one()
-
-    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_outside_before)).update(
-        {"created_at": shift.opened_at - timedelta(minutes=10)}
-    )
-    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_1)).update(
-        {"created_at": shift.opened_at + timedelta(minutes=1)}
-    )
-    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_2)).update(
-        {"created_at": shift.opened_at + timedelta(minutes=2)}
-    )
-    db_session.commit()
-
     close_shift = client.post("/api/shifts/close", headers=headers)
     assert close_shift.status_code == 200
 
+    shift_uuid = uuid.UUID(shift_id)
     shift = db_session.query(models.Shift).filter(models.Shift.id == shift_uuid).one()
+    midpoint = shift.opened_at + ((shift.closed_at - shift.opened_at) / 2)
+
     guest_outside_after = _create_guest(client, headers, suffix="94113")
+
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_outside_before)).update(
+        {"created_at": shift.opened_at - timedelta(seconds=10)}
+    )
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_1)).update(
+        {"created_at": midpoint}
+    )
+    db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_inside_2)).update(
+        {"created_at": midpoint}
+    )
     db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_outside_after)).update(
-        {"created_at": shift.closed_at + timedelta(minutes=10)}
+        {"created_at": shift.closed_at + timedelta(seconds=10)}
     )
     db_session.commit()
 
