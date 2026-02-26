@@ -98,6 +98,11 @@ class VisitCloseRequest(BaseModel):
     card_returned: bool = Field(default=True)
 
 
+class VisitReportLostCardRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "guest_reported_loss"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Guest says card was lost outside bar"})
+
+
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
@@ -218,6 +223,39 @@ class VisitPourAuthorizeResponse(BaseModel):
     allowed: bool
     visit: Optional[Visit] = None
     reason: Optional[str] = None
+
+
+class LostCardCreateRequest(BaseModel):
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+    reported_by: Optional[str] = Field(default=None, json_schema_extra={'example': "operator_1"})
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "guest_reported_loss"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Reported from front desk"})
+    visit_id: Optional[uuid.UUID] = None
+    guest_id: Optional[uuid.UUID] = None
+
+
+class LostCard(BaseModel):
+    id: uuid.UUID
+    card_uid: str
+    reported_at: datetime
+    reported_by: Optional[str] = None
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    visit_id: Optional[uuid.UUID] = None
+    guest_id: Optional[uuid.UUID] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LostCardRestoreResponse(BaseModel):
+    card_uid: str
+    restored: bool = True
+
+
+class VisitReportLostCardResponse(BaseModel):
+    visit: Visit
+    lost_card: LostCard
+    lost: bool = True
+    already_marked: bool = False
 
 
 class VisitForceUnlockRequest(BaseModel):

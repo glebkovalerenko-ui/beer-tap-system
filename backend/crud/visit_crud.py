@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+from crud import lost_card_crud
 
 
 def _is_adult(date_of_birth: date) -> bool:
@@ -200,6 +201,25 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
 
 
 def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
+    if lost_card_crud.is_lost_card(db=db, card_uid=card_uid):
+        _add_audit_log(
+            db,
+            actor_id=actor_id,
+            action="lost_card_blocked",
+            target_entity="Card",
+            target_id=card_uid,
+            details={
+                "card_uid": card_uid,
+                "tap_id": tap_id,
+                "blocked_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"reason": "lost_card", "message": "Card is marked as lost"},
+        )
+
     active_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
     if not active_visit:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"No active visit for Card {card_uid}.")
@@ -244,6 +264,34 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     db.commit()
     db.refresh(active_visit)
     return active_visit, pending_outcome
+
+
+def report_lost_card_from_visit(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    reason: str | None,
+    comment: str | None,
+    actor_id: str | None,
+):
+    visit = get_visit(db=db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    if visit.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can report lost card")
+    if not visit.card_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit has no card assigned")
+
+    lost_card, created = lost_card_crud.create_lost_card_idempotent(
+        db=db,
+        card_uid=visit.card_uid,
+        reported_by=actor_id,
+        reason=reason,
+        comment=comment,
+        visit_id=visit.visit_id,
+        guest_id=visit.guest_id,
+    )
+    return visit, lost_card, created
 
 
 def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: str | None, actor_id: str):
