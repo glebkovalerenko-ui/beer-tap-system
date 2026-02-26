@@ -134,6 +134,7 @@ Unassign card from guest.
 #### POST `/api/guests/{guest_id}/topup`
 Top up guest balance.
 - **Authentication**: JWT required
+- **Operational Rule**: Requires an open shift (`POST /api/shifts/open`)
 
 **Request Body:**
 ```json
@@ -361,6 +362,30 @@ Set emergency stop status.
 Get all system state flags.
 - **Authentication**: None
 - **Note**: Hidden from public schema (debug only)
+
+### Shifts
+
+#### POST `/api/shifts/open`
+Open a new operational shift.
+- **Authentication**: JWT required
+- **Behavior**: Only one open shift is allowed.
+- **Errors**:
+  - `409 Conflict`: Shift already open
+
+#### POST `/api/shifts/close`
+Close current open shift.
+- **Authentication**: JWT required
+- **Precheck blockers**:
+  - `409 Conflict` with `detail=active_visits_exist`
+  - `409 Conflict` with `detail=pending_sync_pours_exist`
+- **Success**: Shift is marked `closed`, `closed_at` is set.
+
+#### GET `/api/shifts/current`
+Get current shift state.
+- **Authentication**: JWT required
+- **Response**:
+  - `status=open` + shift payload when shift exists
+  - `status=closed` + `shift=null` when no open shift
 
 ### Audit Logs
 
@@ -608,6 +633,7 @@ The API returns standard HTTP status codes:
 4. **Pour Processing**: All pours in a sync request are processed in a single database transaction
 5. **Idempotency**: Duplicate pours with the same `client_tx_id` are rejected but marked as "duplicate"
 6. **Emergency Stop**: When enabled, prevents all pouring operations system-wide
+7. **Shift Gate**: `POST /api/visits/open`, `POST /api/visits/authorize-pour`, and `POST /api/guests/{id}/topup` return `403` when no shift is open
 
 ## Rate Limiting & Performance
 

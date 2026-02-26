@@ -25,7 +25,7 @@ from crud import pour_crud
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 
 # --- Импорты для новых роутеров API ---
-from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits
+from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits, shifts
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,6 +62,7 @@ app.include_router(system.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(pours.router, prefix="/api")
 app.include_router(visits.router, prefix="/api")
+app.include_router(shifts.router, prefix="/api")
 
 
 # --- Системные и служебные эндпоинты, оставшиеся в main.py ---

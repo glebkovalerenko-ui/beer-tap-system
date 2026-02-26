@@ -495,3 +495,19 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
   - `card_returned=true` -> close visit and unbind card from guest (`cards.guest_id=NULL`) in the same transaction.
   - `card_returned=false` -> close visit and keep card bound to the same guest.
 - Regression coverage must include card reuse after close (`true`) and blocked reuse after close (`false`) on PostgreSQL.
+
+## M5 Implementation Update (2026-02-26)
+- Added backend-authoritative `Shift` entity with minimal fields:
+  - `id`, `opened_at`, `closed_at`, `status`, `opened_by`, `closed_by`.
+- Added shift API:
+  - `POST /api/shifts/open`
+  - `POST /api/shifts/close`
+  - `GET /api/shifts/current`
+- Enforced strict operational gate when no open shift:
+  - `POST /api/visits/open` -> `403`
+  - `POST /api/visits/authorize-pour` -> `403`
+  - `POST /api/guests/{id}/topup` -> `403`
+- Shift close precheck behavior is explicit:
+  - active visits exist -> `409` (`active_visits_exist`)
+  - pending sync pours exist -> `409` (`pending_sync_pours_exist`)
+- Admin-app shift state is now backend-authoritative (no local shift source of truth).

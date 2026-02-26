@@ -6,3 +6,4 @@ from . import pour_crud
 from . import tap_crud
 from . import transaction_crud
 from . import visit_crud
+from . import shift_crud

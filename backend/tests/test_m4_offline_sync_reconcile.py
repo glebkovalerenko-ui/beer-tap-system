@@ -6,7 +6,10 @@ import models
 def _login(client):
     response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
     assert response.status_code == 200
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
+    shift_open = client.post("/api/shifts/open", headers=headers)
+    assert shift_open.status_code in (200, 409)
+    return headers
 
 
 def _create_guest(client, headers, suffix: str):

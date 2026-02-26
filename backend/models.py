@@ -5,7 +5,7 @@ import uuid
 # --- ИЗМЕНЕНИЕ: Импортируем универсальный UUID вместо специфичного для PostgreSQL ---
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime, Boolean, 
-    ForeignKey, text, Numeric, UUID, Text
+    ForeignKey, text, Numeric, UUID, Text, Index, CheckConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -163,6 +163,26 @@ class Visit(Base):
 # --- ПРИНЦИП 3: Транзакционная модель для всех изменений ---
 # Все изменения баланса и объема являются неизменяемыми записями (транзакциями).
 
+
+class Shift(Base):
+    __tablename__ = "shifts"
+    __table_args__ = (
+        Index(
+            "uq_shifts_one_open",
+            "status",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+            sqlite_where=text("status = 'open'"),
+        ),
+        CheckConstraint("status IN ('open', 'closed')", name="ck_shifts_status_values"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    opened_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(20), nullable=False, default="open", index=True)
+    opened_by = Column(String(100), nullable=True)
+    closed_by = Column(String(100), nullable=True)
 class Pour(Base):
     """
     ТРАНЗАКЦИЯ НАЛИВА.
@@ -278,3 +298,4 @@ class SystemState(Base):
     key = Column(String(50), primary_key=True, index=True)
     # Значение настройки, хранится как строка, e.g., 'true', 'false'
     value = Column(String(255), nullable=False)
+

@@ -1,69 +1,93 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { invoke } from '@tauri-apps/api/core';
+import { sessionStore } from './sessionStore';
 
-const STORAGE_KEY = 'admin_shift_state_v1';
+const INITIAL_STATE = {
+  isOpen: false,
+  shift: null,
+  loading: false,
+  error: null,
+  closeErrorReason: null,
+};
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+function closeReasonFromError(message) {
+  const text = (message || '').toString();
+  if (text.includes('active_visits_exist')) return 'Есть активные визиты';
+  if (text.includes('pending_sync_pours_exist')) return 'Есть несинхронизированные наливы';
+  return null;
+}
+
+function normalizeCurrent(payload) {
+  const shift = payload?.shift || null;
+  const isOpen = payload?.status === 'open' && !!shift;
+  return { isOpen, shift };
 }
 
 function createShiftStore() {
-  const initial = loadState() || {
-    isOpen: false,
-    shiftId: null,
-    openedAt: null,
-    closedAt: null,
-    topUpsCount: 0,
-    topUpsAmount: 0,
-  };
+  const { subscribe, set, update } = writable(INITIAL_STATE);
 
-  const { subscribe, set, update } = writable(initial);
-
-  const persist = (next) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    set(next);
+  const withAuth = () => {
+    const token = get(sessionStore).token;
+    if (!token) throw new Error('Not authenticated');
+    return token;
   };
 
   return {
     subscribe,
-    openShift: (operator = 'Кассир') => {
-      const now = new Date();
-      const shiftId = `SHIFT-${now.toISOString().slice(0, 10)}-${now.getHours()}${now.getMinutes()}`;
-      persist({
-        isOpen: true,
-        shiftId,
-        openedAt: now.toISOString(),
-        closedAt: null,
-        operator,
-        topUpsCount: 0,
-        topUpsAmount: 0,
-      });
+
+    reset: () => set({ ...INITIAL_STATE }),
+
+    fetchCurrent: async () => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null, closeErrorReason: null }));
+      try {
+        const current = await invoke('get_current_shift', { token });
+        const normalized = normalizeCurrent(current);
+        update((s) => ({ ...s, ...normalized, loading: false }));
+        return normalized;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw error;
+      }
     },
-    closeShift: () => {
-      update((state) => {
-        const next = { ...state, isOpen: false, closedAt: new Date().toISOString() };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        return next;
-      });
+
+    openShift: async () => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null, closeErrorReason: null }));
+      try {
+        const shift = await invoke('open_shift', { token });
+        update((s) => ({ ...s, isOpen: true, shift, loading: false }));
+        return shift;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        if (message.includes('Shift already open')) {
+          const current = await invoke('get_current_shift', { token });
+          const normalized = normalizeCurrent(current);
+          update((s) => ({ ...s, ...normalized, loading: false }));
+          return normalized.shift;
+        }
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw error;
+      }
     },
-    recordTopUp: (amount) => {
-      update((state) => {
-        if (!state.isOpen) return state;
-        const value = Number(amount) || 0;
-        const next = {
-          ...state,
-          topUpsCount: state.topUpsCount + 1,
-          topUpsAmount: Number((state.topUpsAmount + value).toFixed(2)),
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        return next;
-      });
+
+    closeShift: async () => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null, closeErrorReason: null }));
+      try {
+        const shift = await invoke('close_shift', { token });
+        update((s) => ({ ...s, isOpen: false, shift: null, loading: false, closeErrorReason: null }));
+        return shift;
+      } catch (error) {
+        const message = error?.message || error?.toString?.() || 'Unknown error';
+        const reason = closeReasonFromError(message);
+        update((s) => ({ ...s, loading: false, error: message, closeErrorReason: reason }));
+        throw new Error(reason || message);
+      }
     },
+
+    recordTopUp: () => {},
   };
 }
 
