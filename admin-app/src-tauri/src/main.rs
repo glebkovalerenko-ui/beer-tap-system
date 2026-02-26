@@ -353,6 +353,41 @@ async fn reconcile_pour(
     api_client::reconcile_pour(&token, &visit_id, &payload).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn report_lost_card_from_visit(
+    token: String,
+    visit_id: String,
+    reason: Option<String>,
+    comment: Option<String>,
+) -> Result<api_client::VisitReportLostCardResponse, AppError> {
+    let payload = api_client::VisitReportLostCardPayload { reason, comment };
+    api_client::report_lost_card_from_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn list_lost_cards(
+    token: String,
+    uid: Option<String>,
+    reported_from: Option<String>,
+    reported_to: Option<String>,
+) -> Result<Vec<api_client::LostCard>, AppError> {
+    api_client::list_lost_cards(
+        &token,
+        uid.as_deref(),
+        reported_from.as_deref(),
+        reported_to.as_deref(),
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn restore_lost_card(token: String, card_uid: String) -> Result<api_client::LostCardRestoreResponse, AppError> {
+    api_client::restore_lost_card(&token, &card_uid).await.map_err(AppError::from)
+}
+
 // =============================================================================
 //   
 // =============================================================================
@@ -422,7 +457,10 @@ fn main() {
             assign_card_to_visit,
             force_unlock_visit,
             close_visit,
-            reconcile_pour
+            reconcile_pour,
+            report_lost_card_from_visit,
+            list_lost_cards,
+            restore_lost_card
         ])
         .setup(move |app| {
             // ... (  NFC  )

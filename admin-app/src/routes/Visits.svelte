@@ -4,6 +4,7 @@
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import { guestStore } from '../stores/guestStore.js';
+  import { lostCardStore } from '../stores/lostCardStore.js';
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
 
@@ -27,6 +28,8 @@
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
+  let isCurrentCardLost = false;
+  let lostCardStatusText = '';
 
   $: visit = $visitStore.currentVisit;
   $: selectedGuest = visit ? $guestStore.guests.find((g) => g.guest_id === visit.guest_id) : null;
@@ -70,6 +73,26 @@
     }
   }
 
+  async function refreshCurrentLostStatus() {
+    if (!visit?.card_uid) {
+      isCurrentCardLost = false;
+      lostCardStatusText = '';
+      return;
+    }
+    try {
+      const rows = await lostCardStore.fetchLostCards({
+        uid: visit.card_uid,
+        reportedFrom: '',
+        reportedTo: '',
+      });
+      isCurrentCardLost = rows.length > 0;
+      lostCardStatusText = isCurrentCardLost ? 'Карта помечена как потерянная' : '';
+    } catch {
+      isCurrentCardLost = false;
+      lostCardStatusText = '';
+    }
+  }
+
   function startOpenFlow() {
     openFlowVisible = true;
     guestQuery = '';
@@ -105,6 +128,7 @@
       guest: fromGuests || null,
     });
     actionError = '';
+    refreshCurrentLostStatus();
   }
 
   async function handleForceUnlock() {
@@ -215,6 +239,39 @@
       topUpError = error?.message || error?.toString?.() || 'Ошибка пополнения баланса';
     }
   }
+
+  async function handleReportLostCard() {
+    actionError = '';
+    if (!visit || !visit.card_uid) return;
+
+    const confirmed = await uiStore.confirm({
+      title: 'Отметить карту потерянной',
+      message: `Пометить карту ${visit.card_uid} как потерянную?`,
+      confirmText: 'Отметить',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    const rawComment = window.prompt('Комментарий (опционально)', '');
+    if (rawComment === null) return;
+
+    try {
+      const result = await visitStore.reportLostCard({
+        visitId: visit.visit_id,
+        reason: 'guest_reported_loss',
+        comment: rawComment.trim() || null,
+      });
+      await refreshVisits();
+      isCurrentCardLost = true;
+      lostCardStatusText = result.already_marked
+        ? 'Карта уже была помечена как потерянная'
+        : 'Карта помечена как потерянная';
+      uiStore.notifySuccess(lostCardStatusText);
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Ошибка отметки потерянной карты';
+    }
+  }
 </script>
 
 {#if !$roleStore.permissions.guests}
@@ -294,6 +351,9 @@
           <div><strong>Карта:</strong> {visit.card_uid || 'Не привязана'}</div>
           <div><strong>Статус:</strong> {visit.status}</div>
           <div><strong>Баланс:</strong> {selectedGuest?.balance ?? visit.balance ?? '—'}</div>
+          {#if isCurrentCardLost}
+            <div class="lost-status"><strong>Статус карты:</strong> {lostCardStatusText || 'Карта помечена как потерянная'}</div>
+          {/if}
         </div>
 
         <div class="lock-state" class:locked={lockActive} class:free={!lockActive}>
@@ -328,6 +388,15 @@
             <h3>Операции</h3>
             {#if !visit.card_uid}
               <button on:click={handleBindCard} disabled={$visitStore.loading}>Привязать карту</button>
+            {/if}
+            {#if visit.card_uid}
+              <button
+                class="danger-btn"
+                on:click={handleReportLostCard}
+                disabled={$visitStore.loading || isCurrentCardLost}
+              >
+                Отметить карту потерянной
+              </button>
             {/if}
             <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>Пополнить баланс</button>
           </div>
@@ -431,6 +500,8 @@
   .action-panel h3 { margin: 0; }
 
   .error { color: #c61f35; }
+  .lost-status { color: #8a5a00; font-weight: 600; }
+  .danger-btn { background: #b54234; color: #fff; }
   .not-found { color: var(--text-secondary); font-weight: 600; }
   .empty-state p { color: var(--text-secondary); }
   .reconcile-modal { margin-top: 1rem; display: grid; gap: 0.5rem; }

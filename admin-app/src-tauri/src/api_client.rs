@@ -210,6 +210,48 @@ pub struct VisitReconcilePourPayload {
     pub comment: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitReportLostCardPayload {
+    pub reason: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LostCard {
+    pub id: String,
+    pub card_uid: String,
+    pub reported_at: String,
+    pub reported_by: Option<String>,
+    pub reason: Option<String>,
+    pub comment: Option<String>,
+    pub visit_id: Option<String>,
+    pub guest_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct VisitReportLostCardResponse {
+    pub visit: Visit,
+    pub lost_card: LostCard,
+    pub lost: bool,
+    pub already_marked: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LostCardCreatePayload {
+    pub card_uid: String,
+    pub reported_by: Option<String>,
+    pub reason: Option<String>,
+    pub comment: Option<String>,
+    pub visit_id: Option<String>,
+    pub guest_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LostCardRestoreResponse {
+    pub card_uid: String,
+    pub restored: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Shift {
     pub id: String,
@@ -807,6 +849,81 @@ pub async fn reconcile_pour(token: &str, visit_id: &str, payload: &VisitReconcil
     let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn report_lost_card_from_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitReportLostCardPayload,
+) -> Result<VisitReportLostCardResponse, String> {
+    let url = format!("{}/visits/{}/report-lost-card", API_BASE_URL, visit_id);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response
+            .json::<VisitReportLostCardResponse>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn create_lost_card(token: &str, payload: &LostCardCreatePayload) -> Result<LostCard, String> {
+    let url = format!("{}/lost-cards/", API_BASE_URL);
+    let response = CLIENT.post(&url).bearer_auth(token).json(payload).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<LostCard>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn list_lost_cards(
+    token: &str,
+    uid: Option<&str>,
+    reported_from: Option<&str>,
+    reported_to: Option<&str>,
+) -> Result<Vec<LostCard>, String> {
+    let url = format!("{}/lost-cards/", API_BASE_URL);
+    let mut req = CLIENT.get(&url).bearer_auth(token);
+    let mut params: Vec<(&str, &str)> = Vec::new();
+    if let Some(value) = uid {
+        if !value.trim().is_empty() {
+            params.push(("uid", value));
+        }
+    }
+    if let Some(value) = reported_from {
+        if !value.trim().is_empty() {
+            params.push(("reported_from", value));
+        }
+    }
+    if let Some(value) = reported_to {
+        if !value.trim().is_empty() {
+            params.push(("reported_to", value));
+        }
+    }
+    if !params.is_empty() {
+        req = req.query(&params);
+    }
+    let response = req.send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response.json::<Vec<LostCard>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn restore_lost_card(token: &str, card_uid: &str) -> Result<LostCardRestoreResponse, String> {
+    let url = format!("{}/lost-cards/{}/restore", API_BASE_URL, card_uid);
+    let response = CLIENT.post(&url).bearer_auth(token).send().await.map_err(|e| e.to_string())?;
+    if response.status().is_success() {
+        response
+            .json::<LostCardRestoreResponse>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
