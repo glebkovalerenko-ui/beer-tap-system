@@ -49,9 +49,21 @@ def _get_shift_or_404(db: Session, shift_id: uuid.UUID) -> models.Shift:
     return shift
 
 
-def _resolve_window_end(shift: models.Shift, generated_at: datetime) -> datetime:
-    if shift.closed_at and shift.closed_at < generated_at:
-        return shift.closed_at
+def _resolve_window_end(*, shift: models.Shift, generated_at: datetime, report_type: str) -> datetime:
+    closed_at = shift.closed_at
+    if closed_at is not None:
+        closed_at = _align_datetime_to_reference(closed_at, generated_at)
+
+    if report_type == "Z":
+        if closed_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Shift must be closed for Z report",
+            )
+        return closed_at
+
+    if closed_at and closed_at < generated_at:
+        return closed_at
     return generated_at
 
 
@@ -89,7 +101,8 @@ def build_shift_report_payload(
 ) -> schemas.ShiftReportPayload:
     generated_at = generated_at or datetime.now(timezone.utc)
     generated_at = _align_datetime_to_reference(generated_at, shift.opened_at)
-    window_end = _resolve_window_end(shift=shift, generated_at=generated_at)
+    window_end = _resolve_window_end(shift=shift, generated_at=generated_at, report_type=report_type)
+    window_end = _align_datetime_to_reference(window_end, shift.opened_at)
 
     totals_row = (
         db.query(
