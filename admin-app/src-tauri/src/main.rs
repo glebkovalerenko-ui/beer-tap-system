@@ -388,6 +388,11 @@ async fn restore_lost_card(token: String, card_uid: String) -> Result<api_client
     api_client::restore_lost_card(&token, &card_uid).await.map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn resolve_card(token: String, card_uid: String) -> Result<api_client::CardResolveResponse, AppError> {
+    api_client::resolve_card(&token, &card_uid).await.map_err(AppError::from)
+}
+
 // =============================================================================
 //   
 // =============================================================================
@@ -460,7 +465,8 @@ fn main() {
             reconcile_pour,
             report_lost_card_from_visit,
             list_lost_cards,
-            restore_lost_card
+            restore_lost_card,
+            resolve_card
         ])
         .setup(move |app| {
             // ... (  NFC  )
