@@ -17,7 +17,7 @@ use std::thread;
 use std::time::Duration;
 use tauri::{State, Emitter}; 
 use tauri_plugin_log::{Target, TargetKind};
-use log::{info, error, debug};
+use log::{info, error};
 use serde_json; 
 use hex;
 
