@@ -1,3 +1,9 @@
+from datetime import datetime, timezone
+import uuid
+
+import models
+
+
 def _login(client):
     response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
     assert response.status_code == 200
@@ -103,7 +109,7 @@ def test_cannot_close_shift_with_active_visit(client):
     assert close_shift.json()["detail"] == "active_visits_exist"
 
 
-def test_cannot_close_shift_with_pending_sync(client):
+def test_cannot_close_shift_with_pending_sync(client, db_session):
     headers = _login(client)
     open_shift = client.post("/api/shifts/open", headers=headers)
     assert open_shift.status_code == 200
@@ -140,7 +146,20 @@ def test_cannot_close_shift_with_pending_sync(client):
         headers=headers,
         json={"closed_reason": "checkout", "card_returned": True},
     )
-    assert close_visit.status_code == 200
+    assert close_visit.status_code == 409
+    assert close_visit.json()["detail"] == "pending_sync_exists_for_visit"
+
+    # Simulate legacy/abnormal state where a visit is already closed but pending_sync remains.
+    db_session.query(models.Visit).filter(models.Visit.visit_id == uuid.UUID(visit_id)).update(
+        {
+            models.Visit.status: "closed",
+            models.Visit.closed_reason: "forced_test_close",
+            models.Visit.closed_at: datetime.now(timezone.utc),
+            models.Visit.active_tap_id: None,
+            models.Visit.lock_set_at: None,
+        }
+    )
+    db_session.commit()
 
     close_shift = client.post("/api/shifts/close", headers=headers)
     assert close_shift.status_code == 409

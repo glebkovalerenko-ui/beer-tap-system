@@ -677,3 +677,4 @@ Behavior:
 Card ownership behavior depends on `card_returned`:
 - `card_returned=true`: card is set to `inactive` and unbound from the guest (`cards.guest_id = null`) in the same close transaction.
 - `card_returned=false`: card is set to `inactive`, but guest binding is preserved (card remains owned by the same guest).
+- `409 Conflict` with `detail=pending_sync_exists_for_visit` when unresolved `pending_sync` pours still exist for the visit.
