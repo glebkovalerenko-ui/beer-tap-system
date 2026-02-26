@@ -127,6 +127,69 @@ class ShiftCurrentResponse(BaseModel):
     shift: Optional[Shift] = None
 
 
+class ShiftReportMeta(BaseModel):
+    shift_id: uuid.UUID
+    report_type: Literal["X", "Z"]
+    generated_at: datetime
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+
+
+class ShiftReportTotals(BaseModel):
+    pours_count: int
+    total_volume_ml: int
+    total_amount_cents: int
+    pending_sync_count: int
+    reconciled_count: int
+    mismatch_count: int
+
+
+class ShiftReportByTapItem(BaseModel):
+    tap_id: int
+    pours_count: int
+    volume_ml: int
+    amount_cents: int
+    pending_sync_count: int
+
+
+class ShiftReportVisits(BaseModel):
+    active_visits_count: int
+    closed_visits_count: int
+
+
+class ShiftReportKegs(BaseModel):
+    status: str
+    note: str
+
+
+class ShiftReportPayload(BaseModel):
+    meta: ShiftReportMeta
+    totals: ShiftReportTotals
+    by_tap: list[ShiftReportByTapItem]
+    visits: ShiftReportVisits
+    kegs: ShiftReportKegs
+
+
+class ShiftReportDocument(BaseModel):
+    report_id: uuid.UUID
+    shift_id: uuid.UUID
+    report_type: Literal["X", "Z"]
+    generated_at: datetime
+    payload: ShiftReportPayload
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShiftZReportListItem(BaseModel):
+    report_id: uuid.UUID
+    shift_id: uuid.UUID
+    generated_at: datetime
+    total_volume_ml: int
+    total_amount_cents: int
+    pours_count: int
+    active_visits_count: int
+    closed_visits_count: int
+
+
 
 
 class VisitAssignCardRequest(BaseModel):
