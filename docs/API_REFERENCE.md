@@ -172,6 +172,50 @@ Get list of all registered cards.
   - `skip`: int (default: 0)
   - `limit`: int (default: 100)
 
+#### GET `/api/cards/{card_uid}/resolve`
+Resolve full operational state for a card UID (single diagnostic endpoint for operator NFC lookup).
+- **Authentication**: JWT required
+- **Behavior**:
+  - Works for any UID, regardless of lost status.
+  - Returns lost-card flag/details, active visit (if any), guest/card context, and recommended next action.
+  - Unknown UID is not an error; returns `is_lost=false` and nullable payload blocks.
+
+**Response (example):**
+```json
+{
+  "card_uid": "04A1B2C3D4",
+  "is_lost": true,
+  "lost_card": {
+    "reported_at": "2026-02-26T11:15:00Z",
+    "comment": "found near entrance",
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "reported_by": "admin"
+  },
+  "active_visit": {
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "guest_full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "status": "active",
+    "card_uid": "04a1b2c3d4",
+    "active_tap_id": 2,
+    "opened_at": "2026-02-26T10:30:00Z"
+  },
+  "guest": {
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "balance_cents": 12345
+  },
+  "card": {
+    "uid": "04a1b2c3d4",
+    "status": "active",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75"
+  },
+  "recommended_action": "lost_restore"
+}
+```
+
 #### PUT `/api/cards/{card_uid}/status`
 Update card status.
 - **Authentication**: JWT required
@@ -747,6 +791,17 @@ Notes:
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
 
 ## M6 Lost Cards Update (2026-02-26)
+
+### GET `/api/cards/{card_uid}/resolve`
+Unified operator endpoint for NFC card lookup in Visits/Lost Cards UI.
+- Authentication: JWT required
+- Never returns `404` for unknown UID; uses nullable payload blocks + `recommended_action="unknown"`.
+- `recommended_action` enum:
+  - `lost_restore`
+  - `open_active_visit`
+  - `open_new_visit`
+  - `bind_card`
+  - `unknown`
 
 ### POST `/api/lost-cards`
 Create lost card record (idempotent by `card_uid`).

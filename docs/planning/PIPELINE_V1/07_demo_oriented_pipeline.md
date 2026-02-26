@@ -302,12 +302,21 @@ Out of scope (intentionally):
 
 **Backend changes**
 - LostCard CRUD + auth check hook.
+- Add `/api/cards/{card_uid}/resolve` for operator NFC lookup diagnostics.
 
 **Controller changes**
 - Show clear deny reason and keep valve closed.
 
 **Admin UI changes**
 - “Report Lost Card” action + basic list.
+- “Find by card (NFC)” on Visits and Lost Cards pages (reuse existing NFC modal flow).
+
+**NFC card lookup/resolve flow**
+1. Operator clicks `Find by card (NFC)`.
+2. Existing `NFCModal` reads card UID (manual UID is not a primary scenario).
+3. Admin app calls `GET /api/cards/{card_uid}/resolve`.
+4. UI shows one compact actionable state: lost / active visit / bound-no-visit / unknown.
+5. Operator executes next action (restore lost mark, open visit, or open new visit).
 
 **Operational risk level**
 - **Med**.
@@ -318,6 +327,7 @@ Out of scope (intentionally):
 **Acceptance criteria**
 - Lost card attempt is denied and logged.
 - Lost card can be reported and listed via admin UI.
+- Operator can resolve any scanned card state in one NFC-driven flow.
 
 ---
 

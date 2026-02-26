@@ -330,6 +330,19 @@ If `card_uid` exists in `lost_cards`:
 - valve must not open,
 - backend writes audit event `lost_card_blocked` with `card_uid`, `tap_id`, and block time.
 
+### Operator flow: found card (NFC resolve)
+
+When staff physically finds a card:
+
+1. Open either Visits or Lost Cards page.
+2. Click `Find by card (NFC)` and scan card via existing `NFCModal`.
+3. Admin app requests `GET /api/cards/{card_uid}/resolve`.
+4. Operator receives one actionable state:
+   - lost card: restore lost mark and optionally open related visit;
+   - active visit: open visit card to continue service;
+   - guest-bound with no active visit: open new visit for that guest;
+   - unknown card: no unsafe actions by default.
+
 ---
 
 # 3.3 Simultaneous Card Usage Prevention
