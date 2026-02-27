@@ -105,8 +105,8 @@ class Guest(Base):
     id_document = Column(String(100), nullable=False, index=True) # Убрал unique=True, т.к. один документ может быть у нескольких гостей (теоретически)
     balance = Column(Numeric(10, 2), nullable=False, default=0.00) # --- ИЗМЕНЕНИЕ: Заменил server_default на default для совместимости ---
     is_active = Column(Boolean, nullable=False, default=True) # --- ИЗМЕНЕНИЕ: Заменил server_default на default ---
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     # Связи "один ко многим"
     cards = relationship("Card", back_populates="guest")
@@ -127,7 +127,7 @@ class Card(Base):
 
     # ПРИНЦИП 2: Конечный автомат (статусы)
     status = Column(String(20), nullable=False, default='inactive', index=True, comment="Статус: active, inactive, lost")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Связь "многие к одному": многие карты могут принадлежать одному гостю
     guest = relationship("Guest", back_populates="cards")
@@ -275,7 +275,7 @@ class AuditLog(Base):
     target_entity = Column(String, comment="Сущность, над которой совершено действие, e.g., 'Keg'")
     target_id = Column(String, comment="ID целевой сущности")
     details = Column(Text, comment="Детали действия в формате JSON") # --- ИЗМЕНЕНИЕ: String -> Text для большей вместимости ---
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 # --- МОДЕЛИ КОНТРОЛЛЕРОВ ---
 
