@@ -1,7 +1,7 @@
 # backend/schemas.py
 import uuid
 # --- ИЗМЕНЕНИЕ: Добавлен импорт ConfigDict для современного синтаксиса Pydantic v2 ---
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Literal
@@ -331,10 +331,19 @@ class PourData(BaseModel):
     card_uid: str
     tap_id: int
     short_id: str = Field(..., min_length=6, max_length=8)
-    start_ts: datetime
-    end_ts: datetime
+    duration_ms: Optional[int] = Field(default=None, ge=0)
+    start_ts: Optional[datetime] = None
+    end_ts: Optional[datetime] = None
     volume_ml: int
     price_cents: int
+
+    @model_validator(mode="after")
+    def _validate_timing_payload(self):
+        if self.duration_ms is not None:
+            return self
+        if self.start_ts is not None and self.end_ts is not None:
+            return self
+        raise ValueError("Either duration_ms or start_ts/end_ts must be provided")
 
 class SyncRequest(BaseModel):
     pours: list[PourData]

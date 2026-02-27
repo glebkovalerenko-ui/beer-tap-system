@@ -1,10 +1,10 @@
-from datetime import datetime, timezone, date
+from datetime import date
 import json
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, update
+from sqlalchemy import func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -106,7 +106,7 @@ def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_
             tap_id=tap_id,
             visit_id=visit.visit_id,
             volume_ml=0,
-            poured_at=datetime.now(timezone.utc),
+            poured_at=func.now(),
             amount_charged=Decimal("0.00"),
             price_per_ml_at_pour=Decimal("0.0000"),
             guest_id=visit.guest_id,
@@ -211,7 +211,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             models.Visit.status == "active",
             or_(models.Visit.active_tap_id.is_(None), models.Visit.active_tap_id == tap_id),
         )
-        .values(active_tap_id=tap_id, lock_set_at=datetime.now(timezone.utc))
+        .values(active_tap_id=tap_id, lock_set_at=func.now())
     )
 
     if lock_attempt.rowcount == 0:
@@ -304,7 +304,7 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
 
     visit.status = "closed"
     visit.closed_reason = closed_reason
-    visit.closed_at = datetime.now(timezone.utc)
+    visit.closed_at = func.now()
     visit.card_returned = card_returned
     previous_tap_id = visit.active_tap_id
     visit.active_tap_id = None
@@ -433,7 +433,7 @@ def reconcile_pour(
         pending_pour.guest_id = visit.guest_id
         pending_pour.keg_id = tap.keg_id
         pending_pour.volume_ml = volume_ml
-        pending_pour.poured_at = datetime.now(timezone.utc)
+        pending_pour.poured_at = func.now()
         pending_pour.amount_charged = amount
         pending_pour.price_per_ml_at_pour = price_per_ml
         pending_pour.sync_status = "reconciled"
@@ -448,7 +448,7 @@ def reconcile_pour(
                 tap_id=tap_id,
                 visit_id=visit_id,
                 volume_ml=volume_ml,
-                poured_at=datetime.now(timezone.utc),
+                poured_at=func.now(),
                 amount_charged=amount,
                 price_per_ml_at_pour=price_per_ml,
                 guest_id=visit.guest_id,

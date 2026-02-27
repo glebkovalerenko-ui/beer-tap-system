@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
-
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import models
@@ -41,7 +40,6 @@ def open_shift(db: Session, opened_by: str | None):
 
     shift = models.Shift(
         status="open",
-        opened_at=datetime.now(timezone.utc),
         opened_by=opened_by,
     )
     db.add(shift)
@@ -83,7 +81,7 @@ def close_shift(db: Session, closed_by: str | None):
         )
 
     shift.status = "closed"
-    shift.closed_at = datetime.now(timezone.utc)
+    shift.closed_at = func.now()
     shift.closed_by = closed_by
     db.commit()
     db.refresh(shift)

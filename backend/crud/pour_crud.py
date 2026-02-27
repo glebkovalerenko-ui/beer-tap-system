@@ -3,6 +3,7 @@ import json
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -12,6 +13,17 @@ from crud import visit_crud
 
 def _result(status: str, outcome: str, reason: str) -> dict:
     return {"status": status, "outcome": outcome, "reason": reason}
+
+
+def _resolve_duration_ms(pour_data: schemas.PourData) -> int:
+    if pour_data.duration_ms is not None:
+        return int(pour_data.duration_ms)
+
+    if pour_data.start_ts is not None and pour_data.end_ts is not None:
+        delta_ms = int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
+        return max(delta_ms, 0)
+
+    return 0
 
 
 def _add_audit_log(
@@ -82,7 +94,7 @@ def _create_pour_record(
         tap_id=pour_data.tap_id,
         visit_id=visit_id,
         volume_ml=pour_data.volume_ml,
-        poured_at=pour_data.start_ts,
+        poured_at=func.now(),
         amount_charged=amount_charged,
         price_per_ml_at_pour=price_per_ml,
         guest_id=guest_id,
@@ -96,6 +108,8 @@ def _create_pour_record(
 
 
 def process_pour(db: Session, pour_data: schemas.PourData):
+    duration_ms = _resolve_duration_ms(pour_data)
+
     card = (
         db.query(models.Card)
         .options(joinedload(models.Card.guest))
@@ -170,6 +184,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "tap_id": pour_data.tap_id,
                 "volume_ml": pour_data.volume_ml,
                 "price_cents": pour_data.price_cents,
+                "duration_ms": duration_ms,
             },
         )
         return _result("audit_only", "audit_late_recorded", "late_sync_mismatch_recorded")
@@ -187,6 +202,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "active_tap_id": active_visit.active_tap_id,
                 "client_tx_id": pour_data.client_tx_id,
                 "short_id": pour_data.short_id,
+                "duration_ms": duration_ms,
             },
         )
         return _result(
@@ -221,7 +237,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         pending_pour.tap_id = pour_data.tap_id
         pending_pour.visit_id = active_visit.visit_id
         pending_pour.volume_ml = pour_data.volume_ml
-        pending_pour.poured_at = pour_data.start_ts
+        pending_pour.poured_at = func.now()
         pending_pour.amount_charged = amount_to_charge
         pending_pour.price_per_ml_at_pour = price_per_ml
         pending_pour.guest_id = guest.guest_id
@@ -250,7 +266,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     if keg.current_volume_ml <= 0:
         keg.status = "empty"
         tap.status = "empty"
-        keg.finished_at = pour_data.end_ts
+        keg.finished_at = func.now()
     else:
         tap.status = "active"
 
