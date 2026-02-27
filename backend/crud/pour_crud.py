@@ -15,6 +15,17 @@ def _result(status: str, outcome: str, reason: str) -> dict:
     return {"status": status, "outcome": outcome, "reason": reason}
 
 
+def _resolve_duration_ms(pour_data: schemas.PourData) -> int:
+    if pour_data.duration_ms is not None:
+        return int(pour_data.duration_ms)
+
+    if pour_data.start_ts is not None and pour_data.end_ts is not None:
+        delta_ms = int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
+        return max(delta_ms, 0)
+
+    return 0
+
+
 def _add_audit_log(
     db: Session,
     *,
@@ -210,6 +221,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "active_tap_id": active_visit.active_tap_id,
                 "client_tx_id": pour_data.client_tx_id,
                 "short_id": pour_data.short_id,
+                "duration_ms": duration_ms,
             },
         )
         return _result(

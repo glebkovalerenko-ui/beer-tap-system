@@ -40,7 +40,6 @@ def open_shift(db: Session, opened_by: str | None):
 
     shift = models.Shift(
         status="open",
-        opened_at=func.now(),
         opened_by=opened_by,
     )
     db.add(shift)

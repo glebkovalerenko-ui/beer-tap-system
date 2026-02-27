@@ -545,3 +545,26 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
   - volume-first operational KPI (`total_volume_ml`);
   - money totals persisted too (`total_amount_cents`) for future POS/cash model;
   - keg block is placeholder (`not_available_yet`) until keg/pour linkage expansion.
+
+## M5 Time Source Hardening Update (2026-02-27)
+
+Operational timestamp source is now fixed to DB time (Postgres):
+- `server_default=now()` for create/open/report timestamps.
+- `func.now()` for close/restore/update timestamps.
+- App-side `datetime.now()/utcnow()` is disallowed for official DB timestamps.
+
+Controller timing contract:
+- controller sends `duration_ms` as primary timing value;
+- legacy `start_ts/end_ts` may be sent only as fallback for duration calculation;
+- controller absolute time is not used as official backend timestamp source.
+
+Report windows:
+- X report right boundary uses DB `now()`.
+- Z report right boundary is strictly `shift.closed_at`.
+
+## Alembic Chain Update (2026-02-27)
+- Current linear migration chain for time policy and LostCard domain:
+  - `0008_m6_lost_cards_registry`
+  - `0009_m6_db_time_duration`
+  - `0010_m5_db_time_source`
+- This order is intentional: M6 introduces lost-card and pour event-time schema, then M5 DB-time hardening finalizes defaults/backfills as the latest head.
