@@ -95,7 +95,7 @@ def _prepare_active_visit(client, suffix: str, card_uid: str):
     return headers, guest_id, visit_id, tap_id
 
 
-def test_lock_kept_until_backend_accepts_sync(client):
+def test_lock_kept_until_backend_accepts_sync(client, db_session):
     headers, _, _, tap_id = _prepare_active_visit(client, suffix="92001", card_uid="CARD-M4-001")
     auth = client.post(
         "/api/visits/authorize-pour",
@@ -105,6 +105,16 @@ def test_lock_kept_until_backend_accepts_sync(client):
     assert auth.status_code == 200
     assert auth.json()["visit"]["active_tap_id"] == tap_id
     assert auth.json()["visit"]["lock_set_at"] is not None
+
+    pending = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .one()
+    )
+    assert pending.authorized_at is not None
 
     before_sync = client.get("/api/visits/active/by-card/CARD-M4-001", headers=headers)
     assert before_sync.status_code == 200
@@ -120,8 +130,7 @@ def test_lock_kept_until_backend_accepts_sync(client):
                     "card_uid": "CARD-M4-001",
                     "tap_id": tap_id,
                     "short_id": "A12001",
-                    "start_ts": "2026-01-01T10:00:00Z",
-                    "end_ts": "2026-01-01T10:00:05Z",
+                    "duration_ms": 5000,
                     "volume_ml": 200,
                     "price_cents": 0,
                 }
@@ -168,8 +177,7 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
                     "card_uid": "CARD-M4-005",
                     "tap_id": tap_id,
                     "short_id": "E52005",
-                    "start_ts": "2026-01-01T10:00:00Z",
-                    "end_ts": "2026-01-01T10:00:05Z",
+                    "duration_ms": 4200,
                     "volume_ml": 180,
                     "price_cents": 0,
                 }
@@ -185,6 +193,8 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     assert resolved.client_tx_id == "m4-sync-005"
     assert resolved.short_id == "E52005"
     assert resolved.volume_ml == 180
+    assert resolved.duration_ms == 4200
+    assert resolved.synced_at is not None
     assert resolved.is_manual_reconcile is False
 
     pending_after = (
@@ -203,6 +213,8 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     matched = [row for row in pours_resp.json() if row["short_id"] == "E52005"]
     assert len(matched) == 1
     assert matched[0]["sync_status"] == "synced"
+    assert matched[0]["duration_ms"] == 4200
+    assert matched[0]["synced_at"] is not None
 
 
 def test_sync_without_authorize_returns_audit_only_and_does_not_write_pour(client, db_session):
@@ -240,6 +252,47 @@ def test_sync_without_authorize_returns_audit_only_and_does_not_write_pour(clien
     assert late_pours == 0
 
 
+def test_legacy_start_end_sync_derives_duration_ms(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92007", card_uid="CARD-M4-007")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-007", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m4-sync-007-legacy",
+                    "card_uid": "CARD-M4-007",
+                    "tap_id": tap_id,
+                    "short_id": "G72007",
+                    "start_ts": "2026-01-01T10:00:00Z",
+                    "end_ts": "2026-01-01T10:00:05Z",
+                    "volume_ml": 160,
+                    "price_cents": 0,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    assert sync_resp.json()["results"][0]["status"] == "accepted"
+
+    db_session.expire_all()
+    resolved = (
+        db_session.query(models.Pour)
+        .filter(models.Pour.visit_id == visit_id, models.Pour.short_id == "G72007")
+        .one()
+    )
+    assert resolved.sync_status == "synced"
+    assert resolved.duration_ms == 5000
+    assert resolved.synced_at is not None
+
+
 def test_manual_reconcile_unlocks_visit_and_is_idempotent(client):
     headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92002", card_uid="CARD-M4-002")
     auth = client.post(
@@ -271,6 +324,8 @@ def test_manual_reconcile_unlocks_visit_and_is_idempotent(client):
     assert len(matched) == 1
     assert matched[0]["sync_status"] == "reconciled"
     assert matched[0]["is_manual_reconcile"] is True
+    assert matched[0]["reconciled_at"] is not None
+    assert matched[0]["duration_ms"] is None
 
 
 def test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge(client):
@@ -290,6 +345,7 @@ def test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge(cl
             "short_id": "C32003",
             "volume_ml": 100,
             "amount": "50.00",
+            "duration_ms": 3600,
             "reason": "sync_timeout",
             "comment": "manual close",
         },
@@ -347,6 +403,13 @@ def test_late_sync_after_manual_reconcile_match_and_mismatch_no_double_charge(cl
 
     guest_after_late = client.get(f"/api/guests/{guest_id}", headers=headers).json()
     assert Decimal(guest_after_late["balance"]) == balance_after_reconcile
+
+    pours = client.get("/api/pours/", headers=headers)
+    assert pours.status_code == 200
+    reconciled = [p for p in pours.json() if p["short_id"] == "C32003"]
+    assert len(reconciled) == 1
+    assert reconciled[0]["reconciled_at"] is not None
+    assert reconciled[0]["duration_ms"] == 3600
 
     audit_resp = client.get("/api/audit/", headers=headers)
     assert audit_resp.status_code == 200

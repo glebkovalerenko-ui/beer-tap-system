@@ -7,6 +7,12 @@
     if (!isoString) return '';
     return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
+
+  function formatDuration(durationMs) {
+    if (durationMs == null) return '';
+    const seconds = Math.max(0, Math.round(durationMs / 1000));
+    return `${seconds}s`;
+  }
 </script>
 
 <div class="pour-feed">
@@ -18,11 +24,14 @@
       <ul>
         {#each pours as pour (pour.pour_id)}
           <li>
-            <div class="time">{formatTime(pour.poured_at)}</div>
+            <div class="time">{formatTime(pour.ended_at || pour.poured_at)}</div>
             <div class="info">
               <span class="guest-name">{pour.guest.first_name} {pour.guest.last_name}</span>
               <span class="details">
                 налил {pour.volume_ml}мл из {pour.beverage.name}
+                {#if pour.duration_ms != null}
+                  , длительность {formatDuration(pour.duration_ms)}
+                {/if}
               </span>
             </div>
             <div class="amount">-${pour.amount_charged}</div>
@@ -92,7 +101,7 @@
   }
   .amount {
     font-weight: bold;
-    color: #dc3545; /* Красный цвет для списаний */
+    color: #dc3545;
     font-size: 1rem;
   }
   .no-pours-message {

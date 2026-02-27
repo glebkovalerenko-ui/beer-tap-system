@@ -15,6 +15,7 @@
   import Guests from './routes/Guests.svelte';
   import TapsKegs from './routes/TapsKegs.svelte';
   import Visits from './routes/Visits.svelte';
+  import LostCards from './routes/LostCards.svelte';
   import Login from './routes/Login.svelte';
 
   import ToastContainer from './components/feedback/ToastContainer.svelte';
@@ -29,6 +30,7 @@
     '/guests': Guests,
     '/taps-kegs': TapsKegs,
     '/visits': Visits,
+    '/lost-cards': LostCards,
     '*': Dashboard,
   };
 
@@ -82,6 +84,7 @@
         <nav aria-label="Главная навигация">
           <a href="#/">Дашборд</a>
           {#if $roleStore.permissions.guests}<a href="#/visits">Визиты</a>{/if}
+          {#if $roleStore.permissions.guests}<a href="#/lost-cards">Потерянные карты</a>{/if}
           {#if $roleStore.permissions.guests}<a href="#/guests">Гости и операции</a>{/if}
           {#if $roleStore.permissions.taps}<a href="#/taps-kegs">Краны и кеги</a>{/if}
         </nav>

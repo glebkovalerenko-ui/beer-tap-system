@@ -35,7 +35,8 @@ def create_guest(db: Session, guest: schemas.GuestCreate):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, 
                             detail="Guest with this phone number already registered")
     
-    db_guest = models.Guest(**guest.model_dump())
+    guest_data = guest.model_dump()
+    db_guest = models.Guest(**guest_data)
     db.add(db_guest)
     db.commit()
     db.refresh(db_guest)

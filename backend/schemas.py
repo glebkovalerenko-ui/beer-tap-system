@@ -98,6 +98,11 @@ class VisitCloseRequest(BaseModel):
     card_returned: bool = Field(default=True)
 
 
+class VisitReportLostCardRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "guest_reported_loss"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Guest says card was lost outside bar"})
+
+
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
@@ -220,6 +225,82 @@ class VisitPourAuthorizeResponse(BaseModel):
     reason: Optional[str] = None
 
 
+class LostCardCreateRequest(BaseModel):
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+    reported_by: Optional[str] = Field(default=None, json_schema_extra={'example': "operator_1"})
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "guest_reported_loss"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Reported from front desk"})
+    visit_id: Optional[uuid.UUID] = None
+    guest_id: Optional[uuid.UUID] = None
+
+
+class LostCard(BaseModel):
+    id: uuid.UUID
+    card_uid: str
+    reported_at: datetime
+    reported_by: Optional[str] = None
+    reason: Optional[str] = None
+    comment: Optional[str] = None
+    visit_id: Optional[uuid.UUID] = None
+    guest_id: Optional[uuid.UUID] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LostCardRestoreResponse(BaseModel):
+    card_uid: str
+    restored: bool = True
+
+
+class CardResolveLostCard(BaseModel):
+    reported_at: datetime
+    comment: Optional[str] = None
+    visit_id: Optional[uuid.UUID] = None
+    reported_by: Optional[str] = None
+    reason: Optional[str] = None
+    guest_id: Optional[uuid.UUID] = None
+
+
+class CardResolveActiveVisit(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: str
+    status: str
+    card_uid: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    opened_at: datetime
+
+
+class CardResolveGuest(BaseModel):
+    guest_id: uuid.UUID
+    full_name: str
+    phone_number: str
+    balance_cents: int
+
+
+class CardResolveCard(BaseModel):
+    uid: str
+    status: str
+    guest_id: Optional[uuid.UUID] = None
+
+
+class CardResolveResponse(BaseModel):
+    card_uid: str
+    is_lost: bool
+    lost_card: Optional[CardResolveLostCard] = None
+    active_visit: Optional[CardResolveActiveVisit] = None
+    guest: Optional[CardResolveGuest] = None
+    card: Optional[CardResolveCard] = None
+    recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
+
+
+class VisitReportLostCardResponse(BaseModel):
+    visit: Visit
+    lost_card: LostCard
+    lost: bool = True
+    already_marked: bool = False
+
+
 class VisitForceUnlockRequest(BaseModel):
     reason: str = Field(..., min_length=1, json_schema_extra={'example': "controller_offline_recovery"})
     comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Manual unlock after timeout"})
@@ -230,6 +311,7 @@ class VisitReconcilePourRequest(BaseModel):
     short_id: str = Field(..., min_length=6, max_length=8, json_schema_extra={'example': "A1B2C3"})
     volume_ml: int = Field(..., ge=1, json_schema_extra={'example': 250})
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 175.00})
+    duration_ms: Optional[int] = Field(default=None, ge=0, json_schema_extra={'example': 5000})
     reason: str = Field(..., min_length=1, json_schema_extra={'example': "sync_timeout"})
     comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Operator entered from controller screen"})
 
@@ -269,10 +351,16 @@ class Pour(BaseModel):
     pour_id: uuid.UUID
     volume_ml: int
     amount_charged: Decimal
+    duration_ms: Optional[int] = None
     sync_status: str
     short_id: Optional[str] = None
     is_manual_reconcile: bool = False
     poured_at: datetime
+    authorized_at: Optional[datetime] = None
+    synced_at: Optional[datetime] = None
+    reconciled_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- Компактная схема для отображения гостя в ленте наливов ---
@@ -338,12 +426,14 @@ class PourData(BaseModel):
     price_cents: int
 
     @model_validator(mode="after")
-    def _validate_timing_payload(self):
+    def validate_duration_or_legacy_range(self):
         if self.duration_ms is not None:
             return self
+
         if self.start_ts is not None and self.end_ts is not None:
             return self
-        raise ValueError("Either duration_ms or start_ts/end_ts must be provided")
+
+        raise ValueError("Either duration_ms or both start_ts/end_ts must be provided")
 
 class SyncRequest(BaseModel):
     pours: list[PourData]

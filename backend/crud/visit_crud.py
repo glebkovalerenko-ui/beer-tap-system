@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+from crud import lost_card_crud
 
 
 def _is_adult(date_of_birth: date) -> bool:
@@ -107,8 +108,10 @@ def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_
             visit_id=visit.visit_id,
             volume_ml=0,
             poured_at=func.now(),
+            authorized_at=func.now(),
             amount_charged=Decimal("0.00"),
             price_per_ml_at_pour=Decimal("0.0000"),
+            duration_ms=None,
             guest_id=visit.guest_id,
             keg_id=tap.keg_id,
             sync_status="pending_sync",
@@ -200,6 +203,25 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
 
 
 def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
+    if lost_card_crud.is_lost_card(db=db, card_uid=card_uid):
+        _add_audit_log(
+            db,
+            actor_id=actor_id,
+            action="lost_card_blocked",
+            target_entity="Card",
+            target_id=card_uid,
+            details={
+                "card_uid": card_uid,
+                "tap_id": tap_id,
+                "blocked_at": "db_timestamp",
+            },
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"reason": "lost_card", "message": "Card is marked as lost"},
+        )
+
     active_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
     if not active_visit:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"No active visit for Card {card_uid}.")
@@ -244,6 +266,34 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     db.commit()
     db.refresh(active_visit)
     return active_visit, pending_outcome
+
+
+def report_lost_card_from_visit(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    reason: str | None,
+    comment: str | None,
+    actor_id: str | None,
+):
+    visit = get_visit(db=db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    if visit.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can report lost card")
+    if not visit.card_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit has no card assigned")
+
+    lost_card, created = lost_card_crud.create_lost_card_idempotent(
+        db=db,
+        card_uid=visit.card_uid,
+        reported_by=actor_id,
+        reason=reason,
+        comment=comment,
+        visit_id=visit.visit_id,
+        guest_id=visit.guest_id,
+    )
+    return visit, lost_card, created
 
 
 def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: str | None, actor_id: str):
@@ -370,6 +420,7 @@ def reconcile_pour(
     short_id: str,
     volume_ml: int,
     amount,
+    duration_ms: int | None,
     reason: str,
     comment: str | None,
     actor_id: str,
@@ -436,7 +487,10 @@ def reconcile_pour(
         pending_pour.poured_at = func.now()
         pending_pour.amount_charged = amount
         pending_pour.price_per_ml_at_pour = price_per_ml
+        pending_pour.duration_ms = duration_ms
         pending_pour.sync_status = "reconciled"
+        pending_pour.reconciled_at = func.now()
+        pending_pour.synced_at = None
         pending_pour.short_id = short_id
         pending_pour.is_manual_reconcile = True
     else:
@@ -451,9 +505,11 @@ def reconcile_pour(
                 poured_at=func.now(),
                 amount_charged=amount,
                 price_per_ml_at_pour=price_per_ml,
+                duration_ms=duration_ms,
                 guest_id=visit.guest_id,
                 keg_id=tap.keg_id,
                 sync_status="reconciled",
+                reconciled_at=func.now(),
                 short_id=short_id,
                 is_manual_reconcile=True,
             )

@@ -189,7 +189,7 @@ Out of scope (intentionally):
 - Handle network loss safely without building a complex reconciliation engine.
 
 **Scope**
-- Add `sync_status` (`pending_sync` / `synced`) to pour records.
+- Add pour lifecycle fields: `sync_status`, `duration_ms`, DB event timestamps (`authorized_at`, `synced_at`, `reconciled_at`).
 - Tap enters `processing_sync` while unresolved sync exists.
 - Backend clears `active_tap_id` only after backend-accepted completion/reconciliation.
 - Add minimal manual close + reconcile path for timeout cases.
@@ -198,7 +198,7 @@ Out of scope (intentionally):
 1. Controller can detect pour end, but **only backend changes visit/card operational state**.
 2. If network is lost mid-pour:
    - pour completes using local balance,
-   - controller retries sync,
+   - controller retries sync with `duration_ms`, `volume_ml`, `price_cents`, `short_id`, `client_tx_id`,
    - backend keeps card locked (`active_tap_id` not cleared) until sync/reconcile,
    - new pours on other taps are blocked by design.
 3. If sync does not complete within timeout window (target 1–5 minutes):
@@ -212,6 +212,8 @@ Out of scope (intentionally):
 
 **Schema impact**
 - Add `pours.sync_status`.
+- Add `pours.duration_ms` (nullable).
+- Add DB event timestamps on `pours`: `authorized_at`, `synced_at`, `reconciled_at`.
 - Add pour short identifier field (or deterministic derived key) for manual reconcile matching.
 - Extend tap status domain with `processing_sync`.
 
@@ -302,12 +304,21 @@ Out of scope (intentionally):
 
 **Backend changes**
 - LostCard CRUD + auth check hook.
+- Add `/api/cards/{card_uid}/resolve` for operator NFC lookup diagnostics.
 
 **Controller changes**
 - Show clear deny reason and keep valve closed.
 
 **Admin UI changes**
 - “Report Lost Card” action + basic list.
+- “Find by card (NFC)” on Visits and Lost Cards pages (reuse existing NFC modal flow).
+
+**NFC card lookup/resolve flow**
+1. Operator clicks `Find by card (NFC)`.
+2. Existing `NFCModal` reads card UID (manual UID is not a primary scenario).
+3. Admin app calls `GET /api/cards/{card_uid}/resolve`.
+4. UI shows one compact actionable state: lost / active visit / bound-no-visit / unknown.
+5. Operator executes next action (restore lost mark, open visit, or open new visit).
 
 **Operational risk level**
 - **Med**.
@@ -318,6 +329,7 @@ Out of scope (intentionally):
 **Acceptance criteria**
 - Lost card attempt is denied and logged.
 - Lost card can be reported and listed via admin UI.
+- Operator can resolve any scanned card state in one NFC-driven flow.
 
 ---
 
@@ -478,7 +490,13 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
 - `pours.sync_status` default is `synced` (safe default for legacy and happy-path rows).
 - `pending_sync` is used only for explicit offline workflows.
 - `pours.short_id` is mandatory in sync payload and manual reconcile payload.
+- `pours.duration_ms` is the primary controller time field.
+- Legacy `start_ts/end_ts` are accepted only for backward compatibility when `duration_ms` is absent.
 - Manual reconcile is idempotent by `(visit_id, short_id)`; repeated requests return existing manual result.
+- DB is the only source of official pour event times:
+  - `authorized_at = DB now()` when pending row is created;
+  - `synced_at = DB now()` on pending -> synced transition;
+  - `reconciled_at = DB now()` on manual reconcile.
 - Explicit no-double-charge rule:
   - late sync checks existing manual pour by `(visit_id, short_id)`;
   - match -> audit `late_sync_matched`, no additional debit;
@@ -527,19 +545,3 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
   - volume-first operational KPI (`total_volume_ml`);
   - money totals persisted too (`total_amount_cents`) for future POS/cash model;
   - keg block is placeholder (`not_available_yet`) until keg/pour linkage expansion.
-
-## M5 Time Source Hardening Update (2026-02-27)
-
-Operational timestamp source is now fixed to DB time (Postgres):
-- `server_default=now()` for create/open/report timestamps.
-- `func.now()` for close/restore/update timestamps.
-- App-side `datetime.now()/utcnow()` is disallowed for official DB timestamps.
-
-Controller timing contract:
-- controller sends `duration_ms` as primary timing value;
-- legacy `start_ts/end_ts` may be sent only as fallback for duration calculation;
-- controller absolute time is not used as official backend timestamp source.
-
-Report windows:
-- X report right boundary uses DB `now()`.
-- Z report right boundary is strictly `shift.closed_at`.

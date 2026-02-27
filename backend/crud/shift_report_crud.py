@@ -49,22 +49,25 @@ def _get_shift_or_404(db: Session, shift_id: uuid.UUID) -> models.Shift:
     return shift
 
 
-def _get_db_now(db: Session) -> datetime:
-    value = db.query(func.now()).scalar()
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        normalized = value.replace("Z", "+00:00")
-        try:
-            return datetime.fromisoformat(normalized)
-        except ValueError:
-            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-    raise RuntimeError(f"Unexpected DB now() type: {type(value)!r}")
+def _db_now(db: Session) -> datetime:
+    return db.query(func.now()).scalar()
 
 
-def _resolve_window_end(shift: models.Shift, generated_at: datetime) -> datetime:
-    if shift.closed_at and shift.closed_at < generated_at:
-        return shift.closed_at
+def _resolve_window_end(*, shift: models.Shift, generated_at: datetime, report_type: str) -> datetime:
+    closed_at = shift.closed_at
+    if closed_at is not None:
+        closed_at = _align_datetime_to_reference(closed_at, generated_at)
+
+    if report_type == "Z":
+        if closed_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Shift must be closed for Z report",
+            )
+        return closed_at
+
+    if closed_at and closed_at < generated_at:
+        return closed_at
     return generated_at
 
 
@@ -100,12 +103,10 @@ def build_shift_report_payload(
     report_type: str,
     generated_at: datetime | None = None,
 ) -> schemas.ShiftReportPayload:
-    generated_at = generated_at or _get_db_now(db)
+    generated_at = generated_at or _db_now(db)
     generated_at = _align_datetime_to_reference(generated_at, shift.opened_at)
-    if report_type == "Z" and shift.closed_at is not None:
-        window_end = shift.closed_at
-    else:
-        window_end = _resolve_window_end(shift=shift, generated_at=generated_at)
+    window_end = _resolve_window_end(shift=shift, generated_at=generated_at, report_type=report_type)
+    window_end = _align_datetime_to_reference(window_end, shift.opened_at)
 
     totals_row = (
         db.query(
@@ -241,7 +242,7 @@ def create_or_get_z_report(db: Session, shift_id: uuid.UUID) -> schemas.ShiftRep
     if existing:
         return _to_document_schema(existing)
 
-    generated_at = _get_db_now(db)
+    generated_at = _db_now(db)
     payload = build_shift_report_payload(
         db=db,
         shift=shift,
@@ -298,7 +299,7 @@ def list_z_reports_by_date(db: Session, *, from_date: date, to_date: date) -> li
         )
 
     sample = db.query(models.ShiftReport.generated_at).order_by(models.ShiftReport.generated_at.desc()).first()
-    reference_dt = sample[0] if sample else _get_db_now(db)
+    reference_dt = sample[0] if sample else _db_now(db)
 
     from_dt = _align_datetime_to_reference(
         datetime.combine(from_date, time.min, tzinfo=timezone.utc),

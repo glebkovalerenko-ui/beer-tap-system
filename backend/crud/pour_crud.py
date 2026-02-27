@@ -15,17 +15,6 @@ def _result(status: str, outcome: str, reason: str) -> dict:
     return {"status": status, "outcome": outcome, "reason": reason}
 
 
-def _resolve_duration_ms(pour_data: schemas.PourData) -> int:
-    if pour_data.duration_ms is not None:
-        return int(pour_data.duration_ms)
-
-    if pour_data.start_ts is not None and pour_data.end_ts is not None:
-        delta_ms = int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
-        return max(delta_ms, 0)
-
-    return 0
-
-
 def _add_audit_log(
     db: Session,
     *,
@@ -44,6 +33,15 @@ def _add_audit_log(
             details=json.dumps(details, ensure_ascii=False),
         )
     )
+
+
+def _resolve_duration_ms(pour_data: schemas.PourData) -> int | None:
+    if pour_data.duration_ms is not None:
+        return int(pour_data.duration_ms)
+    if pour_data.start_ts is None or pour_data.end_ts is None:
+        return None
+
+    return int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
 
 
 def get_pour_by_client_tx_id(db: Session, client_tx_id: str):
@@ -80,6 +78,7 @@ def _create_pour_record(
     db: Session,
     *,
     pour_data: schemas.PourData,
+    duration_ms: int,
     guest_id: uuid.UUID,
     visit_id: uuid.UUID,
     keg_id: uuid.UUID,
@@ -97,9 +96,12 @@ def _create_pour_record(
         poured_at=func.now(),
         amount_charged=amount_charged,
         price_per_ml_at_pour=price_per_ml,
+        duration_ms=duration_ms,
         guest_id=guest_id,
         keg_id=keg_id,
         sync_status=sync_status,
+        synced_at=func.now() if sync_status == "synced" else None,
+        reconciled_at=func.now() if sync_status == "reconciled" else None,
         short_id=pour_data.short_id,
         is_manual_reconcile=is_manual_reconcile,
     )
@@ -109,6 +111,12 @@ def _create_pour_record(
 
 def process_pour(db: Session, pour_data: schemas.PourData):
     duration_ms = _resolve_duration_ms(pour_data)
+    if duration_ms is None or duration_ms < 0:
+        return _result(
+            "rejected",
+            "rejected_invalid_duration",
+            "Invalid duration: provide duration_ms or valid start_ts/end_ts.",
+        )
 
     card = (
         db.query(models.Card)
@@ -202,7 +210,6 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "active_tap_id": active_visit.active_tap_id,
                 "client_tx_id": pour_data.client_tx_id,
                 "short_id": pour_data.short_id,
-                "duration_ms": duration_ms,
             },
         )
         return _result(
@@ -240,9 +247,12 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         pending_pour.poured_at = func.now()
         pending_pour.amount_charged = amount_to_charge
         pending_pour.price_per_ml_at_pour = price_per_ml
+        pending_pour.duration_ms = duration_ms
         pending_pour.guest_id = guest.guest_id
         pending_pour.keg_id = keg.keg_id
         pending_pour.sync_status = "synced"
+        pending_pour.synced_at = func.now()
+        pending_pour.reconciled_at = None
         pending_pour.short_id = pour_data.short_id
         pending_pour.is_manual_reconcile = False
     else:
@@ -250,6 +260,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         _create_pour_record(
             db=db,
             pour_data=pour_data,
+            duration_ms=duration_ms,
             guest_id=guest.guest_id,
             visit_id=active_visit.visit_id,
             keg_id=keg.keg_id,
@@ -281,7 +292,15 @@ def get_pours(db: Session, skip: int = 0, limit: int = 20):
             joinedload(models.Pour.tap),
             joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
         )
-        .order_by(models.Pour.poured_at.desc())
+        .order_by(
+            func.coalesce(
+                models.Pour.synced_at,
+                models.Pour.reconciled_at,
+                models.Pour.authorized_at,
+                models.Pour.poured_at,
+                models.Pour.created_at,
+            ).desc()
+        )
         .offset(skip)
         .limit(limit)
         .all()

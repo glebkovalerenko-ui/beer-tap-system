@@ -1,5 +1,6 @@
 # backend/crud/keg_crud.py
 import uuid
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from fastapi import HTTPException, status

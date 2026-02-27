@@ -19,6 +19,7 @@ class DatabaseHandler:
                     tap_id INTEGER,
                     start_ts TEXT,
                     end_ts TEXT,
+                    duration_ms INTEGER,
                     volume_ml INTEGER,
                     price_cents INTEGER,
                     status TEXT DEFAULT 'new',
@@ -30,6 +31,8 @@ class DatabaseHandler:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(pours);").fetchall()}
             if "short_id" not in columns:
                 conn.execute("ALTER TABLE pours ADD COLUMN short_id TEXT;")
+            if "duration_ms" not in columns:
+                conn.execute("ALTER TABLE pours ADD COLUMN duration_ms INTEGER;")
             conn.close()
 
     def add_pour(self, pour_data):
@@ -37,16 +40,15 @@ class DatabaseHandler:
             conn = sqlite3.connect(self.db_name)
             conn.execute(
                 """
-                INSERT INTO pours (client_tx_id, short_id, card_uid, tap_id, start_ts, end_ts, volume_ml, price_cents, status, attempts, price_per_ml_at_pour)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?);
+                INSERT INTO pours (client_tx_id, short_id, card_uid, tap_id, duration_ms, volume_ml, price_cents, status, attempts, price_per_ml_at_pour)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?);
                 """,
                 (
                     pour_data["client_tx_id"],
                     pour_data["short_id"],
                     pour_data["card_uid"],
                     pour_data["tap_id"],
-                    pour_data["start_ts"],
-                    pour_data["end_ts"],
+                    pour_data.get("duration_ms"),
                     pour_data["volume_ml"],
                     pour_data["price_cents"],
                     pour_data.get("attempts", 0),

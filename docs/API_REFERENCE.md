@@ -172,6 +172,50 @@ Get list of all registered cards.
   - `skip`: int (default: 0)
   - `limit`: int (default: 100)
 
+#### GET `/api/cards/{card_uid}/resolve`
+Resolve full operational state for a card UID (single diagnostic endpoint for operator NFC lookup).
+- **Authentication**: JWT required
+- **Behavior**:
+  - Works for any UID, regardless of lost status.
+  - Returns lost-card flag/details, active visit (if any), guest/card context, and recommended next action.
+  - Unknown UID is not an error; returns `is_lost=false` and nullable payload blocks.
+
+**Response (example):**
+```json
+{
+  "card_uid": "04A1B2C3D4",
+  "is_lost": true,
+  "lost_card": {
+    "reported_at": "2026-02-26T11:15:00Z",
+    "comment": "found near entrance",
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "reported_by": "admin"
+  },
+  "active_visit": {
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "guest_full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "status": "active",
+    "card_uid": "04a1b2c3d4",
+    "active_tap_id": 2,
+    "opened_at": "2026-02-26T10:30:00Z"
+  },
+  "guest": {
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "balance_cents": 12345
+  },
+  "card": {
+    "uid": "04a1b2c3d4",
+    "status": "active",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75"
+  },
+  "recommended_action": "lost_restore"
+}
+```
+
 #### PUT `/api/cards/{card_uid}/status`
 Update card status.
 - **Authentication**: JWT required
@@ -406,7 +450,7 @@ Get list of recent pours.
   - `limit`: int (default: 20)
 
 #### POST `/api/sync/pours` (CRITICAL ENDPOINT)
-**Complex payload structure for RPi controller synchronization**
+**Controller sync endpoint (duration-first contract)**
 
 This endpoint accepts batch pour data from RPi controllers and processes them atomically.
 
@@ -419,19 +463,19 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
   "pours": [
     {
       "client_tx_id": "rpi-001-2023-12-01-001",
+      "short_id": "A1B2C3",
       "card_uid": "04AB7815CD6B80",
       "tap_id": 1,
-      "start_ts": "2023-12-01T10:30:00Z",
-      "end_ts": "2023-12-01T10:30:15Z",
+      "duration_ms": 15000,
       "volume_ml": 500,
       "price_cents": 350
     },
     {
       "client_tx_id": "rpi-001-2023-12-01-002",
+      "short_id": "D4E5F6",
       "card_uid": "04AB7815CD6B81",
       "tap_id": 2,
-      "start_ts": "2023-12-01T10:31:00Z",
-      "end_ts": "2023-12-01T10:31:12Z",
+      "duration_ms": 12000,
       "volume_ml": 330,
       "price_cents": 231
     }
@@ -441,12 +485,16 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
 
 **Field Descriptions:**
 - `client_tx_id`: Unique transaction identifier from RPi for idempotency
+- `short_id`: Short pour identifier (6-8 chars), required for sync/reconcile matching
 - `card_uid`: RFID card UID that performed the pour
 - `tap_id`: Physical tap ID (integer)
-- `start_ts`: Pour start timestamp (ISO 8601)
-- `end_ts`: Pour end timestamp (ISO 8601)
+- `duration_ms`: Pour duration in milliseconds (primary contract field)
 - `volume_ml`: Volume poured in milliliters
 - `price_cents`: Price in cents (integer)
+
+Backward compatibility:
+- Legacy `start_ts` + `end_ts` are still accepted when `duration_ms` is missing.
+- Backend may derive `duration_ms` from legacy fields, but DB event timestamps are always generated in Postgres.
 
 **Response Structure:**
 ```json
@@ -548,7 +596,14 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
   "pour_id": "uuid",
   "volume_ml": "integer",
   "amount_charged": "decimal",
-  "poured_at": "datetime"
+  "duration_ms": "integer|null",
+  "sync_status": "pending_sync|synced|reconciled",
+  "poured_at": "datetime",
+  "authorized_at": "datetime|null",
+  "synced_at": "datetime|null",
+  "reconciled_at": "datetime|null",
+  "started_at": "datetime|null",
+  "ended_at": "datetime|null"
 }
 ```
 
@@ -647,6 +702,14 @@ The API returns standard HTTP status codes:
 ### POST `/api/sync/pours`
 Additional required field in each pour item:
 - `short_id` (string, 6-8 chars)
+- `duration_ms` (integer, preferred)
+
+DB-time contract:
+- Backend does not trust controller absolute time for official event timestamps.
+- `authorized_at` is set by DB at authorize (`pending_sync` creation).
+- `synced_at` is set by DB when sync transitions to `synced`.
+- `reconciled_at` is set by DB on manual reconcile.
+- API responses do not include `server_time`.
 
 Late-sync rule:
 - when lock is already cleared, sync is accepted but must not create another charge;
@@ -662,6 +725,7 @@ Request body:
   "short_id": "A1B2C3",
   "volume_ml": 250,
   "amount": 125.00,
+  "duration_ms": 5000,
   "reason": "sync_timeout",
   "comment": "operator entry"
 }
@@ -746,17 +810,76 @@ Notes:
   - Z report: `shift.opened_at .. shift.closed_at`
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
 
-## M5 Time Source Policy Update (2026-02-27)
+## M6 Lost Cards Update (2026-02-26)
 
-### Global rule
-- Official backend timestamps are DB-authored only (Postgres `now()`).
-- API clients must not be treated as source of truth for `created_at/opened_at/closed_at/...` fields.
+### GET `/api/cards/{card_uid}/resolve`
+Unified operator endpoint for NFC card lookup in Visits/Lost Cards UI.
+- Authentication: JWT required
+- Never returns `404` for unknown UID; uses nullable payload blocks + `recommended_action="unknown"`.
+- `recommended_action` enum:
+  - `lost_restore`
+  - `open_active_visit`
+  - `open_new_visit`
+  - `bind_card`
+  - `unknown`
 
-### Sync payload timing semantics (`POST /api/sync/pours`)
-- `duration_ms` is the primary timing field for pour duration.
-- Legacy `start_ts/end_ts` are accepted only as fallback to compute duration when `duration_ms` is absent.
-- Backend writes official pour lifecycle timestamps using DB time (`func.now()` / DB defaults), not controller absolute timestamps.
+### POST `/api/lost-cards`
+Create lost card record (idempotent by `card_uid`).
+- Authentication: JWT required
+- If the card is already marked lost, existing record is returned.
 
-### Shift report windows
-- X report uses DB current time as right boundary.
-- Z report uses `shift.closed_at` as strict right boundary.
+Request body:
+```json
+{
+  "card_uid": "04AB7815CD6B80",
+  "reason": "guest_reported_loss",
+  "comment": "reported at front desk"
+}
+```
+
+### GET `/api/lost-cards`
+List lost cards with optional filters.
+- Authentication: JWT required
+- Query params:
+  - `uid` (optional, partial match)
+  - `reported_from` (optional, ISO datetime)
+  - `reported_to` (optional, ISO datetime)
+
+### POST `/api/lost-cards/{card_uid}/restore`
+Remove lost mark for card.
+- Authentication: JWT required
+- `404` when card is not in lost registry.
+
+Response:
+```json
+{
+  "card_uid": "04ab7815cd6b80",
+  "restored": true
+}
+```
+
+### POST `/api/visits/{visit_id}/report-lost-card`
+Operator action from active visit card.
+- Authentication: JWT required
+- Preconditions:
+  - visit exists and `status=active`
+  - `visit.card_uid` is not null
+- UID source is always `visit.card_uid` (no manual UID input and no lost-card tap required).
+- Creates (or reuses) `lost_cards` record and returns visit + lost-card payload.
+
+Response shape:
+```json
+{
+  "visit": { "visit_id": "uuid", "card_uid": "04AB...", "status": "active" },
+  "lost_card": { "card_uid": "04ab...", "reported_at": "2026-02-26T12:00:00Z" },
+  "lost": true,
+  "already_marked": false
+}
+```
+
+### Authorization deny for lost card
+
+`POST /api/visits/authorize-pour` performs hard check against `lost_cards`.
+- If card is lost: `403 Forbidden`.
+- Error body contains `detail.reason = "lost_card"`.
+- Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.

@@ -2,6 +2,7 @@
 
 # --- ИЗМЕНЕНИЕ: Добавлен импорт uuid для генерации ID на стороне приложения ---
 import uuid
+from datetime import timedelta
 # --- ИЗМЕНЕНИЕ: Импортируем универсальный UUID вместо специфичного для PostgreSQL ---
 from sqlalchemy import (
     Column, Integer, String, Date, DateTime, Boolean, 
@@ -160,6 +161,19 @@ class Visit(Base):
     pours = relationship("Pour", back_populates="visit")
 
 
+class LostCard(Base):
+    __tablename__ = "lost_cards"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    card_uid = Column(String(50), nullable=False, unique=True, index=True)
+    reported_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    reported_by = Column(String(100), nullable=True)
+    reason = Column(Text, nullable=True)
+    comment = Column(Text, nullable=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=True, index=True)
+    guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
+
+
 # --- ПРИНЦИП 3: Транзакционная модель для всех изменений ---
 # Все изменения баланса и объема являются неизменяемыми записями (транзакциями).
 
@@ -218,12 +232,16 @@ class Pour(Base):
     # --- ИЗМЕНЕНИЕ: Убрал price_per_ml_at_pour, т.к. amount_charged достаточно. Можно вернуть при необходимости. ---
     amount_charged = Column(Numeric(10, 2), nullable=False, comment="Списанная сумма")
     price_per_ml_at_pour = Column(Numeric(10, 4), nullable=False, comment="Цена за мл на момент налива")
+    duration_ms = Column(Integer, nullable=True)
     sync_status = Column(String(20), nullable=False, default="synced", index=True)
     short_id = Column(String(8), nullable=True, index=True)
     is_manual_reconcile = Column(Boolean, nullable=False, default=False)
     
     # Временные метки
-    poured_at = Column(DateTime(timezone=True), nullable=False)
+    poured_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    authorized_at = Column(DateTime(timezone=True), nullable=True)
+    synced_at = Column(DateTime(timezone=True), nullable=True)
+    reconciled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Связи "многие к одному"
@@ -237,6 +255,18 @@ class Pour(Base):
     def beverage(self):
         return self.keg.beverage if self.keg else None
 
+
+
+    @property
+    def ended_at(self):
+        return self.synced_at or self.reconciled_at
+
+    @property
+    def started_at(self):
+        ended_at = self.ended_at
+        if ended_at is None or self.duration_ms is None:
+            return None
+        return ended_at - timedelta(milliseconds=self.duration_ms)
 
 class Transaction(Base):
     """

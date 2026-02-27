@@ -163,6 +163,8 @@ Behavior:
 
 - If lost card UID is used в†’ block + critical alert.
 - Visit entity is not overloaded with historical card records.
+- Pilot implementation detail: staff reports lost card from active visit (`POST /api/visits/{visit_id}/report-lost-card`), UID source is `visit.card_uid`.
+- Manual UID entry is out of scope for pilot; attaching lost card is not required.
 
 ---
 
@@ -232,15 +234,20 @@ PourSession
 * visit_id
 * tap_id
 * keg_id
+* duration_ms (nullable)
 * started_at
 * ended_at
 * volume_ml
 * cost
-* sync_status: synced / pending_sync
+* sync_status: pending_sync / synced / reconciled
+* authorized_at (DB timestamp)
+* synced_at (DB timestamp)
+* reconciled_at (DB timestamp)
 
 ```
 
-Controller is the source of truth for volume.
+Controller is the source of truth for volume and duration only.
+Postgres is the source of truth for event timestamps.
 
 ---
 
@@ -322,6 +329,24 @@ If valid:
 - active_tap_id = tap_id
 - Controller receives balance
 - Pour session starts
+
+If `card_uid` exists in `lost_cards`:
+- hard deny (`403` with `detail.reason="lost_card"`),
+- valve must not open,
+- backend writes audit event `lost_card_blocked` with `card_uid`, `tap_id`, and block time.
+
+### Operator flow: found card (NFC resolve)
+
+When staff physically finds a card:
+
+1. Open either Visits or Lost Cards page.
+2. Click `Find by card (NFC)` and scan card via existing `NFCModal`.
+3. Admin app requests `GET /api/cards/{card_uid}/resolve`.
+4. Operator receives one actionable state:
+   - lost card: restore lost mark and optionally open related visit;
+   - active visit: open visit card to continue service;
+   - guest-bound with no active visit: open new visit for that guest;
+   - unknown card: no unsafe actions by default.
 
 ---
 
@@ -496,9 +521,9 @@ Operational source of truth:
 - Backend is the only component that changes operational lock state (`visit.active_tap_id`, `visit.lock_set_at`).
 
 State transitions:
-1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=now`, tap domain shown as `processing_sync`.
-2. Normal sync accepted (`/api/sync/pours`) -> pour stored with `sync_status='synced'`, lock cleared.
-3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour stored with `sync_status='reconciled'`, lock cleared.
+1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=DB now`, tap domain shown as `processing_sync`; backend creates `pending_sync` row with `authorized_at=DB now`.
+2. Normal sync accepted (`/api/sync/pours`) -> pour transitions to `sync_status='synced'`, `synced_at=DB now`, lock cleared.
+3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour transitions to `sync_status='reconciled'`, `reconciled_at=DB now`, lock cleared.
 4. Late sync after manual reconcile:
    - same `short_id` -> `late_sync_matched` audit event, no second debit.
    - different/missing `short_id` -> `late_sync_mismatch` audit event, no second debit.
@@ -509,6 +534,8 @@ No-double-charge invariant:
 Data keys introduced by M4:
 - `pours.sync_status` (`pending_sync | synced | reconciled`)
 - `pours.short_id` (6-8 chars)
+- `pours.duration_ms` (controller-provided duration)
+- `pours.authorized_at` / `pours.synced_at` / `pours.reconciled_at` (DB timestamps)
 - `visits.lock_set_at` (timestamp for UI-side timeout policy)
 
 # 12. M5 Shift Operational Mode (2026-02-26)
@@ -556,17 +583,3 @@ v1 report focus:
 - money totals are stored in parallel (`total_amount_cents`) for future POS/cash evolution;
 - keg section is currently placeholder (`not_available_yet`) until stable keg-to-pour linkage is expanded.
 
-
-# 14. M5 Time Source Policy (2026-02-27)
-
-Single source of operational time is Postgres DB time.
-
-Rules:
-- Official timestamps (`*_at`) are written by DB:
-  - create/open/report events use `server_default=now()`;
-  - close/restore/update events use `func.now()` in update statements.
-- Application `datetime.now()/utcnow()` must not be used as source of truth for official DB timestamps.
-- Controller absolute timestamps are not authoritative for backend official timestamps.
-- For shift reports:
-  - X report window is `shift.opened_at .. DB now()`;
-  - Z report window is strictly `shift.opened_at .. shift.closed_at`.
