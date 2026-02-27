@@ -883,3 +883,18 @@ Response shape:
 - If card is lost: `403 Forbidden`.
 - Error body contains `detail.reason = "lost_card"`.
 - Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.
+
+## M5 Time Source Policy Update (2026-02-27)
+
+### Global rule
+- Official backend timestamps are DB-authored only (Postgres `now()`).
+- API clients must not be treated as source of truth for `created_at/opened_at/closed_at/...` fields.
+
+### Sync payload timing semantics (`POST /api/sync/pours`)
+- `duration_ms` is the primary timing field for pour duration.
+- Legacy `start_ts/end_ts` are accepted only as fallback to compute duration when `duration_ms` is absent.
+- Backend writes official pour lifecycle timestamps using DB time (`func.now()` / DB defaults), not controller absolute timestamps.
+
+### Shift report windows
+- X report uses DB current time as right boundary.
+- Z report uses `shift.closed_at` as strict right boundary.
