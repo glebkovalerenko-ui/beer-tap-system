@@ -561,3 +561,10 @@ Controller timing contract:
 Report windows:
 - X report right boundary uses DB `now()`.
 - Z report right boundary is strictly `shift.closed_at`.
+
+## Alembic Chain Update (2026-02-27)
+- Current linear migration chain for time policy and LostCard domain:
+  - `0008_m6_lost_cards_registry`
+  - `0009_m6_db_time_duration`
+  - `0010_m5_db_time_source`
+- This order is intentional: M6 introduces lost-card and pour event-time schema, then M5 DB-time hardening finalizes defaults/backfills as the latest head.
