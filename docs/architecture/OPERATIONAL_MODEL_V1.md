@@ -234,15 +234,20 @@ PourSession
 * visit_id
 * tap_id
 * keg_id
+* duration_ms (nullable)
 * started_at
 * ended_at
 * volume_ml
 * cost
-* sync_status: synced / pending_sync
+* sync_status: pending_sync / synced / reconciled
+* authorized_at (DB timestamp)
+* synced_at (DB timestamp)
+* reconciled_at (DB timestamp)
 
 ```
 
-Controller is the source of truth for volume.
+Controller is the source of truth for volume and duration only.
+Postgres is the source of truth for event timestamps.
 
 ---
 
@@ -516,9 +521,9 @@ Operational source of truth:
 - Backend is the only component that changes operational lock state (`visit.active_tap_id`, `visit.lock_set_at`).
 
 State transitions:
-1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=now`, tap domain shown as `processing_sync`.
-2. Normal sync accepted (`/api/sync/pours`) -> pour stored with `sync_status='synced'`, lock cleared.
-3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour stored with `sync_status='reconciled'`, lock cleared.
+1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=DB now`, tap domain shown as `processing_sync`; backend creates `pending_sync` row with `authorized_at=DB now`.
+2. Normal sync accepted (`/api/sync/pours`) -> pour transitions to `sync_status='synced'`, `synced_at=DB now`, lock cleared.
+3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour transitions to `sync_status='reconciled'`, `reconciled_at=DB now`, lock cleared.
 4. Late sync after manual reconcile:
    - same `short_id` -> `late_sync_matched` audit event, no second debit.
    - different/missing `short_id` -> `late_sync_mismatch` audit event, no second debit.
@@ -529,6 +534,8 @@ No-double-charge invariant:
 Data keys introduced by M4:
 - `pours.sync_status` (`pending_sync | synced | reconciled`)
 - `pours.short_id` (6-8 chars)
+- `pours.duration_ms` (controller-provided duration)
+- `pours.authorized_at` / `pours.synced_at` / `pours.reconciled_at` (DB timestamps)
 - `visits.lock_set_at` (timestamp for UI-side timeout policy)
 
 # 12. M5 Shift Operational Mode (2026-02-26)

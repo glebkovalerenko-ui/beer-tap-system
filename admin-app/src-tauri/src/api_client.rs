@@ -60,6 +60,12 @@ pub struct Pour {
     pub volume_ml: i32,
     pub amount_charged: String,
     pub poured_at: String,
+    pub duration_ms: Option<i32>,
+    pub authorized_at: Option<String>,
+    pub synced_at: Option<String>,
+    pub reconciled_at: Option<String>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -82,6 +88,12 @@ pub struct PourResponse {
     pub volume_ml: i32,
     pub amount_charged: String,
     pub poured_at: String,
+    pub duration_ms: Option<i32>,
+    pub authorized_at: Option<String>,
+    pub synced_at: Option<String>,
+    pub reconciled_at: Option<String>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
     // Вложенные структуры для UI
     pub guest: PourGuest,
     pub beverage: Beverage,

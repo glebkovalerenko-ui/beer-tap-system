@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 import uuid
 
 import models
@@ -108,9 +108,6 @@ def _create_synced_pour_for_open_shift(client, headers, suffix: str):
     )
     assert authorize.status_code == 200
 
-    start_ts = datetime.now(timezone.utc)
-    end_ts = start_ts + timedelta(seconds=5)
-
     sync_resp = client.post(
         "/api/sync/pours",
         headers={"X-Internal-Token": "demo-secret-key"},
@@ -121,8 +118,7 @@ def _create_synced_pour_for_open_shift(client, headers, suffix: str):
                     "card_uid": card_uid,
                     "tap_id": tap_id,
                     "short_id": f"S{suffix[-5:]}",
-                    "start_ts": start_ts.isoformat(),
-                    "end_ts": end_ts.isoformat(),
+                    "duration_ms": 5000,
                     "volume_ml": 200,
                     "price_cents": 0,
                 }

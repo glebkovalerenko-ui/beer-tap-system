@@ -189,7 +189,7 @@ Out of scope (intentionally):
 - Handle network loss safely without building a complex reconciliation engine.
 
 **Scope**
-- Add `sync_status` (`pending_sync` / `synced`) to pour records.
+- Add pour lifecycle fields: `sync_status`, `duration_ms`, DB event timestamps (`authorized_at`, `synced_at`, `reconciled_at`).
 - Tap enters `processing_sync` while unresolved sync exists.
 - Backend clears `active_tap_id` only after backend-accepted completion/reconciliation.
 - Add minimal manual close + reconcile path for timeout cases.
@@ -198,7 +198,7 @@ Out of scope (intentionally):
 1. Controller can detect pour end, but **only backend changes visit/card operational state**.
 2. If network is lost mid-pour:
    - pour completes using local balance,
-   - controller retries sync,
+   - controller retries sync with `duration_ms`, `volume_ml`, `price_cents`, `short_id`, `client_tx_id`,
    - backend keeps card locked (`active_tap_id` not cleared) until sync/reconcile,
    - new pours on other taps are blocked by design.
 3. If sync does not complete within timeout window (target 1–5 minutes):
@@ -212,6 +212,8 @@ Out of scope (intentionally):
 
 **Schema impact**
 - Add `pours.sync_status`.
+- Add `pours.duration_ms` (nullable).
+- Add DB event timestamps on `pours`: `authorized_at`, `synced_at`, `reconciled_at`.
 - Add pour short identifier field (or deterministic derived key) for manual reconcile matching.
 - Extend tap status domain with `processing_sync`.
 
@@ -488,7 +490,13 @@ No major controller rewrite is proposed; this is an execution/testing guidance r
 - `pours.sync_status` default is `synced` (safe default for legacy and happy-path rows).
 - `pending_sync` is used only for explicit offline workflows.
 - `pours.short_id` is mandatory in sync payload and manual reconcile payload.
+- `pours.duration_ms` is the primary controller time field.
+- Legacy `start_ts/end_ts` are accepted only for backward compatibility when `duration_ms` is absent.
 - Manual reconcile is idempotent by `(visit_id, short_id)`; repeated requests return existing manual result.
+- DB is the only source of official pour event times:
+  - `authorized_at = DB now()` when pending row is created;
+  - `synced_at = DB now()` on pending -> synced transition;
+  - `reconciled_at = DB now()` on manual reconcile.
 - Explicit no-double-charge rule:
   - late sync checks existing manual pour by `(visit_id, short_id)`;
   - match -> audit `late_sync_matched`, no additional debit;

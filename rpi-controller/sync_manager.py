@@ -101,9 +101,20 @@ class SyncManager:
         payload_rows = []
         for row in pours:
             item = dict(row)
-            if not item.get("short_id"):
-                item["short_id"] = str(item.get("client_tx_id", "")).replace("-", "")[:8].upper()
-            payload_rows.append(item)
+            short_id = item.get("short_id") or str(item.get("client_tx_id", "")).replace("-", "")[:8].upper()
+            payload_item = {
+                "client_tx_id": item.get("client_tx_id"),
+                "short_id": short_id,
+                "card_uid": item.get("card_uid"),
+                "tap_id": item.get("tap_id"),
+                "duration_ms": item.get("duration_ms"),
+                "volume_ml": item.get("volume_ml"),
+                "price_cents": item.get("price_cents"),
+            }
+            if payload_item["duration_ms"] is None and item.get("start_ts") and item.get("end_ts"):
+                payload_item["start_ts"] = item.get("start_ts")
+                payload_item["end_ts"] = item.get("end_ts")
+            payload_rows.append(payload_item)
         payload = {"pours": payload_rows}
         url = "/".join([self.server_url, "api", "sync", "pours"])
         headers = {"X-Internal-Token": INTERNAL_TOKEN}

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
 
 from sqlalchemy import func
@@ -60,7 +60,6 @@ def create_lost_card_idempotent(
 
     lost_card = models.LostCard(
         card_uid=normalized_uid,
-        reported_at=datetime.now(timezone.utc),
         reported_by=reported_by,
         reason=reason,
         comment=comment,
