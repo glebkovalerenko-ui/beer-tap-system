@@ -450,7 +450,7 @@ Get list of recent pours.
   - `limit`: int (default: 20)
 
 #### POST `/api/sync/pours` (CRITICAL ENDPOINT)
-**Complex payload structure for RPi controller synchronization**
+**Controller sync endpoint (duration-first contract)**
 
 This endpoint accepts batch pour data from RPi controllers and processes them atomically.
 
@@ -463,19 +463,19 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
   "pours": [
     {
       "client_tx_id": "rpi-001-2023-12-01-001",
+      "short_id": "A1B2C3",
       "card_uid": "04AB7815CD6B80",
       "tap_id": 1,
-      "start_ts": "2023-12-01T10:30:00Z",
-      "end_ts": "2023-12-01T10:30:15Z",
+      "duration_ms": 15000,
       "volume_ml": 500,
       "price_cents": 350
     },
     {
       "client_tx_id": "rpi-001-2023-12-01-002",
+      "short_id": "D4E5F6",
       "card_uid": "04AB7815CD6B81",
       "tap_id": 2,
-      "start_ts": "2023-12-01T10:31:00Z",
-      "end_ts": "2023-12-01T10:31:12Z",
+      "duration_ms": 12000,
       "volume_ml": 330,
       "price_cents": 231
     }
@@ -485,12 +485,16 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
 
 **Field Descriptions:**
 - `client_tx_id`: Unique transaction identifier from RPi for idempotency
+- `short_id`: Short pour identifier (6-8 chars), required for sync/reconcile matching
 - `card_uid`: RFID card UID that performed the pour
 - `tap_id`: Physical tap ID (integer)
-- `start_ts`: Pour start timestamp (ISO 8601)
-- `end_ts`: Pour end timestamp (ISO 8601)
+- `duration_ms`: Pour duration in milliseconds (primary contract field)
 - `volume_ml`: Volume poured in milliliters
 - `price_cents`: Price in cents (integer)
+
+Backward compatibility:
+- Legacy `start_ts` + `end_ts` are still accepted when `duration_ms` is missing.
+- Backend may derive `duration_ms` from legacy fields, but DB event timestamps are always generated in Postgres.
 
 **Response Structure:**
 ```json
@@ -592,7 +596,14 @@ This endpoint accepts batch pour data from RPi controllers and processes them at
   "pour_id": "uuid",
   "volume_ml": "integer",
   "amount_charged": "decimal",
-  "poured_at": "datetime"
+  "duration_ms": "integer|null",
+  "sync_status": "pending_sync|synced|reconciled",
+  "poured_at": "datetime",
+  "authorized_at": "datetime|null",
+  "synced_at": "datetime|null",
+  "reconciled_at": "datetime|null",
+  "started_at": "datetime|null",
+  "ended_at": "datetime|null"
 }
 ```
 
@@ -691,6 +702,14 @@ The API returns standard HTTP status codes:
 ### POST `/api/sync/pours`
 Additional required field in each pour item:
 - `short_id` (string, 6-8 chars)
+- `duration_ms` (integer, preferred)
+
+DB-time contract:
+- Backend does not trust controller absolute time for official event timestamps.
+- `authorized_at` is set by DB at authorize (`pending_sync` creation).
+- `synced_at` is set by DB when sync transitions to `synced`.
+- `reconciled_at` is set by DB on manual reconcile.
+- API responses do not include `server_time`.
 
 Late-sync rule:
 - when lock is already cleared, sync is accepted but must not create another charge;
@@ -706,6 +725,7 @@ Request body:
   "short_id": "A1B2C3",
   "volume_ml": 250,
   "amount": 125.00,
+  "duration_ms": 5000,
   "reason": "sync_timeout",
   "comment": "operator entry"
 }
