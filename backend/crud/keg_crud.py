@@ -1,8 +1,8 @@
 # backend/crud/keg_crud.py
 import uuid
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
-from datetime import datetime
 import models, schemas
 from crud import beverage_crud
 
@@ -50,9 +50,9 @@ def update_keg(db: Session, keg_id: uuid.UUID, keg_update: schemas.KegUpdate):
     if 'status' in update_data:
         new_status = update_data['status']
         if new_status == 'in_use' and db_keg.tapped_at is None:
-            db_keg.tapped_at = datetime.now()
+            db_keg.tapped_at = func.now()
         elif new_status == 'empty' and db_keg.finished_at is None:
-            db_keg.finished_at = datetime.now()
+            db_keg.finished_at = func.now()
 
     for key, value in update_data.items():
         setattr(db_keg, key, value)

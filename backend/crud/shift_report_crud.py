@@ -49,6 +49,10 @@ def _get_shift_or_404(db: Session, shift_id: uuid.UUID) -> models.Shift:
     return shift
 
 
+def _db_now(db: Session) -> datetime:
+    return db.query(func.now()).scalar()
+
+
 def _resolve_window_end(*, shift: models.Shift, generated_at: datetime, report_type: str) -> datetime:
     closed_at = shift.closed_at
     if closed_at is not None:
@@ -99,7 +103,7 @@ def build_shift_report_payload(
     report_type: str,
     generated_at: datetime | None = None,
 ) -> schemas.ShiftReportPayload:
-    generated_at = generated_at or datetime.now(timezone.utc)
+    generated_at = generated_at or _db_now(db)
     generated_at = _align_datetime_to_reference(generated_at, shift.opened_at)
     window_end = _resolve_window_end(shift=shift, generated_at=generated_at, report_type=report_type)
     window_end = _align_datetime_to_reference(window_end, shift.opened_at)
@@ -238,7 +242,7 @@ def create_or_get_z_report(db: Session, shift_id: uuid.UUID) -> schemas.ShiftRep
     if existing:
         return _to_document_schema(existing)
 
-    generated_at = datetime.now(timezone.utc)
+    generated_at = _db_now(db)
     payload = build_shift_report_payload(
         db=db,
         shift=shift,
@@ -295,7 +299,7 @@ def list_z_reports_by_date(db: Session, *, from_date: date, to_date: date) -> li
         )
 
     sample = db.query(models.ShiftReport.generated_at).order_by(models.ShiftReport.generated_at.desc()).first()
-    reference_dt = sample[0] if sample else datetime.now(timezone.utc)
+    reference_dt = sample[0] if sample else _db_now(db)
 
     from_dt = _align_datetime_to_reference(
         datetime.combine(from_date, time.min, tzinfo=timezone.utc),

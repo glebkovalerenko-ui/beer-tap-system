@@ -158,6 +158,7 @@ def reconcile_pour(
         short_id=payload.short_id,
         volume_ml=payload.volume_ml,
         amount=payload.amount,
+        duration_ms=payload.duration_ms,
         reason=payload.reason,
         comment=payload.comment,
         actor_id=current_user["username"] if current_user else "operator",

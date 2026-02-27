@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
 from typing import Optional 
-from datetime import date, datetime, timezone
+from datetime import date
 import models
 import schemas
 from crud import card_crud, visit_crud
@@ -36,7 +36,6 @@ def create_guest(db: Session, guest: schemas.GuestCreate):
                             detail="Guest with this phone number already registered")
     
     guest_data = guest.model_dump()
-    guest_data["created_at"] = datetime.now(timezone.utc)
     db_guest = models.Guest(**guest_data)
     db.add(db_guest)
     db.commit()
