@@ -172,6 +172,50 @@ Get list of all registered cards.
   - `skip`: int (default: 0)
   - `limit`: int (default: 100)
 
+#### GET `/api/cards/{card_uid}/resolve`
+Resolve full operational state for a card UID (single diagnostic endpoint for operator NFC lookup).
+- **Authentication**: JWT required
+- **Behavior**:
+  - Works for any UID, regardless of lost status.
+  - Returns lost-card flag/details, active visit (if any), guest/card context, and recommended next action.
+  - Unknown UID is not an error; returns `is_lost=false` and nullable payload blocks.
+
+**Response (example):**
+```json
+{
+  "card_uid": "04A1B2C3D4",
+  "is_lost": true,
+  "lost_card": {
+    "reported_at": "2026-02-26T11:15:00Z",
+    "comment": "found near entrance",
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "reported_by": "admin"
+  },
+  "active_visit": {
+    "visit_id": "550e8400-e29b-41d4-a716-446655440000",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "guest_full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "status": "active",
+    "card_uid": "04a1b2c3d4",
+    "active_tap_id": 2,
+    "opened_at": "2026-02-26T10:30:00Z"
+  },
+  "guest": {
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75",
+    "full_name": "Иванов Иван Иванович",
+    "phone_number": "+79990001122",
+    "balance_cents": 12345
+  },
+  "card": {
+    "uid": "04a1b2c3d4",
+    "status": "active",
+    "guest_id": "6b5b0b90-0bd2-4f9c-a10f-dbe7d95d5f75"
+  },
+  "recommended_action": "lost_restore"
+}
+```
+
 #### PUT `/api/cards/{card_uid}/status`
 Update card status.
 - **Authentication**: JWT required
@@ -745,3 +789,77 @@ Notes:
   - X report: `shift.opened_at .. now()`
   - Z report: `shift.opened_at .. shift.closed_at`
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
+
+## M6 Lost Cards Update (2026-02-26)
+
+### GET `/api/cards/{card_uid}/resolve`
+Unified operator endpoint for NFC card lookup in Visits/Lost Cards UI.
+- Authentication: JWT required
+- Never returns `404` for unknown UID; uses nullable payload blocks + `recommended_action="unknown"`.
+- `recommended_action` enum:
+  - `lost_restore`
+  - `open_active_visit`
+  - `open_new_visit`
+  - `bind_card`
+  - `unknown`
+
+### POST `/api/lost-cards`
+Create lost card record (idempotent by `card_uid`).
+- Authentication: JWT required
+- If the card is already marked lost, existing record is returned.
+
+Request body:
+```json
+{
+  "card_uid": "04AB7815CD6B80",
+  "reason": "guest_reported_loss",
+  "comment": "reported at front desk"
+}
+```
+
+### GET `/api/lost-cards`
+List lost cards with optional filters.
+- Authentication: JWT required
+- Query params:
+  - `uid` (optional, partial match)
+  - `reported_from` (optional, ISO datetime)
+  - `reported_to` (optional, ISO datetime)
+
+### POST `/api/lost-cards/{card_uid}/restore`
+Remove lost mark for card.
+- Authentication: JWT required
+- `404` when card is not in lost registry.
+
+Response:
+```json
+{
+  "card_uid": "04ab7815cd6b80",
+  "restored": true
+}
+```
+
+### POST `/api/visits/{visit_id}/report-lost-card`
+Operator action from active visit card.
+- Authentication: JWT required
+- Preconditions:
+  - visit exists and `status=active`
+  - `visit.card_uid` is not null
+- UID source is always `visit.card_uid` (no manual UID input and no lost-card tap required).
+- Creates (or reuses) `lost_cards` record and returns visit + lost-card payload.
+
+Response shape:
+```json
+{
+  "visit": { "visit_id": "uuid", "card_uid": "04AB...", "status": "active" },
+  "lost_card": { "card_uid": "04ab...", "reported_at": "2026-02-26T12:00:00Z" },
+  "lost": true,
+  "already_marked": false
+}
+```
+
+### Authorization deny for lost card
+
+`POST /api/visits/authorize-pour` performs hard check against `lost_cards`.
+- If card is lost: `403 Forbidden`.
+- Error body contains `detail.reason = "lost_card"`.
+- Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.

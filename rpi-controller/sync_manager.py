@@ -41,23 +41,52 @@ class SyncManager:
         try:
             response = self.session.post(url, json=payload, headers=headers, timeout=5)
         except requests.RequestException as exc:
-            return {"allowed": False, "reason": f"authorize_request_failed: {exc}", "status_code": None}
+            return {
+                "allowed": False,
+                "reason": f"authorize_request_failed: {exc}",
+                "reason_code": "request_failed",
+                "status_code": None,
+            }
 
         if response.status_code == 200:
             body = response.json()
             if body.get("allowed"):
-                return {"allowed": True, "reason": "authorized", "status_code": response.status_code}
-            return {"allowed": False, "reason": body.get("reason", "authorize_denied"), "status_code": response.status_code}
+                return {
+                    "allowed": True,
+                    "reason": "authorized",
+                    "reason_code": "authorized",
+                    "status_code": response.status_code,
+                }
+            return {
+                "allowed": False,
+                "reason": body.get("reason", "authorize_denied"),
+                "reason_code": body.get("reason", "authorize_denied"),
+                "status_code": response.status_code,
+            }
 
+        reason_code = "authorize_denied"
         detail = ""
         try:
             detail_payload = response.json().get("detail", "")
-            detail = detail_payload if isinstance(detail_payload, str) else str(detail_payload)
+            if isinstance(detail_payload, dict):
+                reason_code = detail_payload.get("reason", reason_code)
+                detail = detail_payload.get("message") or detail_payload.get("detail") or reason_code
+            elif isinstance(detail_payload, str):
+                detail = detail_payload
+                if "lost_card" in detail_payload:
+                    reason_code = "lost_card"
+            else:
+                detail = str(detail_payload)
         except ValueError:
             detail = (response.text or "").strip()
 
         detail = detail or f"http_{response.status_code}"
-        return {"allowed": False, "reason": detail, "status_code": response.status_code}
+        return {
+            "allowed": False,
+            "reason": detail,
+            "reason_code": reason_code,
+            "status_code": response.status_code,
+        }
 
     def sync_cycle(self, db_handler):
         pours = db_handler.get_unsynced_pours(limit=20)

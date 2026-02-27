@@ -126,6 +126,20 @@ function createVisitStore() {
         throw new Error(message);
       }
     },
+
+    reportLostCard: async ({ visitId, reason = null, comment = null }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const response = await invoke('report_lost_card_from_visit', { token, visitId, reason, comment });
+        update((s) => ({ ...s, currentVisit: response.visit, loading: false }));
+        return response;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.reportLostCard', error);
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
   };
 }
 
