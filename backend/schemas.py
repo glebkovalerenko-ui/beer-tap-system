@@ -1,7 +1,7 @@
 # backend/schemas.py
 import uuid
 # --- ИЗМЕНЕНИЕ: Добавлен импорт ConfigDict для современного синтаксиса Pydantic v2 ---
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Literal
@@ -311,6 +311,7 @@ class VisitReconcilePourRequest(BaseModel):
     short_id: str = Field(..., min_length=6, max_length=8, json_schema_extra={'example': "A1B2C3"})
     volume_ml: int = Field(..., ge=1, json_schema_extra={'example': 250})
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 175.00})
+    duration_ms: Optional[int] = Field(default=None, ge=0, json_schema_extra={'example': 5000})
     reason: str = Field(..., min_length=1, json_schema_extra={'example': "sync_timeout"})
     comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Operator entered from controller screen"})
 
@@ -350,10 +351,16 @@ class Pour(BaseModel):
     pour_id: uuid.UUID
     volume_ml: int
     amount_charged: Decimal
+    duration_ms: Optional[int] = None
     sync_status: str
     short_id: Optional[str] = None
     is_manual_reconcile: bool = False
     poured_at: datetime
+    authorized_at: Optional[datetime] = None
+    synced_at: Optional[datetime] = None
+    reconciled_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- Компактная схема для отображения гостя в ленте наливов ---
@@ -412,10 +419,21 @@ class PourData(BaseModel):
     card_uid: str
     tap_id: int
     short_id: str = Field(..., min_length=6, max_length=8)
-    start_ts: datetime
-    end_ts: datetime
+    duration_ms: Optional[int] = Field(default=None, ge=0)
+    start_ts: Optional[datetime] = None
+    end_ts: Optional[datetime] = None
     volume_ml: int
     price_cents: int
+
+    @model_validator(mode="after")
+    def validate_duration_or_legacy_range(self):
+        if self.duration_ms is not None:
+            return self
+
+        if self.start_ts is not None and self.end_ts is not None:
+            return self
+
+        raise ValueError("Either duration_ms or both start_ts/end_ts must be provided")
 
 class SyncRequest(BaseModel):
     pours: list[PourData]
