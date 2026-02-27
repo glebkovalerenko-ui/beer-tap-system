@@ -1,7 +1,6 @@
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
 
 from config import PRICE_PER_100ML_CENTS, TAP_ID
 
@@ -97,7 +96,7 @@ class FlowManager:
 
         logging.info("Authorize OK for card %s on tap %s. Opening valve.", card_uid, TAP_ID)
         self.hardware.valve_open()
-        start_ts = datetime.now(timezone.utc).isoformat()
+        started_monotonic = time.monotonic()
         total_volume_ml = 0
         last_volume_ml = 0
         timeout_counter = 0
@@ -144,15 +143,14 @@ class FlowManager:
             logging.info("Session finished. Poured: %s ml", total_volume_ml)
 
         if total_volume_ml > 1:
-            end_ts = datetime.now(timezone.utc).isoformat()
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000)
             price_cents = int((total_volume_ml / 100.0) * PRICE_PER_100ML_CENTS)
             pour_data = {
                 "client_tx_id": client_tx_id,
                 "short_id": short_id,
                 "card_uid": card_uid,
                 "tap_id": TAP_ID,
-                "start_ts": start_ts,
-                "end_ts": end_ts,
+                "duration_ms": duration_ms,
                 "volume_ml": total_volume_ml,
                 "price_cents": price_cents,
                 "price_per_ml_at_pour": float(PRICE_PER_100ML_CENTS / 100.0),
