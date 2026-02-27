@@ -50,7 +50,16 @@ def _get_shift_or_404(db: Session, shift_id: uuid.UUID) -> models.Shift:
 
 
 def _db_now(db: Session) -> datetime:
-    return db.query(func.now()).scalar()
+    value = db.query(func.now()).scalar()
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        normalized = value.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    raise RuntimeError(f"Unexpected DB now() type: {type(value)!r}")
 
 
 def _resolve_window_end(shift: models.Shift, generated_at: datetime) -> datetime:
@@ -93,7 +102,10 @@ def build_shift_report_payload(
 ) -> schemas.ShiftReportPayload:
     generated_at = generated_at or _db_now(db)
     generated_at = _align_datetime_to_reference(generated_at, shift.opened_at)
-    window_end = _resolve_window_end(shift=shift, generated_at=generated_at)
+    if report_type == "Z" and shift.closed_at is not None:
+        window_end = shift.closed_at
+    else:
+        window_end = _resolve_window_end(shift=shift, generated_at=generated_at)
 
     totals_row = (
         db.query(
