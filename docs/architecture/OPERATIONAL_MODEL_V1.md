@@ -556,3 +556,17 @@ v1 report focus:
 - money totals are stored in parallel (`total_amount_cents`) for future POS/cash evolution;
 - keg section is currently placeholder (`not_available_yet`) until stable keg-to-pour linkage is expanded.
 
+
+# 14. M5 Time Source Policy (2026-02-27)
+
+Single source of operational time is Postgres DB time.
+
+Rules:
+- Official timestamps (`*_at`) are written by DB:
+  - create/open/report events use `server_default=now()`;
+  - close/restore/update events use `func.now()` in update statements.
+- Application `datetime.now()/utcnow()` must not be used as source of truth for official DB timestamps.
+- Controller absolute timestamps are not authoritative for backend official timestamps.
+- For shift reports:
+  - X report window is `shift.opened_at .. DB now()`;
+  - Z report window is strictly `shift.opened_at .. shift.closed_at`.

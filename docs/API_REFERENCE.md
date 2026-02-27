@@ -745,3 +745,18 @@ Notes:
   - X report: `shift.opened_at .. now()`
   - Z report: `shift.opened_at .. shift.closed_at`
 - `mismatch_count` is sourced from M4 audit events (`late_sync_mismatch`); if no such events exist in the range, value is `0`.
+
+## M5 Time Source Policy Update (2026-02-27)
+
+### Global rule
+- Official backend timestamps are DB-authored only (Postgres `now()`).
+- API clients must not be treated as source of truth for `created_at/opened_at/closed_at/...` fields.
+
+### Sync payload timing semantics (`POST /api/sync/pours`)
+- `duration_ms` is the primary timing field for pour duration.
+- Legacy `start_ts/end_ts` are accepted only as fallback to compute duration when `duration_ms` is absent.
+- Backend writes official pour lifecycle timestamps using DB time (`func.now()` / DB defaults), not controller absolute timestamps.
+
+### Shift report windows
+- X report uses DB current time as right boundary.
+- Z report uses `shift.closed_at` as strict right boundary.
