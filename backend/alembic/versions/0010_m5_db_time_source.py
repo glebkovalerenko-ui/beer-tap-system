@@ -1,7 +1,7 @@
 """M5 DB time source hardening for core timestamps
 
-Revision ID: 0008_m5_db_time_source
-Revises: 0007_m5_shift_reports_v1
+Revision ID: 0010_m5_db_time_source
+Revises: 0009_m6_db_time_duration
 Create Date: 2026-02-27
 """
 
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "0008_m5_db_time_source"
-down_revision: Union[str, None] = "0007_m5_shift_reports_v1"
+revision: str = "0010_m5_db_time_source"
+down_revision: Union[str, None] = "0009_m6_db_time_duration"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
