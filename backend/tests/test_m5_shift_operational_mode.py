@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
 import uuid
 
 import models
+from sqlalchemy import func
 
 
 def _login(client):
@@ -154,7 +154,7 @@ def test_cannot_close_shift_with_pending_sync(client, db_session):
         {
             models.Visit.status: "closed",
             models.Visit.closed_reason: "forced_test_close",
-            models.Visit.closed_at: datetime.now(timezone.utc),
+            models.Visit.closed_at: func.now(),
             models.Visit.active_tap_id: None,
             models.Visit.lock_set_at: None,
         }
