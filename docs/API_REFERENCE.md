@@ -516,8 +516,13 @@ Backward compatibility:
 
 **Status Values:**
 - `accepted`: Pour successfully processed
-- `rejected`: Pour failed validation
-- `duplicate`: Pour with same client_tx_id already exists
+- `audit_only`: Sync was recorded only for audit/no-double-charge purposes
+- `rejected`: Pour failed validation or was terminally rejected after authorize
+- `conflict`: Operational tap/lock conflict, returned as HTTP `409`
+
+Idempotency note:
+- duplicate sync for an already `synced`/`reconciled` row returns `accepted + duplicate_existing`
+- duplicate sync for an already `rejected` row returns `rejected + duplicate_existing_rejected`
 
 ## Data Models
 
@@ -597,7 +602,7 @@ Backward compatibility:
   "volume_ml": "integer",
   "amount_charged": "decimal",
   "duration_ms": "integer|null",
-  "sync_status": "pending_sync|synced|reconciled",
+  "sync_status": "pending_sync|synced|reconciled|rejected",
   "poured_at": "datetime",
   "authorized_at": "datetime|null",
   "synced_at": "datetime|null",
@@ -969,4 +974,5 @@ Audit:
 M6 clamp-related semantics:
 - normal authorize-based flow must update the existing `pending_sync` row to `sync_status="synced"`;
 - if controller sends sync without successful authorize, backend must keep it non-operational and return `status="audit_only"`;
-- backend must not create a new accepted pour when `pending_sync` is missing for an active lock (`outcome="audit_missing_pending"`, `reason="missing_pending_authorize"`).
+- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock/tap state;
+- if a previously authorized sync still hits insufficient funds or keg-volume failure, backend converts the authorize-created row to `sync_status="rejected"`, writes audit (`sync_rejected_insufficient_funds` / `sync_rejected_insufficient_keg_volume`), and clears the stale lock instead of leaving `pending_sync` hanging.
