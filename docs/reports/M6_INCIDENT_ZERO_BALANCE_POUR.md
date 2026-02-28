@@ -57,8 +57,9 @@ Secondary causes:
 3. Deny authorize with `403 detail.reason="insufficient_funds"` when `max_volume_ml < min_start_ml`.
 4. Write audit event `insufficient_funds_blocked`.
 5. Store authorize-time price on the pending row and require sync to update that same row.
-6. Keep sync without authorize as `audit_only`.
-7. Make controller refuse valve open without `allowed=true` and `max_volume_ml > 0`, and close valve at `poured_ml >= max_volume_ml`.
+6. Keep late sync without authorize as `audit_only`, but treat active-lock anomalies without `pending_sync` as terminal reject with audit and stale-lock cleanup.
+7. If sync still fails after authorize (for example, insufficient funds edge or missing pending row), convert the authorize-created row to `sync_status="rejected"` or reject terminally with audit, instead of leaving `pending_sync`/`processing_sync` hanging.
+8. Make controller refuse valve open without `allowed=true` and `max_volume_ml > 0`, and close valve at `poured_ml >= max_volume_ml`.
 
 ## Post-fix verification
 
@@ -68,3 +69,5 @@ Secondary causes:
 4. Prepare visit with sufficient balance.
 5. Confirm authorize returns `max_volume_ml`.
 6. Confirm successful sync updates the existing `pending_sync` row to `synced` and clears the visit lock.
+7. Simulate post-authorize balance loss or missing pending row.
+8. Confirm sync returns terminal `rejected`, writes audit, and clears stale `active_tap_id` / `processing_sync`.

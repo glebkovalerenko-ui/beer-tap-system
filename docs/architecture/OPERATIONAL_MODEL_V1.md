@@ -239,7 +239,7 @@ PourSession
 * ended_at
 * volume_ml
 * cost
-* sync_status: pending_sync / synced / reconciled
+* sync_status: pending_sync / synced / reconciled / rejected
 * authorized_at (DB timestamp)
 * synced_at (DB timestamp)
 * reconciled_at (DB timestamp)
@@ -532,7 +532,7 @@ No-double-charge invariant:
 - If visit is already unlocked and a late sync arrives, backend must not perform a second balance deduction.
 
 Data keys introduced by M4:
-- `pours.sync_status` (`pending_sync | synced | reconciled`)
+- `pours.sync_status` (`pending_sync | synced | reconciled | rejected`)
 - `pours.short_id` (6-8 chars)
 - `pours.duration_ms` (controller-provided duration)
 - `pours.authorized_at` / `pours.synced_at` / `pours.reconciled_at` (DB timestamps)
@@ -618,7 +618,8 @@ Controller behavior:
 Sync behavior:
 - accepted sync must update the authorize-created `pending_sync` row to `synced`;
 - sync without authorize stays `audit_only`;
-- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour.
+- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour; backend rejects it terminally and clears the stale lock;
+- if sync still cannot be charged after authorize, backend converts that row to `rejected`, records explicit audit, and clears the stale lock/tap state instead of leaving `pending_sync`.
 
 Rules:
 - Official timestamps (`*_at`) are written by DB:

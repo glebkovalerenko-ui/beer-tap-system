@@ -392,4 +392,6 @@ Stable deny reasons used by controller/backend:
 - Backend creates `pending_sync` only for successful authorize.
 - `POST /api/sync/pours` must update the existing authorize-created row to `synced`.
 - Sync without authorize remains `audit_only` and must not be treated as controller success.
+- If active lock exists but `pending_sync` is missing, backend returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock.
+- If a previously authorized sync still cannot be charged, backend converts the pending row to `sync_status="rejected"`, writes an explicit audit event, and keeps the outcome terminal for idempotent retries.
 
