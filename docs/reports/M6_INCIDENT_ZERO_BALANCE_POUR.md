@@ -71,3 +71,12 @@ Secondary causes:
 6. Confirm successful sync updates the existing `pending_sync` row to `synced` and clears the visit lock.
 7. Simulate post-authorize balance loss or missing pending row.
 8. Confirm sync returns terminal `rejected`, writes audit, and clears stale `active_tap_id` / `processing_sync`.
+
+## Verify on hardware
+
+1. Open shift, open visit, and set guest balance to `0` or below the cost of `min_start_ml`.
+2. Present card and confirm the valve does not open, controller shows "Недостаточно средств", and card removal is required before retry.
+3. Top up only enough for exactly `N` ml, for example `50-80` ml.
+4. Present card again and confirm authorize succeeds, pouring starts, and the valve closes at `max_volume_ml`.
+5. Confirm admin feed shows the pour, `sync_status=synced`, and the debit matches poured volume within the allowed tolerance.
+6. Trigger a `sync without authorize` case, for example via manual `curl` or forbidden valve-open path if available, and confirm backend returns `audit_only` while controller does not treat it as confirmed success.
