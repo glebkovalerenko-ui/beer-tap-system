@@ -2,6 +2,7 @@ import json
 import uuid
 
 import models
+from decimal import Decimal
 
 
 def _login(client):
@@ -305,3 +306,165 @@ def test_insufficient_funds_deny_writes_audit_event(client):
     assert details["balance_cents"] == 900
     assert details["required_cents"] == 1000
     assert details["min_start_ml"] == 20
+
+
+def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_unlocks(client, db_session):
+    headers, guest_id, visit_id, tap_id = _prepare_active_visit(
+        client,
+        suffix="97006",
+        card_uid="CARD-M6-97006",
+        sell_price_per_liter=500.0,
+        topup_amount=20.0,
+    )
+
+    authorize = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M6-97006", "tap_id": tap_id},
+    )
+    assert authorize.status_code == 200
+
+    pending = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .one()
+    )
+    pending_pour_id = pending.pour_id
+
+    guest = db_session.query(models.Guest).filter(models.Guest.guest_id == uuid.UUID(guest_id)).one()
+    guest.balance = Decimal("0.00")
+    db_session.commit()
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m6-clamp-sync-97006",
+                    "card_uid": "CARD-M6-97006",
+                    "tap_id": tap_id,
+                    "short_id": "L97006",
+                    "duration_ms": 2800,
+                    "volume_ml": 30,
+                    "price_cents": 1500,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    result = sync_resp.json()["results"][0]
+    assert result["status"] == "rejected"
+    assert result["outcome"] == "rejected_insufficient_funds"
+    assert result["reason"] == "insufficient_funds"
+
+    db_session.expire_all()
+    rejected = db_session.query(models.Pour).filter(models.Pour.pour_id == pending_pour_id).one()
+    assert rejected.sync_status == "rejected"
+    assert rejected.client_tx_id == "m6-clamp-sync-97006"
+    assert rejected.short_id == "L97006"
+    assert rejected.volume_ml == 30
+    assert rejected.duration_ms == 2800
+    assert str(rejected.amount_charged) == "0.00"
+    assert rejected.synced_at is None
+
+    visit = client.get("/api/visits/active/by-card/CARD-M6-97006", headers=headers)
+    assert visit.status_code == 200
+    assert visit.json()["active_tap_id"] is None
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "active"
+
+    guest_after = client.get(f"/api/guests/{guest_id}", headers=headers)
+    assert guest_after.status_code == 200
+    assert guest_after.json()["balance"] == "0.00"
+
+    audit_resp = client.get("/api/audit/", headers=headers)
+    assert audit_resp.status_code == 200
+    rejected_entries = [entry for entry in audit_resp.json() if entry["action"] == "sync_rejected_insufficient_funds"]
+    assert rejected_entries
+    details = json.loads(rejected_entries[0]["details"])
+    assert details["tap_id"] == tap_id
+    assert details["client_tx_id"] == "m6-clamp-sync-97006"
+    assert details["short_id"] == "L97006"
+    assert details["volume_ml"] == 30
+    assert details["amount_to_charge"] == "15.00"
+
+
+def test_sync_missing_pending_authorize_rejects_and_clears_lock(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(
+        client,
+        suffix="97007",
+        card_uid="CARD-M6-97007",
+        sell_price_per_liter=500.0,
+        topup_amount=20.0,
+    )
+
+    authorize = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M6-97007", "tap_id": tap_id},
+    )
+    assert authorize.status_code == 200
+
+    (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .delete()
+    )
+    db_session.commit()
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m6-clamp-sync-97007",
+                    "card_uid": "CARD-M6-97007",
+                    "tap_id": tap_id,
+                    "short_id": "L97007",
+                    "duration_ms": 3100,
+                    "volume_ml": 25,
+                    "price_cents": 1250,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    result = sync_resp.json()["results"][0]
+    assert result["status"] == "rejected"
+    assert result["outcome"] == "rejected_missing_pending_authorize"
+    assert result["reason"] == "missing_pending_authorize"
+
+    db_session.expire_all()
+    pours = (
+        db_session.query(models.Pour)
+        .filter(models.Pour.visit_id == uuid.UUID(visit_id))
+        .all()
+    )
+    assert pours == []
+
+    visit = client.get("/api/visits/active/by-card/CARD-M6-97007", headers=headers)
+    assert visit.status_code == 200
+    assert visit.json()["active_tap_id"] is None
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "active"
+
+    audit_resp = client.get("/api/audit/", headers=headers)
+    assert audit_resp.status_code == 200
+    missing_entries = [entry for entry in audit_resp.json() if entry["action"] == "audit_missing_pending"]
+    assert missing_entries
+    details = json.loads(missing_entries[0]["details"])
+    assert details["tap_id"] == tap_id
+    assert details["client_tx_id"] == "m6-clamp-sync-97007"
+    assert details["short_id"] == "L97007"
