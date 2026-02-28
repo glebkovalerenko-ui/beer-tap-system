@@ -90,6 +90,9 @@ class FlowManager:
             if reason_code == "lost_card":
                 logging.warning("Карта помечена как потерянная. Налив запрещен, снимите карту с ридера.")
                 self._enter_card_must_be_removed("lost_card")
+            elif reason_code == "insufficient_funds":
+                logging.warning("Недостаточно средств. Налив запрещен, пополните баланс и снимите карту с ридера.")
+                self._enter_card_must_be_removed("insufficient_funds")
             else:
                 self._enter_card_must_be_removed("authorize_rejected")
             return

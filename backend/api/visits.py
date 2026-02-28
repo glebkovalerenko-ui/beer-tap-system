@@ -68,6 +68,8 @@ def authorize_pour(
         if exc.status_code == status.HTTP_403_FORBIDDEN and isinstance(exc.detail, dict):
             if exc.detail.get("reason") == "lost_card":
                 outcome = "rejected_lost_card"
+            elif exc.detail.get("reason") == "insufficient_funds":
+                outcome = "rejected_insufficient_funds"
         elif exc.status_code == status.HTTP_409_CONFLICT and isinstance(exc.detail, str):
             if exc.detail.startswith("No active visit for Card "):
                 outcome = "rejected_no_active_visit"

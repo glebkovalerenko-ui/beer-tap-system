@@ -226,6 +226,59 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     if not active_visit:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"No active visit for Card {card_uid}.")
 
+    if active_visit.active_tap_id is not None and active_visit.active_tap_id != tap_id:
+        _add_audit_log(
+            db,
+            actor_id=actor_id,
+            action="card_in_use_on_other_tap",
+            target_entity="Visit",
+            target_id=str(active_visit.visit_id),
+            details={
+                "card_uid": card_uid,
+                "requested_tap_id": tap_id,
+                "active_tap_id": active_visit.active_tap_id,
+                "event": "authorize_conflict",
+            },
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Card already in use on Tap {active_visit.active_tap_id}",
+        )
+
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    if not tap or not tap.keg_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tap is not configured with keg")
+
+    beverage = tap.keg.beverage if tap.keg else None
+    guest = active_visit.guest
+    if beverage and guest:
+        minimum_charge = (beverage.sell_price_per_liter / Decimal("1000")).quantize(Decimal("0.0001"))
+        if guest.balance < minimum_charge:
+            _add_audit_log(
+                db,
+                actor_id=actor_id,
+                action="insufficient_funds_denied",
+                target_entity="Visit",
+                target_id=str(active_visit.visit_id),
+                details={
+                    "card_uid": card_uid,
+                    "guest_id": str(active_visit.guest_id),
+                    "visit_id": str(active_visit.visit_id),
+                    "tap_id": tap_id,
+                    "balance": str(guest.balance),
+                    "minimum_charge": str(minimum_charge),
+                },
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "insufficient_funds",
+                    "message": "Insufficient funds: top up guest balance before pouring.",
+                },
+            )
+
     lock_attempt = db.execute(
         update(models.Visit)
         .where(
@@ -258,7 +311,6 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             detail=f"Card already in use on Tap {current_tap_id}",
         )
 
-    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if tap and tap.status == "active":
         tap.status = "processing_sync"
     pending_outcome = _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
