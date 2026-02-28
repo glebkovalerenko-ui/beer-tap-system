@@ -1,0 +1,52 @@
+
+===== docker compose down -v =====
+
+
+===== docker compose up -d postgres =====
+
+ Network beer-tap-system_default  Creating
+ Network beer-tap-system_default  Created
+ Volume beer-tap-system_postgres_data  Creating
+ Volume beer-tap-system_postgres_data  Created
+ Container beer_postgres_db  Creating
+ Container beer_postgres_db  Created
+ Container beer_postgres_db  Starting
+ Container beer_postgres_db  Started
+
+===== alembic upgrade head =====
+
+ Container beer_postgres_db  Running
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_m1_baseline, M1 baseline
+INFO  [alembic.runtime.migration] Running upgrade 0001_m1_baseline -> 0002_m2_visit_model, M2 visit model + invariants
+INFO  [alembic.runtime.migration] Running upgrade 0002_m2_visit_model -> 0003_m35_open_visit_without_card, M3.5 open visit without card
+INFO  [alembic.runtime.migration] Running upgrade 0003_m35_open_visit_without_card -> 0004_m4_offline_sync_reconcile, M4 offline sync + manual reconcile
+INFO  [alembic.runtime.migration] Running upgrade 0004_m4_offline_sync_reconcile -> 0005_m4_system_states_guard, M4 additive guard for system_states table
+INFO  [alembic.runtime.migration] Running upgrade 0005_m4_system_states_guard -> 0006_m5_shift_operational_mode, M5 shift operational mode
+INFO  [alembic.runtime.migration] Running upgrade 0006_m5_shift_operational_mode -> 0007_m5_shift_reports_v1, M5 shift reports v1
+INFO  [alembic.runtime.migration] Running upgrade 0007_m5_shift_reports_v1 -> 0008_m6_lost_cards_registry, M6 simplified lost cards registry
+INFO  [alembic.runtime.migration] Running upgrade 0008_m6_lost_cards_registry -> 0009_m6_db_time_duration, M6 DB-time duration contract for pours
+INFO  [alembic.runtime.migration] Running upgrade 0009_m6_db_time_duration -> 0010_m5_db_time_source, M5 DB time source hardening for core timestamps
+
+===== docker compose up -d beer_backend_api =====
+
+ Container beer_postgres_db  Running
+ Container beer_backend_api  Creating
+ Container beer_backend_api  Created
+ Container beer_postgres_db  Waiting
+ Container beer_postgres_db  Healthy
+ Container beer_backend_api  Starting
+ Container beer_backend_api  Started
+
+===== backend ready =====
+http://localhost:8000/ responded 200
+
+
+===== git/alembic state =====
+
+b2a37ae999979c1d9419d0a8779f95872dec779c
+0010_m5_db_time_source (head)
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+0010_m5_db_time_source (head)

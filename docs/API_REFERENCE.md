@@ -503,12 +503,14 @@ Backward compatibility:
     {
       "client_tx_id": "rpi-001-2023-12-01-001",
       "status": "accepted",
-      "reason": null
+      "outcome": "pending_updated_to_synced",
+      "reason": "Pour processed successfully."
     },
     {
       "client_tx_id": "rpi-001-2023-12-01-002",
-      "status": "accepted",
-      "reason": null
+      "status": "audit_only",
+      "outcome": "audit_missing_pending",
+      "reason": "missing_pending_authorize"
     }
   ]
 }
@@ -516,8 +518,18 @@ Backward compatibility:
 
 **Status Values:**
 - `accepted`: Pour successfully processed
-- `rejected`: Pour failed validation
-- `duplicate`: Pour with same client_tx_id already exists
+- `audit_only`: Backend recorded anomaly/audit event but did not confirm pour as operationally accepted
+- `rejected`: Pour failed validation and was not accepted
+- `conflict`: Hard sync conflict that returns HTTP `409`
+
+**Important outcomes:**
+- `pending_updated_to_synced`: normal authorize -> sync flow completed
+- `duplicate_existing`: idempotent replay of already accepted pour
+- `audit_late_matched`: late sync matched a manual reconcile; no second charge
+- `audit_late_recorded`: late sync without active lock was recorded only for audit
+- `audit_missing_pending`: visit lock exists, but backend has no matching `pending_sync`
+- `rejected_insufficient_funds`: funds were insufficient at sync time; no charge applied
+- `rejected_tap_mismatch`: active visit lock belongs to another tap
 
 ## Data Models
 
@@ -712,8 +724,13 @@ DB-time contract:
 - API responses do not include `server_time`.
 
 Late-sync rule:
-- when lock is already cleared, sync is accepted but must not create another charge;
+- when lock is already cleared, sync returns `status="audit_only"` and must not create another charge;
 - backend emits `late_sync_matched` or `late_sync_mismatch` audit event.
+
+Missing-pending rule:
+- if visit lock exists but there is no matching backend `pending_sync` record, sync returns `status="audit_only"`;
+- outcome is `audit_missing_pending`, reason is `missing_pending_authorize`;
+- backend emits `sync_missing_pending` audit event and does not create a pour row.
 
 ### POST `/api/visits/{visit_id}/reconcile-pour`
 Manual timeout recovery endpoint.
@@ -883,6 +900,15 @@ Response shape:
 - If card is lost: `403 Forbidden`.
 - Error body contains `detail.reason = "lost_card"`.
 - Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.
+
+### Authorization deny for insufficient funds
+
+`POST /api/visits/authorize-pour` performs a balance gate before setting visit lock.
+- If guest balance is below the minimum possible charge for the selected tap (`price_per_ml`): `403 Forbidden`.
+- Error body contains `detail.reason = "insufficient_funds"` and a human-readable `detail.message`.
+- No visit lock is created (`active_tap_id` and `lock_set_at` stay null).
+- No `pending_sync` pour is created.
+- Backend writes audit event `insufficient_funds_denied` with `{card_uid, guest_id, visit_id, tap_id, balance, minimum_charge}`.
 
 ## M5 Time Source Policy Update (2026-02-27)
 

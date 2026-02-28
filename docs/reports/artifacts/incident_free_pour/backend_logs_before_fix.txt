@@ -1,0 +1,57 @@
+beer_backend_api  | INFO:     Will watch for changes in these directories: ['/app']
+beer_backend_api  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+beer_backend_api  | INFO:     Started reloader process [1] using WatchFiles
+beer_backend_api  | INFO:     Started server process [8]
+beer_backend_api  | INFO:     Waiting for application startup.
+beer_backend_api  | 2026-02-28 12:31:34,364 - INFO - root - Application startup complete.
+beer_backend_api  | INFO:     Application startup complete.
+beer_backend_api  | INFO:     172.18.0.1:45238 - "GET / HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/token HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/shifts/open HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:32:30,392 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/shifts/open
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/guests/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:32:31,259 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/guests/
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/guests/8bb41ecc-b4ae-46d4-b411-2f2e25e322c1/cards HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:32:31,427 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/guests/8bb41ecc-b4ae-46d4-b411-2f2e25e322c1/cards
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/visits/open HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:32:31,526 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/visits/open
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/beverages/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:32:31,580 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/beverages/
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/kegs/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:32:31,637 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/kegs/
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/taps/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:32:31,685 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/taps/
+beer_backend_api  | INFO:     172.18.0.1:38576 - "PUT /api/taps/1/keg HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:32:31,749 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: PUT_/api/taps/1/keg
+beer_backend_api  | INFO:     172.18.0.1:38576 - "GET /api/guests/8bb41ecc-b4ae-46d4-b411-2f2e25e322c1 HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:32:31,856 - INFO - m4.runtime.authorize - authorize_pour request_id=incident-free-pour-auth-001 db_identity=postgres:5432/beer_tap_db alembic_revision=0010_m5_db_time_source actor=internal_rpi card_uid=INCIDENT-ZERO-BALANCE-CARD-01 tap_id=1 visit_id=3feb82e0-e1cd-4d77-9676-62ceb3db139f outcome=pending_created
+beer_backend_api  | INFO:     172.18.0.1:38576 - "POST /api/visits/authorize-pour HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:45146 - "POST /api/token HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:45146 - "POST /api/shifts/open HTTP/1.1" 409 Conflict
+beer_backend_api  | INFO:     172.18.0.1:45146 - "POST /api/guests/ HTTP/1.1" 409 Conflict
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/token HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/shifts/open HTTP/1.1" 409 Conflict
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/guests/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:34:15,664 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/guests/
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/guests/2ab42e09-896b-47a3-a1cd-a549b5ac5def/cards HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:34:15,721 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/guests/2ab42e09-896b-47a3-a1cd-a549b5ac5def/cards
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/visits/open HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:34:15,773 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/visits/open
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/beverages/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:34:15,819 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/beverages/
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/kegs/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:34:15,866 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/kegs/
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/taps/ HTTP/1.1" 201 Created
+beer_backend_api  | 2026-02-28 12:34:15,904 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: POST_/api/taps/
+beer_backend_api  | INFO:     172.18.0.1:40026 - "PUT /api/taps/2/keg HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:34:15,950 - INFO - crud.audit_crud - Фоновая запись в лог аудита успешно завершена для действия: PUT_/api/taps/2/keg
+beer_backend_api  | INFO:     172.18.0.1:40026 - "GET /api/guests/2ab42e09-896b-47a3-a1cd-a549b5ac5def HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:34:16,039 - INFO - m4.runtime.authorize - authorize_pour request_id=incident-free-pour-auth-94306 db_identity=postgres:5432/beer_tap_db alembic_revision=0010_m5_db_time_source actor=internal_rpi card_uid=INCIDENT-ZERO-BALANCE-CARD-94306 tap_id=2 visit_id=a330ef27-cba4-4134-a4d6-9c19cab24522 outcome=pending_created
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/visits/authorize-pour HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:40026 - "GET /api/pours/ HTTP/1.1" 200 OK
+beer_backend_api  | 2026-02-28 12:34:16,125 - INFO - m4.runtime.sync - sync_pours_start request_id=incident-free-pour-sync-94306 db_identity=postgres:5432/beer_tap_db alembic_revision=0010_m5_db_time_source batch_size=1
+beer_backend_api  | 2026-02-28 12:34:16,135 - INFO - m4.runtime.sync - sync_pours_result request_id=incident-free-pour-sync-94306 client_tx_id=incident-zero-balance-sync-94306 status=rejected outcome=rejected_insufficient_funds reason=Insufficient funds for Guest 2ab42e09-896b-47a3-a1cd-a549b5ac5def.
+beer_backend_api  | 2026-02-28 12:34:16,135 - INFO - m4.runtime.sync - sync_pours_done request_id=incident-free-pour-sync-94306 db_identity=postgres:5432/beer_tap_db alembic_revision=0010_m5_db_time_source processed=1
+beer_backend_api  | INFO:     172.18.0.1:40026 - "POST /api/sync/pours HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:40026 - "GET /api/pours/ HTTP/1.1" 200 OK
+beer_backend_api  | INFO:     172.18.0.1:40026 - "GET /api/visits/active/by-card/INCIDENT-ZERO-BALANCE-CARD-94306 HTTP/1.1" 200 OK
