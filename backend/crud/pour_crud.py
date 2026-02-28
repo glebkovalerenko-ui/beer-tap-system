@@ -237,7 +237,27 @@ def process_pour(db: Session, pour_data: schemas.PourData):
             f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active/processing_sync'/'in_use' state.",
         )
 
-    price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
+    pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
+    if not pending_pour:
+        _add_audit_log(
+            db,
+            actor_id="internal_rpi",
+            action="audit_missing_pending",
+            target_entity="Visit",
+            target_id=str(active_visit.visit_id),
+            details={
+                "card_uid": card.card_uid,
+                "tap_id": pour_data.tap_id,
+                "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
+                "duration_ms": duration_ms,
+            },
+        )
+        return _result("audit_only", "audit_missing_pending", "missing_pending_authorize")
+
+    price_per_ml = pending_pour.price_per_ml_at_pour
+    if price_per_ml is None or price_per_ml <= 0:
+        price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
     amount_to_charge = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
@@ -248,38 +268,22 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     if keg.current_volume_ml < pour_data.volume_ml:
         return _result("rejected", "rejected_insufficient_keg_volume", f"Insufficient volume in Keg {keg.keg_id}.")
 
-    pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
-    result_outcome = "pending_updated_to_synced"
-    if pending_pour:
-        pending_pour.client_tx_id = pour_data.client_tx_id
-        pending_pour.card_uid = pour_data.card_uid
-        pending_pour.tap_id = pour_data.tap_id
-        pending_pour.visit_id = active_visit.visit_id
-        pending_pour.volume_ml = pour_data.volume_ml
-        pending_pour.poured_at = func.now()
-        pending_pour.amount_charged = amount_to_charge
-        pending_pour.price_per_ml_at_pour = price_per_ml
-        pending_pour.duration_ms = duration_ms
-        pending_pour.guest_id = guest.guest_id
-        pending_pour.keg_id = keg.keg_id
-        pending_pour.sync_status = "synced"
-        pending_pour.synced_at = func.now()
-        pending_pour.reconciled_at = None
-        pending_pour.short_id = pour_data.short_id
-        pending_pour.is_manual_reconcile = False
-    else:
-        result_outcome = "synced_without_pending"
-        _create_pour_record(
-            db=db,
-            pour_data=pour_data,
-            duration_ms=duration_ms,
-            guest_id=guest.guest_id,
-            visit_id=active_visit.visit_id,
-            keg_id=keg.keg_id,
-            amount_charged=amount_to_charge,
-            price_per_ml=price_per_ml,
-            sync_status="synced",
-        )
+    pending_pour.client_tx_id = pour_data.client_tx_id
+    pending_pour.card_uid = pour_data.card_uid
+    pending_pour.tap_id = pour_data.tap_id
+    pending_pour.visit_id = active_visit.visit_id
+    pending_pour.volume_ml = pour_data.volume_ml
+    pending_pour.poured_at = func.now()
+    pending_pour.amount_charged = amount_to_charge
+    pending_pour.price_per_ml_at_pour = price_per_ml
+    pending_pour.duration_ms = duration_ms
+    pending_pour.guest_id = guest.guest_id
+    pending_pour.keg_id = keg.keg_id
+    pending_pour.sync_status = "synced"
+    pending_pour.synced_at = func.now()
+    pending_pour.reconciled_at = None
+    pending_pour.short_id = pour_data.short_id
+    pending_pour.is_manual_reconcile = False
 
     guest.balance -= amount_to_charge
     keg.current_volume_ml -= pour_data.volume_ml
@@ -293,7 +297,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     else:
         tap.status = "active"
 
-    return _result("accepted", result_outcome, "Pour processed successfully.")
+    return _result("accepted", "pending_updated_to_synced", "Pour processed successfully.")
 
 
 def get_pours(db: Session, skip: int = 0, limit: int = 20):

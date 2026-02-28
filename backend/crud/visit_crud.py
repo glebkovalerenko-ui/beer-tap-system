@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
-from crud import lost_card_crud
+from crud import lost_card_crud, pour_policy, system_crud
 
 
 def _is_adult(date_of_birth: date) -> bool:
@@ -38,6 +38,51 @@ def _add_audit_log(
             details=json.dumps(details, ensure_ascii=False),
         )
     )
+
+
+def _authorize_error(
+    status_code: int,
+    *,
+    reason: str,
+    message: str,
+    context: dict | None = None,
+) -> HTTPException:
+    detail = {"reason": reason, "message": message}
+    if context:
+        detail["context"] = context
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+def _build_authorize_context(*, guest: models.Guest, beverage: models.Beverage, policy: dict[str, int]) -> dict[str, int]:
+    balance_cents = pour_policy.balance_to_cents(guest.balance)
+    price_per_ml_cents = pour_policy.sell_price_per_liter_to_price_per_ml_cents(beverage.sell_price_per_liter)
+    max_volume_ml = pour_policy.calculate_max_volume_ml(
+        balance_cents=balance_cents,
+        allowed_overdraft_cents=policy["allowed_overdraft_cents"],
+        price_per_ml_cents=price_per_ml_cents,
+        safety_ml=policy["safety_ml"],
+    )
+    return {
+        "min_start_ml": policy["min_start_ml"],
+        "max_volume_ml": max_volume_ml,
+        "price_per_ml_cents": price_per_ml_cents,
+        "balance_cents": balance_cents,
+        "allowed_overdraft_cents": policy["allowed_overdraft_cents"],
+        "safety_ml": policy["safety_ml"],
+    }
+
+
+def _build_insufficient_funds_detail(context: dict[str, int]) -> dict:
+    detail_context = dict(context)
+    detail_context["required_cents"] = pour_policy.required_cents_for_volume(
+        context["min_start_ml"],
+        context["price_per_ml_cents"],
+    )
+    return {
+        "reason": "insufficient_funds",
+        "message": "Insufficient funds: top up guest balance before pouring.",
+        "context": detail_context,
+    }
 
 
 def get_active_visit_by_guest_id(db: Session, guest_id: uuid.UUID):
@@ -90,9 +135,16 @@ def _get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: in
     )
 
 
-def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_id: int) -> str:
+def _ensure_pending_pour_for_active_visit(
+    db: Session,
+    visit: models.Visit,
+    tap_id: int,
+    *,
+    price_per_ml: Decimal,
+) -> str:
     existing = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
     if existing:
+        existing.price_per_ml_at_pour = price_per_ml
         return "pending_exists"
 
     tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
@@ -110,7 +162,7 @@ def _ensure_pending_pour_for_active_visit(db: Session, visit: models.Visit, tap_
             poured_at=func.now(),
             authorized_at=func.now(),
             amount_charged=Decimal("0.00"),
-            price_per_ml_at_pour=Decimal("0.0000"),
+            price_per_ml_at_pour=price_per_ml,
             duration_ms=None,
             guest_id=visit.guest_id,
             keg_id=tap.keg_id,
@@ -224,7 +276,79 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
 
     active_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
     if not active_visit:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"No active visit for Card {card_uid}.")
+        raise _authorize_error(
+            status.HTTP_409_CONFLICT,
+            reason="no_active_visit",
+            message=f"No active visit for Card {card_uid}.",
+        )
+
+    if active_visit.active_tap_id is not None and active_visit.active_tap_id != tap_id:
+        _add_audit_log(
+            db,
+            actor_id=actor_id,
+            action="card_in_use_on_other_tap",
+            target_entity="Visit",
+            target_id=str(active_visit.visit_id),
+            details={
+                "card_uid": card_uid,
+                "requested_tap_id": tap_id,
+                "active_tap_id": active_visit.active_tap_id,
+                "event": "authorize_conflict",
+            },
+        )
+        db.commit()
+        raise _authorize_error(
+            status.HTTP_409_CONFLICT,
+            reason="card_in_use_on_other_tap",
+            message=f"Card already in use on Tap {active_visit.active_tap_id}",
+            context={"active_tap_id": active_visit.active_tap_id, "requested_tap_id": tap_id},
+        )
+
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    if not tap or not tap.keg_id:
+        raise _authorize_error(
+            status.HTTP_409_CONFLICT,
+            reason="tap_not_configured",
+            message="Tap is not configured with keg",
+            context={"tap_id": tap_id},
+        )
+
+    beverage = tap.keg.beverage if tap.keg else None
+    guest = active_visit.guest
+    if not beverage or not guest:
+        raise _authorize_error(
+            status.HTTP_409_CONFLICT,
+            reason="tap_not_configured",
+            message="Tap is not configured with beverage pricing",
+            context={"tap_id": tap_id},
+        )
+
+    policy = system_crud.get_pour_policy(db)
+    authorize_context = _build_authorize_context(guest=guest, beverage=beverage, policy=policy)
+    if authorize_context["max_volume_ml"] < authorize_context["min_start_ml"]:
+        detail = _build_insufficient_funds_detail(authorize_context)
+        _add_audit_log(
+            db,
+            actor_id=actor_id,
+            action="insufficient_funds_blocked",
+            target_entity="Visit",
+            target_id=str(active_visit.visit_id),
+            details={
+                "card_uid": card_uid,
+                "guest_id": str(active_visit.guest_id),
+                "visit_id": str(active_visit.visit_id),
+                "tap_id": tap_id,
+                "balance_cents": authorize_context["balance_cents"],
+                "required_cents": detail["context"]["required_cents"],
+                "min_start_ml": authorize_context["min_start_ml"],
+                "max_volume_ml": authorize_context["max_volume_ml"],
+            },
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+        )
 
     lock_attempt = db.execute(
         update(models.Visit)
@@ -253,19 +377,26 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             },
         )
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Card already in use on Tap {current_tap_id}",
+        raise _authorize_error(
+            status.HTTP_409_CONFLICT,
+            reason="card_in_use_on_other_tap",
+            message=f"Card already in use on Tap {current_tap_id}",
+            context={"active_tap_id": current_tap_id, "requested_tap_id": tap_id},
         )
 
-    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if tap and tap.status == "active":
         tap.status = "processing_sync"
-    pending_outcome = _ensure_pending_pour_for_active_visit(db=db, visit=active_visit, tap_id=tap_id)
+    price_per_ml = pour_policy.sell_price_per_liter_to_price_per_ml(beverage.sell_price_per_liter)
+    pending_outcome = _ensure_pending_pour_for_active_visit(
+        db=db,
+        visit=active_visit,
+        tap_id=tap_id,
+        price_per_ml=price_per_ml,
+    )
 
     db.commit()
     db.refresh(active_visit)
-    return active_visit, pending_outcome
+    return active_visit, pending_outcome, authorize_context
 
 
 def report_lost_card_from_visit(
