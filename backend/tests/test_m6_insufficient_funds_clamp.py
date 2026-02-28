@@ -165,6 +165,56 @@ def test_authorize_returns_max_volume_with_floor_and_safety_applied(client):
     assert body["lock_set_at"] is not None
 
 
+def test_authorize_uses_runtime_min_start_ml_from_system_states(client, db_session):
+    headers, guest_id, _, tap_id = _prepare_active_visit(
+        client,
+        suffix="97008",
+        card_uid="CARD-M6-97008",
+        sell_price_per_liter=500.0,
+        topup_amount=24.0,
+    )
+
+    runtime_state = (
+        db_session.query(models.SystemState)
+        .filter(models.SystemState.key == "min_start_ml")
+        .one_or_none()
+    )
+    if runtime_state is None:
+        db_session.add(models.SystemState(key="min_start_ml", value="50"))
+    else:
+        runtime_state.value = "50"
+    db_session.commit()
+
+    denied = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M6-97008", "tap_id": tap_id},
+    )
+    assert denied.status_code == 403
+    detail = denied.json()["detail"]
+    assert detail["reason"] == "insufficient_funds"
+    assert detail["context"]["min_start_ml"] == 50
+    assert detail["context"]["required_cents"] == 2500
+    assert detail["context"]["max_volume_ml"] == 46
+
+    topup = client.post(
+        f"/api/guests/{guest_id}/topup",
+        headers=headers,
+        json={"amount": 3.0, "payment_method": "cash"},
+    )
+    assert topup.status_code == 200
+
+    allowed = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M6-97008", "tap_id": tap_id},
+    )
+    assert allowed.status_code == 200
+    body = allowed.json()
+    assert body["min_start_ml"] == 50
+    assert body["max_volume_ml"] == 52
+
+
 def test_pending_sync_created_only_when_authorize_allowed(client, db_session):
     headers, guest_id, visit_id, tap_id = _prepare_active_visit(
         client,
