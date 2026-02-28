@@ -348,3 +348,48 @@ Behavior:
 - `late_sync_mismatch`
 - `sync_conflict`
 
+## M6 Authorize Clamp Addendum (2026-02-28)
+
+### Controller -> backend authorize flow
+
+Controller must call `POST /api/visits/authorize-pour` before any valve open.
+
+Allow contract:
+- `allowed`
+- `reason`
+- `min_start_ml`
+- `max_volume_ml`
+- `price_per_ml_cents`
+- `balance_cents`
+- `allowed_overdraft_cents`
+- `safety_ml`
+- `lock_set_at`
+- `visit`
+
+Deny contract:
+- HTTP status stays authoritative (`403` or `409`);
+- body uses `detail.reason` and `detail.message`;
+- `detail.context` is required for `reason="insufficient_funds"`.
+
+Stable deny reasons used by controller/backend:
+- `insufficient_funds`
+- `lost_card`
+- `card_in_use_on_other_tap`
+- `no_active_visit`
+- `shift_closed`
+- `tap_not_configured`
+
+### Required controller behavior
+
+- Valve must not open unless `allowed=true` and `max_volume_ml > 0`.
+- On `reason="insufficient_funds"`, controller shows a Russian operator message, does not open the valve, and enters `CARD_MUST_BE_REMOVED`.
+- During pouring, controller closes the valve when measured `poured_ml >= max_volume_ml`.
+- Controller must keep using local `duration_ms` for sync payload; backend/DB remains the official timestamp source.
+
+### Required backend behavior
+
+- `min_start_ml`, `safety_ml`, and `allowed_overdraft_cents` come from `system_states`.
+- Backend creates `pending_sync` only for successful authorize.
+- `POST /api/sync/pours` must update the existing authorize-created row to `synced`.
+- Sync without authorize remains `audit_only` and must not be treated as controller success.
+

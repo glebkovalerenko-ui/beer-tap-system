@@ -568,3 +568,10 @@ Report windows:
   - `0009_m6_db_time_duration`
   - `0010_m5_db_time_source`
 - This order is intentional: M6 introduces lost-card and pour event-time schema, then M5 DB-time hardening finalizes defaults/backfills as the latest head.
+
+## M6 Safety Rule Update (2026-02-28)
+
+Pilot mandatory safety rule:
+- insufficient funds clamp is enforced before valve open and during pouring;
+- backend owns `min_start_ml`, `safety_ml`, and `allowed_overdraft_cents` via `system_states`;
+- controller must stop at `max_volume_ml` returned by authorize and must not rely on an extra server-time ping.
