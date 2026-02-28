@@ -110,11 +110,18 @@ def sync_pours(sync_data: schemas.SyncRequest, request: Request, db: Session = D
         for pour_data in sync_data.pours:
             existing_pour = pour_crud.get_pour_by_client_tx_id(db, client_tx_id=pour_data.client_tx_id)
             if existing_pour:
+                duplicate_status = "accepted"
+                duplicate_outcome = "duplicate_existing"
+                duplicate_reason = "duplicate"
+                if existing_pour.sync_status == "rejected":
+                    duplicate_status = "rejected"
+                    duplicate_outcome = "duplicate_existing_rejected"
+                    duplicate_reason = "duplicate_existing_rejected"
                 duplicate_result = schemas.SyncResult(
                     client_tx_id=pour_data.client_tx_id,
-                    status="accepted",
-                    outcome="duplicate_existing",
-                    reason="duplicate",
+                    status=duplicate_status,
+                    outcome=duplicate_outcome,
+                    reason=duplicate_reason,
                 )
                 response_results.append(duplicate_result)
                 logger.info(
