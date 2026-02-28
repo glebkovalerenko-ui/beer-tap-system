@@ -56,6 +56,13 @@ class SyncManager:
                     "reason": "authorized",
                     "reason_code": "authorized",
                     "status_code": response.status_code,
+                    "min_start_ml": int(body.get("min_start_ml") or 0),
+                    "max_volume_ml": int(body.get("max_volume_ml") or 0),
+                    "price_per_ml_cents": int(body.get("price_per_ml_cents") or 0),
+                    "balance_cents": int(body.get("balance_cents") or 0),
+                    "allowed_overdraft_cents": int(body.get("allowed_overdraft_cents") or 0),
+                    "safety_ml": int(body.get("safety_ml") or 0),
+                    "lock_set_at": body.get("lock_set_at"),
                 }
             return {
                 "allowed": False,
@@ -71,14 +78,18 @@ class SyncManager:
             if isinstance(detail_payload, dict):
                 reason_code = detail_payload.get("reason", reason_code)
                 detail = detail_payload.get("message") or detail_payload.get("detail") or reason_code
+                context = detail_payload.get("context") or {}
             elif isinstance(detail_payload, str):
                 detail = detail_payload
+                context = {}
                 if "lost_card" in detail_payload:
                     reason_code = "lost_card"
             else:
                 detail = str(detail_payload)
+                context = {}
         except ValueError:
             detail = (response.text or "").strip()
+            context = {}
 
         detail = detail or f"http_{response.status_code}"
         return {
@@ -86,6 +97,12 @@ class SyncManager:
             "reason": detail,
             "reason_code": reason_code,
             "status_code": response.status_code,
+            "min_start_ml": int(context.get("min_start_ml") or 0),
+            "max_volume_ml": int(context.get("max_volume_ml") or 0),
+            "price_per_ml_cents": int(context.get("price_per_ml_cents") or 0),
+            "balance_cents": int(context.get("balance_cents") or 0),
+            "allowed_overdraft_cents": int(context.get("allowed_overdraft_cents") or 0),
+            "safety_ml": int(context.get("safety_ml") or 0),
         }
 
     def sync_cycle(self, db_handler):
