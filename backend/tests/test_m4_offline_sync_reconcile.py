@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 import models
 
@@ -157,7 +158,7 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     pending = (
         db_session.query(models.Pour)
         .filter(
-            models.Pour.visit_id == visit_id,
+            models.Pour.visit_id == uuid.UUID(visit_id),
             models.Pour.tap_id == tap_id,
             models.Pour.sync_status == "pending_sync",
         )
@@ -200,7 +201,7 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     pending_after = (
         db_session.query(models.Pour)
         .filter(
-            models.Pour.visit_id == visit_id,
+            models.Pour.visit_id == uuid.UUID(visit_id),
             models.Pour.tap_id == tap_id,
             models.Pour.sync_status == "pending_sync",
         )
@@ -246,7 +247,7 @@ def test_sync_without_authorize_returns_audit_only_and_does_not_write_pour(clien
     db_session.expire_all()
     late_pours = (
         db_session.query(models.Pour)
-        .filter(models.Pour.visit_id == visit_id, models.Pour.short_id == "F62006")
+        .filter(models.Pour.visit_id == uuid.UUID(visit_id), models.Pour.short_id == "F62006")
         .count()
     )
     assert late_pours == 0
@@ -285,7 +286,7 @@ def test_legacy_start_end_sync_derives_duration_ms(client, db_session):
     db_session.expire_all()
     resolved = (
         db_session.query(models.Pour)
-        .filter(models.Pour.visit_id == visit_id, models.Pour.short_id == "G72007")
+        .filter(models.Pour.visit_id == uuid.UUID(visit_id), models.Pour.short_id == "G72007")
         .one()
     )
     assert resolved.sync_status == "synced"
