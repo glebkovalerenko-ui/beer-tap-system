@@ -223,6 +223,13 @@ class VisitPourAuthorizeResponse(BaseModel):
     allowed: bool
     visit: Optional[Visit] = None
     reason: Optional[str] = None
+    min_start_ml: int = 20
+    max_volume_ml: int = 0
+    price_per_ml_cents: int = 0
+    balance_cents: int = 0
+    allowed_overdraft_cents: int = 0
+    safety_ml: int = 2
+    lock_set_at: Optional[datetime] = None
 
 
 class LostCardCreateRequest(BaseModel):
