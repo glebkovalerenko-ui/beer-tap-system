@@ -266,6 +266,7 @@ thread::sleep(Duration::from_millis(500));
 Следующие публичные эндпоинты требуют заголовок `X-Internal-Token` для аутентификации RPi контроллеров:
 
 - `POST /api/controllers/register` - Регистрация контроллера
+- `POST /api/visits/authorize-pour` - Backend ALLOW gate before valve open
 - `POST /api/sync/pours` - Синхронизация наливов
 
 ### Формат заголовка
@@ -392,6 +393,27 @@ Stable deny reasons used by controller/backend:
 - Backend creates `pending_sync` only for successful authorize.
 - `POST /api/sync/pours` must update the existing authorize-created row to `synced`.
 - Sync without authorize remains `audit_only` and must not be treated as controller success.
-- If active lock exists but `pending_sync` is missing, backend returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock.
+- If active lock exists but `pending_sync` is missing, backend returns `audit_only` with `outcome="audit_missing_pending"`, writes `sync_missing_pending`, and clears the stale lock.
 - If a previously authorized sync still cannot be charged, backend converts the pending row to `sync_status="rejected"`, writes an explicit audit event, and keeps the outcome terminal for idempotent retries.
+
+## Incident Addendum: Free Pour Zero Balance (2026-02-28)
+
+### `POST /api/visits/authorize-pour`
+- Success contract for controller valve open is `200` with `allowed=true`.
+- Insufficient funds is a hard deny:
+  - HTTP `403`
+  - `detail.reason = "insufficient_funds"`
+  - `detail.message` contains operator-readable text
+- Deny path must not set `active_tap_id`, `lock_set_at`, or create `pending_sync`.
+
+### `POST /api/sync/pours` result semantics
+- `accepted`: backend confirmed and wrote operational pour state.
+- `audit_only`: backend recorded anomaly/audit trail, but did not accept pour as confirmed operational state.
+- `rejected`: backend rejected the pour; no operational acceptance.
+- `conflict`: backend detected a hard state conflict and returns HTTP `409`.
+
+### Required anomaly outcomes
+- Missing active lock but late sync: `audit_only` with `audit_late_matched` or `audit_late_recorded`
+- Active lock exists but `pending_sync` is missing: `audit_only` with `audit_missing_pending`
+- Sync insufficient funds: `rejected` with `rejected_insufficient_funds`
 

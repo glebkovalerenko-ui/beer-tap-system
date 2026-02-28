@@ -1,0 +1,93 @@
+
+>>> Post http://localhost:8000/api/token
+Form: password=fake_password&username=admin
+<<< HTTP 200
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4","token_type":"bearer"}
+
+>>> Post http://localhost:8000/api/guests/
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "patronymic":  "Fixed",
+    "first_name":  "Balance",
+    "date_of_birth":  "1990-01-15",
+    "id_document":  "FIX-50684",
+    "phone_number":  "+188850684",
+    "last_name":  "Zero"
+}
+<<< HTTP 201
+{"last_name":"Zero","first_name":"Balance","patronymic":"Fixed","phone_number":"+188850684","date_of_birth":"1990-01-15","id_document":"FIX-50684","guest_id":"fa77c399-9095-442c-a8dd-81b2f7cf7166","balance":"0.00","is_active":true,"created_at":"2026-02-28T12:41:24.363868Z","updated_at":"2026-02-28T12:41:24.363868Z","cards":[],"transactions":[],"pours":[]}
+
+>>> Post http://localhost:8000/api/guests/fa77c399-9095-442c-a8dd-81b2f7cf7166/cards
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "card_uid":  "FIXED-ZERO-BALANCE-CARD-50684"
+}
+<<< HTTP 200
+{"last_name":"Zero","first_name":"Balance","patronymic":"Fixed","phone_number":"+188850684","date_of_birth":"1990-01-15","id_document":"FIX-50684","guest_id":"fa77c399-9095-442c-a8dd-81b2f7cf7166","balance":"0.00","is_active":true,"created_at":"2026-02-28T12:41:24.363868Z","updated_at":"2026-02-28T12:41:24.363868Z","cards":[{"card_uid":"FIXED-ZERO-BALANCE-CARD-50684","guest_id":"fa77c399-9095-442c-a8dd-81b2f7cf7166","status":"inactive","created_at":"2026-02-28T12:41:24.459046Z"}],"transactions":[],"pours":[]}
+
+>>> Post http://localhost:8000/api/visits/open
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "guest_id":  "fa77c399-9095-442c-a8dd-81b2f7cf7166",
+    "card_uid":  "FIXED-ZERO-BALANCE-CARD-50684"
+}
+<<< HTTP 200
+{"visit_id":"f5000fd7-4a6d-4620-8bed-a27f81ad0e88","guest_id":"fa77c399-9095-442c-a8dd-81b2f7cf7166","card_uid":"FIXED-ZERO-BALANCE-CARD-50684","status":"active","opened_at":"2026-02-28T12:41:24.533975Z","closed_at":null,"closed_reason":null,"active_tap_id":null,"lock_set_at":null,"card_returned":true}
+
+>>> Post http://localhost:8000/api/beverages/
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "name":  "Fixed Beer 50684",
+    "sell_price_per_liter":  500
+}
+<<< HTTP 201
+{"name":"Fixed Beer 50684","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"80810232-a4c0-46b0-811c-1743859b0808"}
+
+>>> Post http://localhost:8000/api/kegs/
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "beverage_id":  "80810232-a4c0-46b0-811c-1743859b0808",
+    "initial_volume_ml":  30000,
+    "purchase_price":  1000
+}
+<<< HTTP 201
+{"initial_volume_ml":30000,"purchase_price":"1000.00","keg_id":"0ecbb728-d725-4e44-a338-95354db0a942","beverage_id":"80810232-a4c0-46b0-811c-1743859b0808","current_volume_ml":30000,"status":"full","tapped_at":null,"finished_at":null,"created_at":"2026-02-28T12:41:24.674900Z","beverage":{"name":"Fixed Beer 50684","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"80810232-a4c0-46b0-811c-1743859b0808"}}
+
+>>> Post http://localhost:8000/api/taps/
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "display_name":  "Fixed Tap 50684"
+}
+<<< HTTP 201
+{"display_name":"Fixed Tap 50684","tap_id":3,"status":"locked","keg_id":null,"keg":null}
+
+>>> Put http://localhost:8000/api/taps/3/keg
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+Body:
+{
+    "keg_id":  "0ecbb728-d725-4e44-a338-95354db0a942"
+}
+<<< HTTP 200
+{"display_name":"Fixed Tap 50684","tap_id":3,"status":"active","keg_id":"0ecbb728-d725-4e44-a338-95354db0a942","keg":{"initial_volume_ml":30000,"purchase_price":"1000.00","keg_id":"0ecbb728-d725-4e44-a338-95354db0a942","beverage_id":"80810232-a4c0-46b0-811c-1743859b0808","current_volume_ml":30000,"status":"in_use","tapped_at":"2026-02-28T12:41:24.825955Z","finished_at":null,"created_at":"2026-02-28T12:41:24.674900Z","beverage":{"name":"Fixed Beer 50684","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"80810232-a4c0-46b0-811c-1743859b0808"}}}
+
+>>> Post http://localhost:8000/api/visits/authorize-pour
+Headers: X-Internal-Token: replace-with-internal-service-token; X-Request-Id: incident-free-pour-postfix-50684
+Body:
+{
+    "card_uid":  "FIXED-ZERO-BALANCE-CARD-50684",
+    "tap_id":  3
+}
+<<< HTTP 403
+
+>>> Get http://localhost:8000/api/pours/
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc3MjI4NDI4NH0.PUViQVwXZMKOtsWTEibgSZMH5h6B9klNYpSrgcxJxZ4
+<<< HTTP 200
+[{"pour_id":"f840a0ad-bb25-4470-8e15-fb02ffb37741","volume_ml":0,"amount_charged":"0.00","duration_ms":null,"sync_status":"pending_sync","short_id":null,"is_manual_reconcile":false,"poured_at":"2026-02-28T12:34:16.020990Z","authorized_at":"2026-02-28T12:34:16.020990Z","synced_at":null,"reconciled_at":null,"ended_at":null,"started_at":null,"guest":{"guest_id":"2ab42e09-896b-47a3-a1cd-a549b5ac5def","last_name":"Zero","first_name":"Balance"},"beverage":{"name":"Incident Beer Zero Balance 94306","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"fc7b76da-78ee-456c-85f1-ea7cae158d6e"},"tap":{"display_name":"Incident Tap Zero Balance 94306","tap_id":2,"status":"processing_sync","keg_id":"58c1601f-13c8-4a48-b309-d8628bf3dbf5","keg":{"initial_volume_ml":30000,"purchase_price":"1000.00","keg_id":"58c1601f-13c8-4a48-b309-d8628bf3dbf5","beverage_id":"fc7b76da-78ee-456c-85f1-ea7cae158d6e","current_volume_ml":30000,"status":"in_use","tapped_at":"2026-02-28T12:34:15.936239Z","finished_at":null,"created_at":"2026-02-28T12:34:15.854805Z","beverage":{"name":"Incident Beer Zero Balance 94306","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"fc7b76da-78ee-456c-85f1-ea7cae158d6e"}}}},{"pour_id":"7a8a9e98-d86a-4c63-8c2a-a0f68411002f","volume_ml":0,"amount_charged":"0.00","duration_ms":null,"sync_status":"pending_sync","short_id":null,"is_manual_reconcile":false,"poured_at":"2026-02-28T12:32:31.823421Z","authorized_at":"2026-02-28T12:32:31.823421Z","synced_at":null,"reconciled_at":null,"ended_at":null,"started_at":null,"guest":{"guest_id":"8bb41ecc-b4ae-46d4-b411-2f2e25e322c1","last_name":"Zero","first_name":"Balance"},"beverage":{"name":"Incident Beer Zero Balance","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"52c1ab5c-f85e-4ee7-9008-9cb2093b93b5"},"tap":{"display_name":"Incident Tap Zero Balance","tap_id":1,"status":"processing_sync","keg_id":"bc02770b-a20a-47b1-a826-f15c55dc24a1","keg":{"initial_volume_ml":30000,"purchase_price":"1000.00","keg_id":"bc02770b-a20a-47b1-a826-f15c55dc24a1","beverage_id":"52c1ab5c-f85e-4ee7-9008-9cb2093b93b5","current_volume_ml":30000,"status":"in_use","tapped_at":"2026-02-28T12:32:31.723768Z","finished_at":null,"created_at":"2026-02-28T12:32:31.618325Z","beverage":{"name":"Incident Beer Zero Balance","brewery":null,"style":null,"abv":null,"sell_price_per_liter":"500.00","beverage_id":"52c1ab5c-f85e-4ee7-9008-9cb2093b93b5"}}}}]
+
+SUMMARY: suffix=50684 guest_id=fa77c399-9095-442c-a8dd-81b2f7cf7166 visit_id=f5000fd7-4a6d-4620-8bed-a27f81ad0e88 tap_id=3 card_uid=FIXED-ZERO-BALANCE-CARD-50684

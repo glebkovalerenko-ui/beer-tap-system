@@ -522,6 +522,7 @@ Operational source of truth:
 
 State transitions:
 1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=DB now`, tap domain shown as `processing_sync`; backend creates `pending_sync` row with `authorized_at=DB now`.
+1a. `authorize-pour` denied with `reason=insufficient_funds` (or `lost_card`) -> backend returns `403`, does not set lock, and does not create `pending_sync`.
 2. Normal sync accepted (`/api/sync/pours`) -> pour transitions to `sync_status='synced'`, `synced_at=DB now`, lock cleared.
 3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour transitions to `sync_status='reconciled'`, `reconciled_at=DB now`, lock cleared.
 4. Late sync after manual reconcile:
