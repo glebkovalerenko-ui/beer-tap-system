@@ -33,7 +33,7 @@ python scripts/encoding_guard.py --all
 ```
 
 Expected:
-- `5 passed`
+- `6 passed`
 - `[encoding_guard] OK: no UTF-8/mojibake/bidi-control issues found.`
 
 ## Hardware Verification Checklist
