@@ -104,7 +104,7 @@ def test_flow_manager_shows_progress_and_accumulates_volume():
         volume_deltas_liters=[0.015, 0.02],
     )
     db_handler = FakeDbHandler()
-    sync_manager = FakeSyncManager({"allowed": True})
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
     manager = FlowManager(
         hardware,
         db_handler,
@@ -122,8 +122,8 @@ def test_flow_manager_shows_progress_and_accumulates_volume():
     manager.process()
 
     output_lines = buffer.getvalue().splitlines()
-    assert "Pouring: 15 ml | est. cost: 22 cents" in output_lines
-    assert "Pouring: 35 ml | est. cost: 52 cents" in output_lines
+    assert "Pouring: 15 ml / 100 ml | est. cost: 22 cents" in output_lines
+    assert "Pouring: 35 ml / 100 ml | est. cost: 52 cents" in output_lines
     assert output_lines[-1] == "Session finished. Poured: 35 ml"
     assert db_handler.pours[0]["volume_ml"] == 35
     assert db_handler.pours[0]["price_cents"] == 52

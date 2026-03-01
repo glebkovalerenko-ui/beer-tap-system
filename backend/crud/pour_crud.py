@@ -46,6 +46,66 @@ def _add_audit_log(
     )
 
 
+def _clear_active_visit_lock(*, active_visit: models.Visit, tap: models.Tap | None, keg: models.Keg | None) -> None:
+    active_visit.active_tap_id = None
+    active_visit.lock_set_at = None
+
+    if tap is None:
+        return
+
+    if keg is not None and keg.current_volume_ml <= 0:
+        keg.status = "empty"
+        tap.status = "empty"
+        keg.finished_at = func.now()
+        return
+
+    if tap.status == "processing_sync":
+        tap.status = "active"
+
+
+def _finalize_rejected_pending_pour(
+    db: Session,
+    *,
+    pending_pour: models.Pour,
+    active_visit: models.Visit,
+    tap: models.Tap,
+    keg: models.Keg,
+    pour_data: schemas.PourData,
+    duration_ms: int,
+    actor_id: str,
+    audit_action: str,
+    audit_details: dict,
+    reason: str,
+    outcome: str,
+) -> dict:
+    pending_pour.client_tx_id = pour_data.client_tx_id
+    pending_pour.card_uid = pour_data.card_uid
+    pending_pour.tap_id = pour_data.tap_id
+    pending_pour.visit_id = active_visit.visit_id
+    pending_pour.volume_ml = pour_data.volume_ml
+    pending_pour.poured_at = func.now()
+    pending_pour.amount_charged = Decimal("0.00")
+    pending_pour.duration_ms = duration_ms
+    pending_pour.guest_id = active_visit.guest_id
+    pending_pour.keg_id = keg.keg_id
+    pending_pour.sync_status = "rejected"
+    pending_pour.synced_at = None
+    pending_pour.reconciled_at = None
+    pending_pour.short_id = pour_data.short_id
+    pending_pour.is_manual_reconcile = False
+
+    _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
+    _add_audit_log(
+        db,
+        actor_id=actor_id,
+        action=audit_action,
+        target_entity="Visit",
+        target_id=str(active_visit.visit_id),
+        details=audit_details,
+    )
+    return _result("rejected", outcome, reason)
+
+
 def _resolve_duration_ms(pour_data: schemas.PourData) -> int | None:
     if pour_data.duration_ms is not None:
         return int(pour_data.duration_ms)
@@ -237,63 +297,104 @@ def process_pour(db: Session, pour_data: schemas.PourData):
             f"Tap {tap.tap_id} or Keg {keg.keg_id} is not in 'active/processing_sync'/'in_use' state.",
         )
 
-    price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
+    pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
+    if not pending_pour:
+        _add_audit_log(
+            db,
+            actor_id="internal_rpi",
+            action="audit_missing_pending",
+            target_entity="Visit",
+            target_id=str(active_visit.visit_id),
+            details={
+                "card_uid": card.card_uid,
+                "tap_id": pour_data.tap_id,
+                "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
+                "duration_ms": duration_ms,
+            },
+        )
+        _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
+        return _result("rejected", "rejected_missing_pending_authorize", "missing_pending_authorize")
+
+    price_per_ml = pending_pour.price_per_ml_at_pour
+    if price_per_ml is None or price_per_ml <= 0:
+        price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
     amount_to_charge = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
     if guest.balance < amount_to_charge:
-        return _result("rejected", "rejected_insufficient_funds", f"Insufficient funds for Guest {guest.guest_id}.")
-
-    if keg.current_volume_ml < pour_data.volume_ml:
-        return _result("rejected", "rejected_insufficient_keg_volume", f"Insufficient volume in Keg {keg.keg_id}.")
-
-    pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
-    result_outcome = "pending_updated_to_synced"
-    if pending_pour:
-        pending_pour.client_tx_id = pour_data.client_tx_id
-        pending_pour.card_uid = pour_data.card_uid
-        pending_pour.tap_id = pour_data.tap_id
-        pending_pour.visit_id = active_visit.visit_id
-        pending_pour.volume_ml = pour_data.volume_ml
-        pending_pour.poured_at = func.now()
-        pending_pour.amount_charged = amount_to_charge
-        pending_pour.price_per_ml_at_pour = price_per_ml
-        pending_pour.duration_ms = duration_ms
-        pending_pour.guest_id = guest.guest_id
-        pending_pour.keg_id = keg.keg_id
-        pending_pour.sync_status = "synced"
-        pending_pour.synced_at = func.now()
-        pending_pour.reconciled_at = None
-        pending_pour.short_id = pour_data.short_id
-        pending_pour.is_manual_reconcile = False
-    else:
-        result_outcome = "synced_without_pending"
-        _create_pour_record(
-            db=db,
+        return _finalize_rejected_pending_pour(
+            db,
+            pending_pour=pending_pour,
+            active_visit=active_visit,
+            tap=tap,
+            keg=keg,
             pour_data=pour_data,
             duration_ms=duration_ms,
-            guest_id=guest.guest_id,
-            visit_id=active_visit.visit_id,
-            keg_id=keg.keg_id,
-            amount_charged=amount_to_charge,
-            price_per_ml=price_per_ml,
-            sync_status="synced",
+            actor_id="internal_rpi",
+            audit_action="sync_rejected_insufficient_funds",
+            audit_details={
+                "card_uid": card.card_uid,
+                "guest_id": str(guest.guest_id),
+                "tap_id": pour_data.tap_id,
+                "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
+                "volume_ml": pour_data.volume_ml,
+                "balance_before_charge": str(guest.balance),
+                "amount_to_charge": str(amount_to_charge),
+            },
+            reason="insufficient_funds",
+            outcome="rejected_insufficient_funds",
         )
+
+    if keg.current_volume_ml < pour_data.volume_ml:
+        return _finalize_rejected_pending_pour(
+            db,
+            pending_pour=pending_pour,
+            active_visit=active_visit,
+            tap=tap,
+            keg=keg,
+            pour_data=pour_data,
+            duration_ms=duration_ms,
+            actor_id="internal_rpi",
+            audit_action="sync_rejected_insufficient_keg_volume",
+            audit_details={
+                "card_uid": card.card_uid,
+                "guest_id": str(guest.guest_id),
+                "tap_id": pour_data.tap_id,
+                "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
+                "volume_ml": pour_data.volume_ml,
+                "keg_id": str(keg.keg_id),
+                "keg_current_volume_ml": keg.current_volume_ml,
+            },
+            reason="insufficient_keg_volume",
+            outcome="rejected_insufficient_keg_volume",
+        )
+
+    pending_pour.client_tx_id = pour_data.client_tx_id
+    pending_pour.card_uid = pour_data.card_uid
+    pending_pour.tap_id = pour_data.tap_id
+    pending_pour.visit_id = active_visit.visit_id
+    pending_pour.volume_ml = pour_data.volume_ml
+    pending_pour.poured_at = func.now()
+    pending_pour.amount_charged = amount_to_charge
+    pending_pour.price_per_ml_at_pour = price_per_ml
+    pending_pour.duration_ms = duration_ms
+    pending_pour.guest_id = guest.guest_id
+    pending_pour.keg_id = keg.keg_id
+    pending_pour.sync_status = "synced"
+    pending_pour.synced_at = func.now()
+    pending_pour.reconciled_at = None
+    pending_pour.short_id = pour_data.short_id
+    pending_pour.is_manual_reconcile = False
 
     guest.balance -= amount_to_charge
     keg.current_volume_ml -= pour_data.volume_ml
-    active_visit.active_tap_id = None
-    active_visit.lock_set_at = None
+    _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
 
-    if keg.current_volume_ml <= 0:
-        keg.status = "empty"
-        tap.status = "empty"
-        keg.finished_at = func.now()
-    else:
-        tap.status = "active"
-
-    return _result("accepted", result_outcome, "Pour processed successfully.")
+    return _result("accepted", "pending_updated_to_synced", "Pour processed successfully.")
 
 
 def get_pours(db: Session, skip: int = 0, limit: int = 20):

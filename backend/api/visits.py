@@ -50,14 +50,34 @@ def authorize_pour(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    shift_crud.ensure_open_shift(db)
     request_id = get_request_id(request)
     db_identity = get_db_identity(db)
     alembic_revision = get_alembic_revision(db)
     actor_id = current_user["username"] if current_user else "operator"
 
     try:
-        visit, pending_outcome = visit_crud.authorize_pour_lock(
+        shift_crud.ensure_open_shift(db)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_403_FORBIDDEN and exc.detail == "Shift is closed":
+            outcome = "rejected_shift_closed"
+            detail = {"reason": "shift_closed", "message": "Shift is closed"}
+            logger.warning(
+                "authorize_pour request_id=%s db_identity=%s alembic_revision=%s actor=%s card_uid=%s tap_id=%s outcome=%s status_code=%s detail=%s",
+                request_id,
+                db_identity,
+                alembic_revision,
+                actor_id,
+                payload.card_uid,
+                payload.tap_id,
+                outcome,
+                exc.status_code,
+                detail,
+            )
+            raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+        raise
+
+    try:
+        visit, pending_outcome, authorize_context = visit_crud.authorize_pour_lock(
             db=db,
             card_uid=payload.card_uid,
             tap_id=payload.tap_id,
@@ -68,10 +88,18 @@ def authorize_pour(
         if exc.status_code == status.HTTP_403_FORBIDDEN and isinstance(exc.detail, dict):
             if exc.detail.get("reason") == "lost_card":
                 outcome = "rejected_lost_card"
-        elif exc.status_code == status.HTTP_409_CONFLICT and isinstance(exc.detail, str):
-            if exc.detail.startswith("No active visit for Card "):
+            elif exc.detail.get("reason") == "insufficient_funds":
+                outcome = "rejected_insufficient_funds"
+            elif exc.detail.get("reason") == "shift_closed":
+                outcome = "rejected_shift_closed"
+        elif exc.status_code == status.HTTP_409_CONFLICT:
+            if isinstance(exc.detail, dict) and exc.detail.get("reason") == "no_active_visit":
                 outcome = "rejected_no_active_visit"
-            elif exc.detail.startswith("Card already in use on Tap "):
+            elif isinstance(exc.detail, str) and exc.detail.startswith("No active visit for Card "):
+                outcome = "rejected_no_active_visit"
+            elif isinstance(exc.detail, dict) and exc.detail.get("reason") == "card_in_use_on_other_tap":
+                outcome = "rejected_tap_mismatch"
+            elif isinstance(exc.detail, str) and exc.detail.startswith("Card already in use on Tap "):
                 outcome = "rejected_tap_mismatch"
 
         logger.warning(
@@ -99,7 +127,18 @@ def authorize_pour(
         visit.visit_id,
         pending_outcome,
     )
-    return schemas.VisitPourAuthorizeResponse(allowed=True, visit=visit)
+    return schemas.VisitPourAuthorizeResponse(
+        allowed=True,
+        visit=visit,
+        reason=None,
+        min_start_ml=authorize_context["min_start_ml"],
+        max_volume_ml=authorize_context["max_volume_ml"],
+        price_per_ml_cents=authorize_context["price_per_ml_cents"],
+        balance_cents=authorize_context["balance_cents"],
+        allowed_overdraft_cents=authorize_context["allowed_overdraft_cents"],
+        safety_ml=authorize_context["safety_ml"],
+        lock_set_at=visit.lock_set_at,
+    )
 
 
 @router.post(

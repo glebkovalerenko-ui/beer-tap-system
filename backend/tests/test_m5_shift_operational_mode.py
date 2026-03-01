@@ -92,7 +92,8 @@ def test_cannot_authorize_without_open_shift(client):
         json={"card_uid": "CARD-M5-93002", "tap_id": 1},
     )
     assert auth_resp.status_code == 403
-    assert auth_resp.json()["detail"] == "Shift is closed"
+    assert auth_resp.json()["detail"]["reason"] == "shift_closed"
+    assert auth_resp.json()["detail"]["message"] == "Shift is closed"
 
 
 def test_cannot_close_shift_with_active_visit(client):

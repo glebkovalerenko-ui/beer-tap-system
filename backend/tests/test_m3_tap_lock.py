@@ -123,7 +123,8 @@ def test_authorize_sets_lock_and_second_tap_gets_409(client):
         json={"card_uid": "CARD-M3-001", "tap_id": conflict_tap_id},
     )
     assert auth_2.status_code == 409
-    assert f"Tap {tap_id}" in auth_2.json()["detail"]
+    assert auth_2.json()["detail"]["reason"] == "card_in_use_on_other_tap"
+    assert f"Tap {tap_id}" in auth_2.json()["detail"]["message"]
 
 
 def test_sync_releases_lock_and_next_authorize_on_other_tap_succeeds(client):

@@ -4,6 +4,7 @@ import uuid
 
 from config import PRICE_PER_100ML_CENTS, TAP_ID
 from log_throttle import LogThrottle
+from pour_session import calculate_price_cents, has_reached_pour_limit
 from terminal_progress import TerminalProgressDisplay
 
 
@@ -38,7 +39,7 @@ class FlowManager:
         self._progress_factory = progress_factory or (lambda: TerminalProgressDisplay(time_source=self._time_source))
 
     @staticmethod
-    def _calculate_price_cents(volume_ml):
+    def _legacy_price_cents(volume_ml):
         return int((max(int(volume_ml), 0) / 100.0) * PRICE_PER_100ML_CENTS)
 
     def _log_throttled(
@@ -126,7 +127,7 @@ class FlowManager:
         if not auth_result.get("allowed"):
             reason_code = auth_result.get("reason_code") or "authorize_denied"
             self._log_throttled(
-                "authorize_denied",
+                f"authorize_denied:{reason_code}",
                 "Authorize denied for card %s. status_code=%s reason=%s"
                 % (card_uid, auth_result.get("status_code"), auth_result.get("reason")),
                 level=logging.WARNING,
@@ -135,20 +136,52 @@ class FlowManager:
             )
             if reason_code == "lost_card":
                 self._log_throttled(
-                    "authorize_denied_hint",
+                    "authorize_denied_lost_card",
                     "Card is marked as lost. Pour denied. Remove the card from the reader.",
                     level=logging.WARNING,
                     interval_seconds=2.0,
                     state=reason_code,
                 )
                 self._enter_card_must_be_removed("lost_card")
+            elif reason_code == "insufficient_funds":
+                self._log_throttled(
+                    "authorize_denied_insufficient_funds",
+                    "Insufficient funds to start pour. Top up balance and remove the card from the reader.",
+                    level=logging.WARNING,
+                    interval_seconds=2.0,
+                    state=reason_code,
+                )
+                self._enter_card_must_be_removed("insufficient_funds")
             else:
                 self._enter_card_must_be_removed("authorize_rejected")
             return
-        self._log_throttle.reset("authorize_denied")
-        self._log_throttle.reset("authorize_denied_hint")
 
-        logging.info("Authorize OK for card %s on tap %s. Opening valve.", card_uid, TAP_ID)
+        self._log_throttle.reset("authorize_denied:authorize_denied")
+        self._log_throttle.reset("authorize_denied:lost_card")
+        self._log_throttle.reset("authorize_denied:insufficient_funds")
+        self._log_throttle.reset("authorize_denied_lost_card")
+        self._log_throttle.reset("authorize_denied_insufficient_funds")
+
+        max_volume_ml = int(auth_result.get("max_volume_ml") or 0)
+        price_per_ml_cents = int(auth_result.get("price_per_ml_cents") or 0)
+        has_authorized_price = price_per_ml_cents > 0
+        if max_volume_ml <= 0:
+            self._log_throttled(
+                "authorize_invalid_contract",
+                "Authorize returned invalid clamp data. max_volume_ml=%s price_per_ml_cents=%s"
+                % (max_volume_ml, price_per_ml_cents),
+                level=logging.ERROR,
+                interval_seconds=2.0,
+            )
+            self._enter_card_must_be_removed("authorize_invalid_contract")
+            return
+
+        logging.info(
+            "Authorize OK for card %s on tap %s. Opening valve with max_volume_ml=%s.",
+            card_uid,
+            TAP_ID,
+            max_volume_ml,
+        )
         self.hardware.valve_open()
         started_monotonic = self._time_source()
         total_volume_liters = 0.0
@@ -173,17 +206,30 @@ class FlowManager:
                 if volume_delta_liters > 0:
                     total_volume_liters += volume_delta_liters
                     total_volume_ml = int(total_volume_liters * 1000)
+                    if has_reached_pour_limit(total_volume_ml, max_volume_ml):
+                        total_volume_ml = max_volume_ml
+                        logging.info("Valve closed by authorized volume clamp at %s ml", max_volume_ml)
+                        break
                     last_flow_at = now
 
                 progress_display.update(
                     total_volume_ml,
-                    estimated_cost_cents=self._calculate_price_cents(total_volume_ml),
+                    max_volume_ml=max_volume_ml,
+                    estimated_cost_cents=(
+                        calculate_price_cents(total_volume_ml, price_per_ml_cents)
+                        if has_authorized_price
+                        else self._legacy_price_cents(total_volume_ml)
+                    ),
                 )
 
                 if now - last_flow_at >= self.FLOW_TIMEOUT_SECONDS:
                     logging.info("Valve closed by timeout")
                     card_removed_by_timeout = True
-                    timeout_price_cents = self._calculate_price_cents(total_volume_ml)
+                    timeout_price_cents = (
+                        calculate_price_cents(total_volume_ml, price_per_ml_cents)
+                        if has_authorized_price
+                        else self._legacy_price_cents(total_volume_ml)
+                    )
                     logging.info(
                         "Timeout details: short_id=%s, volume_ml=%s, cost_cents=%s",
                         short_id,
@@ -201,7 +247,11 @@ class FlowManager:
 
         if total_volume_ml > 1:
             duration_ms = int((self._time_source() - started_monotonic) * 1000)
-            price_cents = self._calculate_price_cents(total_volume_ml)
+            price_cents = (
+                calculate_price_cents(total_volume_ml, price_per_ml_cents)
+                if has_authorized_price
+                else self._legacy_price_cents(total_volume_ml)
+            )
             pour_data = {
                 "client_tx_id": client_tx_id,
                 "short_id": short_id,
@@ -210,7 +260,9 @@ class FlowManager:
                 "duration_ms": duration_ms,
                 "volume_ml": total_volume_ml,
                 "price_cents": price_cents,
-                "price_per_ml_at_pour": float(PRICE_PER_100ML_CENTS / 100.0),
+                "price_per_ml_at_pour": float(
+                    price_per_ml_cents if has_authorized_price else (PRICE_PER_100ML_CENTS / 100.0)
+                ),
             }
             self.db_handler.add_pour(pour_data)
             logging.info("Pour record added to local DB")

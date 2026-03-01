@@ -516,8 +516,13 @@ Backward compatibility:
 
 **Status Values:**
 - `accepted`: Pour successfully processed
-- `rejected`: Pour failed validation
-- `duplicate`: Pour with same client_tx_id already exists
+- `audit_only`: Sync was recorded only for audit/no-double-charge purposes
+- `rejected`: Pour failed validation or was terminally rejected after authorize
+- `conflict`: Operational tap/lock conflict, returned as HTTP `409`
+
+Idempotency note:
+- duplicate sync for an already `synced`/`reconciled` row returns `accepted + duplicate_existing`
+- duplicate sync for an already `rejected` row returns `rejected + duplicate_existing_rejected`
 
 ## Data Models
 
@@ -597,7 +602,7 @@ Backward compatibility:
   "volume_ml": "integer",
   "amount_charged": "decimal",
   "duration_ms": "integer|null",
-  "sync_status": "pending_sync|synced|reconciled",
+  "sync_status": "pending_sync|synced|reconciled|rejected",
   "poured_at": "datetime",
   "authorized_at": "datetime|null",
   "synced_at": "datetime|null",
@@ -898,3 +903,76 @@ Response shape:
 ### Shift report windows
 - X report uses DB current time as right boundary.
 - Z report uses `shift.closed_at` as strict right boundary.
+
+## M6 Insufficient Funds Clamp Update (2026-02-28)
+
+### POST `/api/visits/authorize-pour`
+
+Purpose:
+- backend is the source of truth for pour-start thresholds and current-pour volume clamp;
+- controller must call this endpoint before valve open.
+
+Successful response (`200 OK`):
+```json
+{
+  "allowed": true,
+  "reason": null,
+  "min_start_ml": 20,
+  "max_volume_ml": 398,
+  "price_per_ml_cents": 50,
+  "balance_cents": 20000,
+  "allowed_overdraft_cents": 0,
+  "safety_ml": 2,
+  "lock_set_at": "2026-02-28T13:19:35.294010Z",
+  "visit": {
+    "visit_id": "uuid",
+    "active_tap_id": 1,
+    "lock_set_at": "2026-02-28T13:19:35.294010Z"
+  }
+}
+```
+
+Rules:
+- `min_start_ml` comes from `system_states.min_start_ml` (default `20`).
+- `safety_ml` comes from `system_states.safety_ml` (default `2`).
+- `allowed_overdraft_cents` comes from `system_states.allowed_overdraft_cents` (default `0`).
+- `max_volume_ml = floor((balance_cents + allowed_overdraft_cents) / price_per_ml_cents) - safety_ml`.
+- If `max_volume_ml < min_start_ml`, backend returns deny and does not set lock or create `pending_sync`.
+
+Common deny reasons:
+- `insufficient_funds`
+- `lost_card`
+- `card_in_use_on_other_tap`
+- `no_active_visit`
+- `shift_closed`
+- `tap_not_configured`
+
+Insufficient funds response (`403 Forbidden`):
+```json
+{
+  "detail": {
+    "reason": "insufficient_funds",
+    "message": "Insufficient funds: top up guest balance before pouring.",
+    "context": {
+      "min_start_ml": 20,
+      "max_volume_ml": 16,
+      "price_per_ml_cents": 50,
+      "balance_cents": 900,
+      "allowed_overdraft_cents": 0,
+      "safety_ml": 2,
+      "required_cents": 1000
+    }
+  }
+}
+```
+
+Audit:
+- backend writes `insufficient_funds_blocked` with `{card_uid, tap_id, balance_cents, required_cents, min_start_ml}`.
+
+### POST `/api/sync/pours`
+
+M6 clamp-related semantics:
+- normal authorize-based flow must update the existing `pending_sync` row to `sync_status="synced"`;
+- if controller sends sync without successful authorize, backend must keep it non-operational and return `status="audit_only"`;
+- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock/tap state;
+- if a previously authorized sync still hits insufficient funds or keg-volume failure, backend converts the authorize-created row to `sync_status="rejected"`, writes audit (`sync_rejected_insufficient_funds` / `sync_rejected_insufficient_keg_volume`), and clears the stale lock instead of leaving `pending_sync` hanging.

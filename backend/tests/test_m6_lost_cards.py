@@ -152,7 +152,7 @@ def test_authorize_pour_for_lost_card_is_denied_and_audited(client):
 
 
 def test_restore_lost_card_allows_authorize_again(client):
-    headers, _, visit_id, tap_id, card_uid = _prepare_active_visit_with_tap(
+    headers, guest_id, visit_id, tap_id, card_uid = _prepare_active_visit_with_tap(
         client, suffix="96003", card_uid="CARD-M6-003"
     )
 
@@ -173,6 +173,13 @@ def test_restore_lost_card_allows_authorize_again(client):
     restore = client.post(f"/api/lost-cards/{card_uid}/restore", headers=headers)
     assert restore.status_code == 200
     assert restore.json()["restored"] is True
+
+    topup = client.post(
+        f"/api/guests/{guest_id}/topup",
+        headers=headers,
+        json={"amount": 20, "payment_method": "cash"},
+    )
+    assert topup.status_code == 200
 
     authorized = client.post(
         "/api/visits/authorize-pour",

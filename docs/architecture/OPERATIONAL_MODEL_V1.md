@@ -239,7 +239,7 @@ PourSession
 * ended_at
 * volume_ml
 * cost
-* sync_status: pending_sync / synced / reconciled
+* sync_status: pending_sync / synced / reconciled / rejected
 * authorized_at (DB timestamp)
 * synced_at (DB timestamp)
 * reconciled_at (DB timestamp)
@@ -532,7 +532,7 @@ No-double-charge invariant:
 - If visit is already unlocked and a late sync arrives, backend must not perform a second balance deduction.
 
 Data keys introduced by M4:
-- `pours.sync_status` (`pending_sync | synced | reconciled`)
+- `pours.sync_status` (`pending_sync | synced | reconciled | rejected`)
 - `pours.short_id` (6-8 chars)
 - `pours.duration_ms` (controller-provided duration)
 - `pours.authorized_at` / `pours.synced_at` / `pours.reconciled_at` (DB timestamps)
@@ -587,6 +587,39 @@ v1 report focus:
 # 14. M5 Time Source Policy (2026-02-27)
 
 Single source of operational time is Postgres DB time.
+
+# 15. M6 Insufficient Funds Clamp (2026-02-28)
+
+Operational rule:
+- backend decides whether a pour may start and how much may be poured for the current balance;
+- controller executes the returned clamp locally and must not improvise its own threshold values.
+
+Runtime config in `system_states`:
+- `min_start_ml` default `20`
+- `safety_ml` default `2`
+- `allowed_overdraft_cents` default `0`
+
+Authorize policy:
+1. Controller calls `POST /api/visits/authorize-pour`.
+2. Backend calculates conservative `price_per_ml_cents` plus:
+   - `balance_cents`
+   - `min_start_ml`
+   - `max_volume_ml`
+   - `allowed_overdraft_cents`
+   - `safety_ml`
+3. If `max_volume_ml < min_start_ml`, backend returns `403 detail.reason="insufficient_funds"`, writes `insufficient_funds_blocked`, and does not create `pending_sync`.
+4. If authorize succeeds, backend creates/keeps exactly one `pending_sync` row and sets visit lock with DB time.
+
+Controller behavior:
+- valve open is allowed only after successful authorize;
+- valve must close when measured volume reaches `max_volume_ml`, even if network is lost after authorize;
+- controller continues to send `duration_ms` first, never polls backend for server time on every request.
+
+Sync behavior:
+- accepted sync must update the authorize-created `pending_sync` row to `synced`;
+- sync without authorize stays `audit_only`;
+- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour; backend rejects it terminally and clears the stale lock;
+- if sync still cannot be charged after authorize, backend converts that row to `rejected`, records explicit audit, and clears the stale lock/tap state instead of leaving `pending_sync`.
 
 Rules:
 - Official timestamps (`*_at`) are written by DB:
