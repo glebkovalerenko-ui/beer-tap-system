@@ -4,22 +4,25 @@ import time
 import requests
 
 from config import INTERNAL_TOKEN, SERVER_URL
+from log_throttle import LogThrottle
 
 
 class SyncManager:
-    def __init__(self):
+    def __init__(self, *, log_throttle=None, time_source=None):
         base = SERVER_URL.strip().rstrip("/")
         self.server_url = base
         self.session = requests.Session()
-        self._last_logs = {}
+        self._time_source = time_source or time.monotonic
+        self._log_throttle = log_throttle or LogThrottle(time_source=self._time_source)
 
-    def _log_throttled(self, key: str, message: str, level=logging.INFO, interval_seconds: float = 3.0):
-        now = time.monotonic()
-        last = self._last_logs.get(key, 0.0)
-        if now - last < interval_seconds:
-            return
-        self._last_logs[key] = now
-        logging.log(level, message)
+    def _log_throttled(self, key: str, message: str, *, level=logging.INFO, interval_seconds: float = 3.0, state=None):
+        return self._log_throttle.log(
+            key,
+            message,
+            level=level,
+            interval_seconds=interval_seconds,
+            state=state,
+        )
 
     def check_emergency_stop(self):
         url = "/".join([self.server_url, "api", "system", "status"])
@@ -108,12 +111,14 @@ class SyncManager:
     def sync_cycle(self, db_handler):
         pours = db_handler.get_unsynced_pours(limit=20)
         if not pours:
+            self._log_throttle.reset("sync_processing")
             return
 
         self._log_throttled(
             "sync_processing",
             f"processing_sync: pending_records={len(pours)}",
-            interval_seconds=3.0,
+            interval_seconds=10.0,
+            state=len(pours),
         )
         payload_rows = []
         for row in pours:
