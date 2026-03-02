@@ -7,6 +7,7 @@
   import ShellStatusPills from './ShellStatusPills.svelte';
   import ShellGuestContextChip from './ShellGuestContextChip.svelte';
   import DemoModeToggle from '../system/DemoModeToggle.svelte';
+  import ServerSettingsModal from '../system/ServerSettingsModal.svelte';
 
   export let title = 'POS Workspace';
 
@@ -45,6 +46,7 @@
 
   <div class="right">
     <ShellStatusPills />
+    <ServerSettingsModal buttonLabel="Сервер" variant="ghost" />
     {#if $shiftStore.isOpen}
       <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
     {:else}
