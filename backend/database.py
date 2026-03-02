@@ -1,30 +1,22 @@
 # backend/database.py
 import os
-from sqlalchemy import create_engine
-# --- ИЗМЕНЕНИЕ: Импортируем declarative_base из современного расположения ---
-from sqlalchemy.orm import sessionmaker, declarative_base
-from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env файла
-# Это нужно, чтобы локально запущенное приложение тоже имело к ним доступ
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 load_dotenv()
 
-# Формируем URL для подключения к БД из переменных окружения
-# Если DATABASE_URL не задана, используется значение по умолчанию (для отладки)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Создаем "движок" SQLAlchemy - основной интерфейс для работы с БД
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set")
+
 engine = create_engine(DATABASE_URL)
-
-# Создаем фабрику сессий. Каждая сессия будет отдельной транзакцией с БД.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Базовый класс для всех наших будущих моделей SQLAlchemy
-# --- ИЗМЕНЕНИЕ: Используется declarative_base из нового импорта ---
 Base = declarative_base()
 
-# Функция-зависимость (Dependency) для FastAPI.
-# Она будет создавать новую сессию для каждого запроса и закрывать ее после выполнения.
+
 def get_db():
     db = SessionLocal()
     try:
