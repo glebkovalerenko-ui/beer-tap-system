@@ -3,7 +3,7 @@
 <script>
   import { sessionStore } from '../stores/sessionStore.js';
   import { invoke } from '@tauri-apps/api/core';
-  import { API_BASE_URL } from '../lib/config.js';
+  import { API_BASE_URL, initializeBackendBaseUrl } from '../lib/config.js';
 
   let username = 'admin';
   let password = 'fake_password'; // Используйте ваш реальный пароль для теста
@@ -34,6 +34,7 @@
     isLoading = true;
 
     try {
+      await initializeBackendBaseUrl();
       // Сначала пробуем нативный Tauri-путь
       let token;
       try {

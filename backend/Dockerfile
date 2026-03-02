@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем всё из корня контекста в рабочую директорию /app.
 COPY . .
 
+RUN chmod +x /app/entrypoint.sh
+
 # Шаг 6: Указываем команду по умолчанию для запуска контейнера.
 # Docker Compose может переопределить эту команду, но она делает образ самодостаточным.
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

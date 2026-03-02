@@ -1,11 +1,12 @@
 import { writable } from 'svelte/store';
+import { API_BASE_URL } from './config.js';
 
 // Svelte-стор для хранения токена и состояния аутентификации
 export const authToken = writable(localStorage.getItem('authToken'));
 export const isAuthenticated = writable(!!localStorage.getItem('authToken'));
 
 // Базовый URL нашего API
-const BASE_URL = 'http://localhost:8000'; // Убедитесь, что порт правильный
+const BASE_URL = API_BASE_URL;
 
 authToken.subscribe(value => {
     if (value) {

@@ -7,7 +7,15 @@ import os
 
 # IP-адрес и порт вашего центрального сервера (бэкенда)
 # ВАЖНО: Замените "192.168.0.103" на реальный IP вашего компьютера!
-SERVER_URL = os.getenv("SERVER_URL", "http://192.168.0.106:8000")
+DEFAULT_SERVER_URL = "http://cybeer-hub:8000"
+
+
+def normalize_server_url(value: str | None) -> str:
+    normalized = (value or "").strip().rstrip("/")
+    return normalized or DEFAULT_SERVER_URL
+
+
+SERVER_URL = normalize_server_url(os.getenv("SERVER_URL"))
 
 # ID этого крана. Должен быть уникальным для каждого RPi.
 # Пока у нас один кран, оставляем значение 1.

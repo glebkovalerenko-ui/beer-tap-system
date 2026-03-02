@@ -10,8 +10,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Формируем URL для подключения к БД из переменных окружения
-# Если DATABASE_URL не задана, используется значение по умолчанию (для отладки)
+# DATABASE_URL является обязательным single source of truth.
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set")
 
 # Создаем "движок" SQLAlchemy - основной интерфейс для работы с БД
 engine = create_engine(DATABASE_URL)

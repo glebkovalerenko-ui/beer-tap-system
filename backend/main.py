@@ -20,15 +20,17 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 # --- Локальные импорты ---
 import models, schemas, security
-from database import get_db
+from database import get_db, engine, DATABASE_URL
 from crud import pour_crud
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
+from startup_checks import verify_database_ready
 
 # --- Импорты для новых роутеров API ---
 from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits, shifts, lost_cards
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verify_database_ready(engine, DATABASE_URL)
     logging.info("Application startup complete.")
     yield
     logging.info("Application shutdown.")

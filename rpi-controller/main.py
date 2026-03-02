@@ -21,6 +21,8 @@ def main():
     db_handler = DatabaseHandler()
     hardware = HardwareHandler()
     sync_manager = SyncManager()
+    sync_manager.log_startup_config()
+    sync_manager.probe_backend()
     flow_manager = FlowManager(hardware, db_handler, sync_manager)
 
     threading.Thread(target=start_sync_worker, args=(db_handler, sync_manager), daemon=True).start()
