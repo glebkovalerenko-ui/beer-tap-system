@@ -3,10 +3,12 @@
 //! Модуль-клиент для взаимодействия с API бэкенда (FastAPI).
 //! Инкапсулирует всю HTTP-логику, DTO (Data Transfer Objects) и обработку ошибок.
 
-use serde::{Deserialize, Serialize};
-use reqwest::{Client, Response};
 use once_cell::sync::Lazy;
+use reqwest::{Client, Response};
+use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
+
+use crate::server_config::DEFAULT_SERVER_BASE_URL;
 
 // --- Лучшая практика: Единый, статичный HTTP-клиент с пулом соединений ---
 static CLIENT: Lazy<Client> = Lazy::new(Client::new);
@@ -14,7 +16,7 @@ static BACKEND_BASE_URL: Lazy<RwLock<String>> =
     Lazy::new(|| RwLock::new(DEFAULT_BACKEND_BASE_URL.to_string()));
 
 // --- Константы ---
-const DEFAULT_BACKEND_BASE_URL: &str = "http://cybeer-hub:8000";
+const DEFAULT_BACKEND_BASE_URL: &str = DEFAULT_SERVER_BASE_URL;
 
 fn normalize_base_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
@@ -27,7 +29,9 @@ fn normalize_base_url(base_url: &str) -> String {
 
 pub fn set_backend_base_url(base_url: &str) -> String {
     let normalized = normalize_base_url(base_url);
-    let mut slot = BACKEND_BASE_URL.write().expect("backend base url lock poisoned");
+    let mut slot = BACKEND_BASE_URL
+        .write()
+        .expect("backend base url lock poisoned");
     *slot = normalized.clone();
     normalized
 }
@@ -54,7 +58,6 @@ fn request_error(url: &str, err: reqwest::Error) -> String {
 async fn send(request: reqwest::RequestBuilder, url: &str) -> Result<Response, String> {
     request.send().await.map_err(|err| request_error(url, err))
 }
-
 
 // =============================================================================
 // DTOs (Data Transfer Objects)
@@ -143,7 +146,7 @@ pub struct PourResponse {
 }
 
 // --- Guests ---
-#[derive(Debug, Deserialize, Serialize, Clone)] 
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Guest {
     pub guest_id: String,
     pub last_name: String,
@@ -188,9 +191,6 @@ pub struct GuestUpdatePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_active: Option<bool>,
 }
-
-
-
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VisitGuest {
@@ -469,7 +469,6 @@ pub struct BeveragePayload {
     // Поле description убрано, так как его нет в Pydantic схеме BeverageCreate
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Keg {
     pub keg_id: String,
@@ -535,7 +534,10 @@ pub struct SystemStateUpdatePayload {
 #[serde(untagged)]
 enum ApiDetail {
     Message(String),
-    Conflict { message: String, visit_id: Option<String> },
+    Conflict {
+        message: String,
+        visit_id: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -580,7 +582,10 @@ pub async fn login(credentials: &LoginCredentials<'_>) -> Result<String, String>
     let url = build_api_url("token");
     let response = send(CLIENT.post(&url).form(credentials), &url).await?;
     if response.status().is_success() {
-        let token_response = response.json::<TokenResponse>().await.map_err(|e| e.to_string())?;
+        let token_response = response
+            .json::<TokenResponse>()
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(token_response.access_token)
     } else {
         Err(handle_api_error(response).await)
@@ -593,7 +598,10 @@ pub async fn get_guests(token: &str) -> Result<Vec<Guest>, String> {
     let url = build_api_url("guests/");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<Guest>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<Guest>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -610,7 +618,11 @@ pub async fn create_guest(token: &str, guest_data: &GuestPayload) -> Result<Gues
     }
 }
 
-pub async fn update_guest(token: &str, guest_id: &str, guest_data: &GuestUpdatePayload) -> Result<Guest, String> {
+pub async fn update_guest(
+    token: &str,
+    guest_id: &str,
+    guest_data: &GuestUpdatePayload,
+) -> Result<Guest, String> {
     // ... (без изменений)
     let url = build_api_url(&format!("guests/{}", guest_id));
     let response = send(CLIENT.put(&url).bearer_auth(token).json(guest_data), &url).await?;
@@ -622,16 +634,16 @@ pub async fn update_guest(token: &str, guest_id: &str, guest_data: &GuestUpdateP
 }
 
 // --- Card & Transaction Functions ---
-pub async fn bind_card_to_guest(token: &str, guest_id: &str, card_uid: &str) -> Result<Guest, String> {
+pub async fn bind_card_to_guest(
+    token: &str,
+    guest_id: &str,
+    card_uid: &str,
+) -> Result<Guest, String> {
     // ... (без изменений)
     let url = build_api_url(&format!("guests/{}/cards", guest_id));
     let payload = BindCardPayload { card_uid };
 
-    let response = send(
-        CLIENT.post(&url).bearer_auth(token).json(&payload),
-        &url,
-    )
-    .await?;
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(&payload), &url).await?;
 
     if response.status().is_success() {
         response.json::<Guest>().await.map_err(|e| e.to_string())
@@ -640,15 +652,15 @@ pub async fn bind_card_to_guest(token: &str, guest_id: &str, card_uid: &str) -> 
     }
 }
 
-pub async fn top_up_balance(token: &str, guest_id: &str, top_up_data: &TopUpPayload) -> Result<Guest, String> {
+pub async fn top_up_balance(
+    token: &str,
+    guest_id: &str,
+    top_up_data: &TopUpPayload,
+) -> Result<Guest, String> {
     // ... (без изменений)
     let url = build_api_url(&format!("guests/{}/topup", guest_id));
 
-    let response = send(
-        CLIENT.post(&url).bearer_auth(token).json(top_up_data),
-        &url,
-    )
-    .await?;
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(top_up_data), &url).await?;
 
     if response.status().is_success() {
         response.json::<Guest>().await.map_err(|e| e.to_string())
@@ -680,7 +692,11 @@ pub async fn create_keg(token: &str, keg_data: &KegPayload) -> Result<Keg, Strin
     }
 }
 
-pub async fn update_keg(token: &str, keg_id: &str, keg_data: &KegUpdatePayload) -> Result<Keg, String> {
+pub async fn update_keg(
+    token: &str,
+    keg_id: &str,
+    keg_data: &KegUpdatePayload,
+) -> Result<Keg, String> {
     // ... (без изменений)
     let url = build_api_url(&format!("kegs/{}", keg_id));
     let response = send(CLIENT.put(&url).bearer_auth(token).json(keg_data), &url).await?;
@@ -720,7 +736,10 @@ pub async fn get_pours(token: &str, limit: u32) -> Result<Vec<PourResponse>, Str
     let url = build_api_url(&format!("pours/?limit={}", limit));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<PourResponse>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<PourResponse>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -732,7 +751,10 @@ pub async fn get_beverages(token: &str) -> Result<Vec<Beverage>, String> {
     let url = build_api_url("beverages/");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<Beverage>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<Beverage>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -741,9 +763,11 @@ pub async fn get_beverages(token: &str) -> Result<Vec<Beverage>, String> {
 /// Назначение кеги на кран.
 pub async fn assign_keg_to_tap(token: &str, tap_id: i32, keg_id: &str) -> Result<Tap, String> {
     let url = build_api_url(&format!("taps/{}/keg", tap_id));
-    let payload = AssignKegPayload { keg_id: keg_id.to_string() };
+    let payload = AssignKegPayload {
+        keg_id: keg_id.to_string(),
+    };
     let response = send(CLIENT.put(&url).bearer_auth(token).json(&payload), &url).await?;
-    
+
     if response.status().is_success() {
         // Ожидаем, что API вернет обновленный объект крана
         response.json::<Tap>().await.map_err(|e| e.to_string())
@@ -764,7 +788,11 @@ pub async fn unassign_keg_from_tap(token: &str, tap_id: i32) -> Result<Tap, Stri
 }
 
 /// Обновление статуса крана.
-pub async fn update_tap(token: &str, tap_id: i32, payload: &TapUpdatePayload) -> Result<Tap, String> {
+pub async fn update_tap(
+    token: &str,
+    tap_id: i32,
+    payload: &TapUpdatePayload,
+) -> Result<Tap, String> {
     let url = build_api_url(&format!("taps/{}", tap_id));
     let response = send(CLIENT.put(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -775,9 +803,16 @@ pub async fn update_tap(token: &str, tap_id: i32, payload: &TapUpdatePayload) ->
 }
 
 /// Создание нового напитка.
-pub async fn create_beverage(token: &str, beverage_data: &BeveragePayload) -> Result<Beverage, String> {
+pub async fn create_beverage(
+    token: &str,
+    beverage_data: &BeveragePayload,
+) -> Result<Beverage, String> {
     let url = build_api_url("beverages/");
-    let response = send(CLIENT.post(&url).bearer_auth(token).json(beverage_data), &url).await?;
+    let response = send(
+        CLIENT.post(&url).bearer_auth(token).json(beverage_data),
+        &url,
+    )
+    .await?;
     if response.status().is_success() {
         response.json::<Beverage>().await.map_err(|e| e.to_string())
     } else {
@@ -791,18 +826,27 @@ pub async fn get_system_status(token: &str) -> Result<SystemStateItem, String> {
     let url = build_api_url("system/status");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<SystemStateItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
 /// Установка статуса экстренной остановки.
-pub async fn set_emergency_stop(token: &str, payload: &SystemStateUpdatePayload) -> Result<SystemStateItem, String> {
+pub async fn set_emergency_stop(
+    token: &str,
+    payload: &SystemStateUpdatePayload,
+) -> Result<SystemStateItem, String> {
     let url = build_api_url("system/emergency_stop");
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
-        response.json::<SystemStateItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<SystemStateItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -812,7 +856,10 @@ pub async fn get_current_shift(token: &str) -> Result<ShiftCurrentResponse, Stri
     let url = build_api_url("shifts/current");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<ShiftCurrentResponse>().await.map_err(|e| e.to_string())
+        response
+            .json::<ShiftCurrentResponse>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -842,43 +889,66 @@ pub async fn get_shift_x_report(token: &str, shift_id: &str) -> Result<ShiftRepo
     let url = build_api_url(&format!("shifts/{}/reports/x", shift_id));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<ShiftReportPayload>().await.map_err(|e| e.to_string())
+        response
+            .json::<ShiftReportPayload>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn create_shift_z_report(token: &str, shift_id: &str) -> Result<ShiftReportDocument, String> {
+pub async fn create_shift_z_report(
+    token: &str,
+    shift_id: &str,
+) -> Result<ShiftReportDocument, String> {
     let url = build_api_url(&format!("shifts/{}/reports/z", shift_id));
     let response = send(CLIENT.post(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<ShiftReportDocument>().await.map_err(|e| e.to_string())
+        response
+            .json::<ShiftReportDocument>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn get_shift_z_report(token: &str, shift_id: &str) -> Result<ShiftReportDocument, String> {
+pub async fn get_shift_z_report(
+    token: &str,
+    shift_id: &str,
+) -> Result<ShiftReportDocument, String> {
     let url = build_api_url(&format!("shifts/{}/reports/z", shift_id));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<ShiftReportDocument>().await.map_err(|e| e.to_string())
+        response
+            .json::<ShiftReportDocument>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn list_shift_z_reports(token: &str, from_date: &str, to_date: &str) -> Result<Vec<ShiftZReportListItem>, String> {
+pub async fn list_shift_z_reports(
+    token: &str,
+    from_date: &str,
+    to_date: &str,
+) -> Result<Vec<ShiftZReportListItem>, String> {
     let url = build_api_url("shifts/reports/z");
     let response = send(
-        CLIENT.get(&url)
+        CLIENT
+            .get(&url)
             .query(&[("from", from_date), ("to", to_date)])
             .bearer_auth(token),
         &url,
     )
     .await?;
     if response.status().is_success() {
-        response.json::<Vec<ShiftZReportListItem>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<ShiftZReportListItem>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -889,7 +959,10 @@ pub async fn get_active_visits(token: &str) -> Result<Vec<VisitActiveListItem>, 
     let url = build_api_url("visits/active");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<VisitActiveListItem>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<VisitActiveListItem>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -919,7 +992,11 @@ pub async fn open_visit(token: &str, payload: &VisitOpenPayload) -> Result<Visit
     }
 }
 
-pub async fn assign_card_to_visit(token: &str, visit_id: &str, payload: &VisitAssignCardPayload) -> Result<Visit, String> {
+pub async fn assign_card_to_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitAssignCardPayload,
+) -> Result<Visit, String> {
     let url = build_api_url(&format!("visits/{}/assign-card", visit_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -929,7 +1006,11 @@ pub async fn assign_card_to_visit(token: &str, visit_id: &str, payload: &VisitAs
     }
 }
 
-pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForceUnlockPayload) -> Result<Visit, String> {
+pub async fn force_unlock_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitForceUnlockPayload,
+) -> Result<Visit, String> {
     let url = build_api_url(&format!("visits/{}/force-unlock", visit_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -939,7 +1020,11 @@ pub async fn force_unlock_visit(token: &str, visit_id: &str, payload: &VisitForc
     }
 }
 
-pub async fn close_visit(token: &str, visit_id: &str, payload: &VisitClosePayload) -> Result<Visit, String> {
+pub async fn close_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitClosePayload,
+) -> Result<Visit, String> {
     let url = build_api_url(&format!("visits/{}/close", visit_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -949,7 +1034,11 @@ pub async fn close_visit(token: &str, visit_id: &str, payload: &VisitClosePayloa
     }
 }
 
-pub async fn reconcile_pour(token: &str, visit_id: &str, payload: &VisitReconcilePourPayload) -> Result<Visit, String> {
+pub async fn reconcile_pour(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitReconcilePourPayload,
+) -> Result<Visit, String> {
     let url = build_api_url(&format!("visits/{}/reconcile-pour", visit_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -976,7 +1065,10 @@ pub async fn report_lost_card_from_visit(
     }
 }
 
-pub async fn create_lost_card(token: &str, payload: &LostCardCreatePayload) -> Result<LostCard, String> {
+pub async fn create_lost_card(
+    token: &str,
+    payload: &LostCardCreatePayload,
+) -> Result<LostCard, String> {
     let url = build_api_url("lost-cards/");
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
@@ -1015,13 +1107,19 @@ pub async fn list_lost_cards(
     }
     let response = send(req, &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<LostCard>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<LostCard>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn restore_lost_card(token: &str, card_uid: &str) -> Result<LostCardRestoreResponse, String> {
+pub async fn restore_lost_card(
+    token: &str,
+    card_uid: &str,
+) -> Result<LostCardRestoreResponse, String> {
     let url = build_api_url(&format!("lost-cards/{}/restore", card_uid));
     let response = send(CLIENT.post(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
