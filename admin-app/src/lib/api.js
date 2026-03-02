@@ -1,11 +1,9 @@
 import { writable } from 'svelte/store';
 
-import { API_BASE_URL } from './config.js';
+import { getApiBaseUrl, initializeBackendBaseUrl } from './config.js';
 
 export const authToken = writable(localStorage.getItem('authToken'));
 export const isAuthenticated = writable(!!localStorage.getItem('authToken'));
-
-const BASE_URL = API_BASE_URL;
 
 authToken.subscribe((value) => {
   if (value) {
@@ -18,7 +16,9 @@ authToken.subscribe((value) => {
 });
 
 export async function login(username, password) {
-  const response = await fetch(`${BASE_URL}/api/token`, {
+  await initializeBackendBaseUrl();
+
+  const response = await fetch(`${getApiBaseUrl()}/api/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ username, password }),
@@ -37,13 +37,15 @@ export function logout() {
 }
 
 export async function apiFetch(url, options = {}) {
+  await initializeBackendBaseUrl();
+
   const token = localStorage.getItem('authToken');
   const headers = {
     ...options.headers,
     Authorization: `Bearer ${token}`,
   };
 
-  const response = await fetch(`${BASE_URL}${url}`, { ...options, headers });
+  const response = await fetch(`${getApiBaseUrl()}${url}`, { ...options, headers });
 
   if (response.status === 401) {
     logout();
