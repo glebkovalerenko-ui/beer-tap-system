@@ -1,5 +1,7 @@
 import logging
+import socket
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -9,11 +11,57 @@ from log_throttle import LogThrottle
 
 class SyncManager:
     def __init__(self, *, log_throttle=None, time_source=None):
-        base = SERVER_URL.strip().rstrip("/")
-        self.server_url = base
+        self.server_url = SERVER_URL.strip().rstrip("/")
         self.session = requests.Session()
         self._time_source = time_source or time.monotonic
         self._log_throttle = log_throttle or LogThrottle(time_source=self._time_source)
+
+    def _resolve_backend_host(self):
+        host = urlsplit(self.server_url).hostname or ""
+        if not host:
+            return "", []
+
+        try:
+            resolved = sorted({item[4][0] for item in socket.getaddrinfo(host, None)})
+        except socket.gaierror as exc:
+            logging.warning("Controller backend DNS lookup failed: host=%s error=%s", host, exc)
+            return host, []
+
+        return host, resolved
+
+    def log_startup_config(self):
+        token_state = "configured" if INTERNAL_TOKEN else "missing"
+        host, resolved_ips = self._resolve_backend_host()
+        resolved_text = ",".join(resolved_ips) if resolved_ips else "<unresolved>"
+        logging.info(
+            "Controller backend config: SERVER_URL=%s RESOLVED_HOST=%s RESOLVED_IPS=%s INTERNAL_TOKEN=%s",
+            self.server_url,
+            host or "<missing>",
+            resolved_text,
+            token_state,
+        )
+
+    def probe_backend(self):
+        url = "/".join([self.server_url, "api", "system", "status"])
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        try:
+            response = self.session.get(url, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            logging.error("Backend startup probe failed: url=%s error=%s", url, exc)
+            return False
+
+        if response.status_code == 200:
+            logging.info("Backend startup probe OK: url=%s status_code=%s", url, response.status_code)
+            return True
+
+        body = (response.text or "").strip()
+        logging.error(
+            "Backend startup probe failed: url=%s status_code=%s body=%s",
+            url,
+            response.status_code,
+            body,
+        )
+        return False
 
     def _log_throttled(self, key: str, message: str, *, level=logging.INFO, interval_seconds: float = 3.0, state=None):
         return self._log_throttle.log(
@@ -32,9 +80,9 @@ class SyncManager:
             if response.status_code == 200:
                 data = response.json()
                 return str(data.get("value", "")).lower() == "true"
-            logging.error("Emergency stop check failed with status code %s", response.status_code)
+            logging.error("Emergency stop check failed: url=%s status_code=%s", url, response.status_code)
         except requests.RequestException as exc:
-            logging.error("Error checking emergency stop: %s", exc)
+            logging.error("Error checking emergency stop: url=%s error=%s", url, exc)
         return False
 
     def authorize_pour(self, card_uid, tap_id):
@@ -46,7 +94,7 @@ class SyncManager:
         except requests.RequestException as exc:
             return {
                 "allowed": False,
-                "reason": f"authorize_request_failed: {exc}",
+                "reason": f"authorize_request_failed: {url}: {exc}",
                 "reason_code": "request_failed",
                 "status_code": None,
             }
@@ -144,7 +192,7 @@ class SyncManager:
         try:
             response = self.session.post(url, json=payload, headers=headers, timeout=10)
         except requests.RequestException as exc:
-            logging.error("Error during sync: %s", exc)
+            logging.error("Error during sync: url=%s error=%s", url, exc)
             return
 
         if response.status_code == 200:
@@ -200,7 +248,7 @@ class SyncManager:
             return
 
         if response.status_code == 409:
-            logging.warning("Sync conflict from backend (409): %s", response.text)
+            logging.warning("Sync conflict from backend (409): url=%s body=%s", url, response.text)
             return
 
-        logging.error("Sync failed with status code %s", response.status_code)
+        logging.error("Sync failed: url=%s status_code=%s body=%s", url, response.status_code, response.text)
