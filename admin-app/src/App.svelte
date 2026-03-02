@@ -10,6 +10,7 @@
   import { demoModeStore } from './stores/demoModeStore.js';
   import { nfcReaderStore } from './stores/nfcReaderStore.js';
   import { shiftStore } from './stores/shiftStore.js';
+  import { initializeBackendBaseUrl } from './lib/config.js';
 
   import Dashboard from './routes/Dashboard.svelte';
   import Guests from './routes/Guests.svelte';
@@ -52,13 +53,26 @@
   };
 
   onMount(() => {
-    systemStore.startPolling();
-    if ($guestStore.guests.length === 0 && !$guestStore.loading) {
-      guestStore.fetchGuests();
-    }
+    let disposed = false;
+
+    (async () => {
+      await initializeBackendBaseUrl();
+      if (disposed) {
+        return;
+      }
+
+      systemStore.startPolling();
+      if ($guestStore.guests.length === 0 && !$guestStore.loading) {
+        guestStore.fetchGuests();
+      }
+    })();
 
     window.addEventListener('online', updateOnline);
     window.addEventListener('offline', updateOnline);
+
+    return () => {
+      disposed = true;
+    };
   });
 
   onDestroy(() => {

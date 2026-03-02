@@ -1,12 +1,13 @@
 <!-- src/routes/Login.svelte -->
 
 <script>
-  import { sessionStore } from '../stores/sessionStore.js';
   import { invoke } from '@tauri-apps/api/core';
-  import { API_BASE_URL } from '../lib/config.js';
+
+  import { API_BASE_URL, initializeBackendBaseUrl } from '../lib/config.js';
+  import { sessionStore } from '../stores/sessionStore.js';
 
   let username = 'admin';
-  let password = 'fake_password'; // Используйте ваш реальный пароль для теста
+  let password = 'fake_password';
   let error = '';
   let isLoading = false;
 
@@ -14,7 +15,7 @@
     const response = await fetch(`${API_BASE_URL}/api/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username, password })
+      body: new URLSearchParams({ username, password }),
     });
 
     if (!response.ok) {
@@ -34,12 +35,12 @@
     isLoading = true;
 
     try {
-      // Сначала пробуем нативный Tauri-путь
+      await initializeBackendBaseUrl();
+
       let token;
       try {
         token = await invoke('login', { username, password });
       } catch (tauriError) {
-        // Fallback для web-demo режима (без Tauri runtime)
         token = await loginViaHttp();
       }
 

@@ -129,6 +129,13 @@ fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_ke
 
 // ---     API ---
 #[tauri::command]
+fn configure_backend_base_url(base_url: String) -> Result<String, AppError> {
+    let normalized = api_client::set_backend_base_url(&base_url);
+    info!("[CONFIG] backend base url = {}", normalized);
+    Ok(normalized)
+}
+
+#[tauri::command]
 async fn login(username: String, password: String) -> Result<String, AppError> {
     info!("[COMMAND]   : {}", username);
     let credentials = api_client::LoginCredentials { username: &username, password: &password };
@@ -408,6 +415,8 @@ fn main() {
     let context = Arc::new(Mutex::new(Context::establish(Scope::User)
         .expect("   PC/SC ...")));
 
+    info!("[CONFIG] backend base url = {}", api_client::get_backend_base_url());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
             .targets([
@@ -426,6 +435,7 @@ fn main() {
             write_mifare_block,
             change_sector_keys,
             // API - Guests
+            configure_backend_base_url,
             login,
             get_guests,
             create_guest,
