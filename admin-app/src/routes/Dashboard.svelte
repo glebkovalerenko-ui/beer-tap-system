@@ -8,7 +8,7 @@
   import { shiftStore } from '../stores/shiftStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { normalizeErrorMessage } from '../lib/errorUtils';
-  import { API_BASE_URL, SHOW_API_BASE_URL } from '../lib/config.js';
+  import { serverConfigStore, SHOW_API_BASE_URL } from '../lib/config.js';
 
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
@@ -195,7 +195,7 @@
 
 {#if SHOW_API_BASE_URL}
   <section class="ui-card config-diagnostic">
-    <strong>API base URL:</strong> {API_BASE_URL}
+    <strong>API base URL:</strong> {$serverConfigStore.baseUrl}
   </section>
 {/if}
 
