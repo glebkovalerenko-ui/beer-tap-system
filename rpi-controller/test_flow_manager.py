@@ -159,3 +159,28 @@ def test_flow_manager_deny_does_not_start_progress():
     assert created["count"] == 0
     assert db_handler.pours == []
     assert manager.card_must_be_removed is True
+
+
+def test_controller_does_not_open_valve_on_insufficient_funds():
+    hardware = FakeHardware(card_present_responses=[True])
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager(
+        {
+            "allowed": False,
+            "reason": "Insufficient funds: top up guest balance before pouring.",
+            "reason_code": "insufficient_funds",
+            "status_code": 403,
+        }
+    )
+    manager = FlowManager(
+        hardware=hardware,
+        db_handler=db_handler,
+        sync_manager=sync_manager,
+    )
+
+    manager.process()
+
+    assert hardware.valve_open_calls == 0
+    assert hardware.valve_close_calls >= 1
+    assert manager.card_must_be_removed is True
+    assert db_handler.pours == []

@@ -503,12 +503,14 @@ Backward compatibility:
     {
       "client_tx_id": "rpi-001-2023-12-01-001",
       "status": "accepted",
-      "reason": null
+      "outcome": "pending_updated_to_synced",
+      "reason": "Pour processed successfully."
     },
     {
       "client_tx_id": "rpi-001-2023-12-01-002",
-      "status": "accepted",
-      "reason": null
+      "status": "audit_only",
+      "outcome": "audit_missing_pending",
+      "reason": "missing_pending_authorize"
     }
   ]
 }
@@ -516,9 +518,18 @@ Backward compatibility:
 
 **Status Values:**
 - `accepted`: Pour successfully processed
-- `audit_only`: Sync was recorded only for audit/no-double-charge purposes
-- `rejected`: Pour failed validation or was terminally rejected after authorize
-- `conflict`: Operational tap/lock conflict, returned as HTTP `409`
+- `audit_only`: Backend recorded anomaly/audit event but did not confirm pour as operationally accepted
+- `rejected`: Pour failed validation and was not accepted
+- `conflict`: Hard sync conflict that returns HTTP `409`
+
+**Important outcomes:**
+- `pending_updated_to_synced`: normal authorize -> sync flow completed
+- `duplicate_existing`: idempotent replay of already accepted pour
+- `audit_late_matched`: late sync matched a manual reconcile; no second charge
+- `audit_late_recorded`: late sync without active lock was recorded only for audit
+- `audit_missing_pending`: visit lock exists, but backend has no matching `pending_sync`
+- `rejected_insufficient_funds`: funds were insufficient at sync time; no charge applied
+- `rejected_tap_mismatch`: active visit lock belongs to another tap
 
 Idempotency note:
 - duplicate sync for an already `synced`/`reconciled` row returns `accepted + duplicate_existing`
@@ -717,8 +728,13 @@ DB-time contract:
 - API responses do not include `server_time`.
 
 Late-sync rule:
-- when lock is already cleared, sync is accepted but must not create another charge;
+- when lock is already cleared, sync returns `status="audit_only"` and must not create another charge;
 - backend emits `late_sync_matched` or `late_sync_mismatch` audit event.
+
+Missing-pending rule:
+- if visit lock exists but there is no matching backend `pending_sync` record, sync returns `status="audit_only"`;
+- outcome is `audit_missing_pending`, reason is `missing_pending_authorize`;
+- backend emits `sync_missing_pending` audit event and does not create a pour row.
 
 ### POST `/api/visits/{visit_id}/reconcile-pour`
 Manual timeout recovery endpoint.
@@ -889,6 +905,15 @@ Response shape:
 - Error body contains `detail.reason = "lost_card"`.
 - Backend writes audit event `lost_card_blocked` with `{card_uid, tap_id, blocked_at}`.
 
+### Authorization deny for insufficient funds
+
+`POST /api/visits/authorize-pour` performs a balance gate before setting visit lock.
+- If guest balance is below the minimum possible charge for the selected tap (`price_per_ml`): `403 Forbidden`.
+- Error body contains `detail.reason = "insufficient_funds"` and a human-readable `detail.message`.
+- No visit lock is created (`active_tap_id` and `lock_set_at` stay null).
+- No `pending_sync` pour is created.
+- Backend writes audit event `insufficient_funds_denied` with `{card_uid, guest_id, visit_id, tap_id, balance, minimum_charge}`.
+
 ## M5 Time Source Policy Update (2026-02-27)
 
 ### Global rule
@@ -974,5 +999,5 @@ Audit:
 M6 clamp-related semantics:
 - normal authorize-based flow must update the existing `pending_sync` row to `sync_status="synced"`;
 - if controller sends sync without successful authorize, backend must keep it non-operational and return `status="audit_only"`;
-- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock/tap state;
+- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns `status="audit_only"` with `outcome="audit_missing_pending"`, writes `sync_missing_pending`, and clears the stale lock/tap state;
 - if a previously authorized sync still hits insufficient funds or keg-volume failure, backend converts the authorize-created row to `sync_status="rejected"`, writes audit (`sync_rejected_insufficient_funds` / `sync_rejected_insufficient_keg_volume`), and clears the stale lock instead of leaving `pending_sync` hanging.

@@ -302,19 +302,21 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         _add_audit_log(
             db,
             actor_id="internal_rpi",
-            action="audit_missing_pending",
+            action="sync_missing_pending",
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
                 "card_uid": card.card_uid,
+                "guest_id": str(guest.guest_id),
                 "tap_id": pour_data.tap_id,
                 "client_tx_id": pour_data.client_tx_id,
                 "short_id": pour_data.short_id,
+                "volume_ml": pour_data.volume_ml,
                 "duration_ms": duration_ms,
             },
         )
         _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
-        return _result("rejected", "rejected_missing_pending_authorize", "missing_pending_authorize")
+        return _result("audit_only", "audit_missing_pending", "missing_pending_authorize")
 
     price_per_ml = pending_pour.price_per_ml_at_pour
     if price_per_ml is None or price_per_ml <= 0:

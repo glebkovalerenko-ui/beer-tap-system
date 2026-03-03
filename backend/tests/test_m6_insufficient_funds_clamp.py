@@ -445,7 +445,7 @@ def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_u
     assert details["amount_to_charge"] == "15.00"
 
 
-def test_sync_missing_pending_authorize_rejects_and_clears_lock(client, db_session):
+def test_sync_missing_pending_authorize_audits_and_clears_lock(client, db_session):
     headers, _, visit_id, tap_id = _prepare_active_visit(
         client,
         suffix="97007",
@@ -491,8 +491,8 @@ def test_sync_missing_pending_authorize_rejects_and_clears_lock(client, db_sessi
     )
     assert sync_resp.status_code == 200
     result = sync_resp.json()["results"][0]
-    assert result["status"] == "rejected"
-    assert result["outcome"] == "rejected_missing_pending_authorize"
+    assert result["status"] == "audit_only"
+    assert result["outcome"] == "audit_missing_pending"
     assert result["reason"] == "missing_pending_authorize"
 
     db_session.expire_all()
@@ -512,7 +512,7 @@ def test_sync_missing_pending_authorize_rejects_and_clears_lock(client, db_sessi
 
     audit_resp = client.get("/api/audit/", headers=headers)
     assert audit_resp.status_code == 200
-    missing_entries = [entry for entry in audit_resp.json() if entry["action"] == "audit_missing_pending"]
+    missing_entries = [entry for entry in audit_resp.json() if entry["action"] == "sync_missing_pending"]
     assert missing_entries
     details = json.loads(missing_entries[0]["details"])
     assert details["tap_id"] == tap_id
