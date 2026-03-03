@@ -3,6 +3,8 @@
 ## Актуальные документы
 
 - `README.md` — быстрый обзор репозитория и запуск backend + PostgreSQL через Docker Compose.
+- `docs/dev/SYNCTHING_DEV_RUNBOOK.md` — актуальный dev-workflow Windows -> Syncthing -> Linux Docker.
+- `docs/dev/ADMIN_APP_BACKEND_URL.md` — как задавать backend URL для web/dev и Tauri dev без путаницы с `localhost:5173`.
 - `docs/API_REFERENCE.md` — функциональное описание API (нуждается в регулярной сверке с `backend/api/*.py`).
 - `docs/INTERFACE_CONTRACT.md` — контракт между Svelte/Tauri/FastAPI (частично устарел, см. `docs/REPO_AUDIT.md`).
 - `docs/RPI_INTERNALS.md` — внутренняя логика контроллера Raspberry Pi.
@@ -11,6 +13,7 @@
 
 ## Исторические / потенциально устаревшие документы
 
+- `docs/reports/TILT_STABILIZATION_REPORT.md` — исторический отчёт о предыдущем Tilt-based workflow.
 - `docs/mvp/*` — пакет MVP-материалов, сформированный под demo-фазу.
 - `project_context.md` — аналитическая сводка, содержит неподтвержденные или устаревшие утверждения.
 - `docs/baseline.md` — baseline-документ с предположениями, не всегда синхронизирован с текущей реализацией.
