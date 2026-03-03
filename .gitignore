@@ -21,6 +21,8 @@ node_modules/
 dist/
 build/
 .npm/
+.stfolder
+.stversions/
 
 # Игнорировать специфичные для ОС файлы
 .DS_Store
