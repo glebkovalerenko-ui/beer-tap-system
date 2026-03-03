@@ -107,7 +107,20 @@ At capture time:
 
 ### Linux changes
 
-See the final section of this report after execution for exact commands and outcomes.
+- Installed `syncthing 1.29.5~ds1-2` on `cybeer-hub`.
+- Enabled `loginctl enable-linger cybeer`.
+- Enabled `syncthing.service` as a `systemd --user` service.
+- Syncthing GUI is local-only on `127.0.0.1:8384`.
+- Syncthing sync ports are listening on `22000/tcp` and `21027/udp`.
+- Syncthing device ID on Linux: `JHGN2EA-HMRNDKN-LKB5MYQ-T5CTT7X-LOUCG3F-HKPAA6L-V6F77PT-ER7TKA3`.
+- Created Syncthing folder `beer-tap-system-dev` with path `/home/cybeer/beer-tap-system` and type `receiveonly`.
+- Deployed the current repository snapshot into `/home/cybeer/beer-tap-system`.
+- Created Linux-local `/home/cybeer/beer-tap-system/.env` from the already running backend/postgres settings.
+- Recreated only `beer_backend_api` from `/home/cybeer/beer-tap-system` with `docker compose up -d --no-build --force-recreate beer_backend_api`.
+- Preserved postgres container state and kept named volume `beer-tap-system_postgres_data`.
+- Confirmed backend now runs from compose file `/home/cybeer/beer-tap-system/docker-compose.yml`.
+- Confirmed backend now has bind mount `/home/cybeer/beer-tap-system/backend:/app`.
+- Confirmed `uvicorn --reload` hot-reload works by editing `runtime_diagnostics.py` on Linux and observing `WatchFiles detected changes ... Reloading...`.
 
 ## D. Admin app: localhost clarification
 
@@ -155,7 +168,36 @@ If controller traffic still does not appear, inspect the controller host first. 
 
 ### Status
 
-- Pending in the first draft of this file; updated after Linux execution.
+- Completed for Linux-side pilot setup.
+
+### Commands executed
+
+```bash
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y syncthing
+loginctl enable-linger cybeer
+systemctl --user enable --now syncthing
+mkdir -p /home/cybeer/beer-tap-system
+cd /home/cybeer/beer-tap-system
+docker compose up -d --no-build --force-recreate beer_backend_api
+```
+
+### Verified outcomes
+
+- `systemctl --user status syncthing` -> `active (running)`
+- `ss -lntu` shows `127.0.0.1:8384`, `*:22000`, `*:21027`
+- `docker inspect beer_backend_api` shows bind mount from `/home/cybeer/beer-tap-system/backend` to `/app`
+- `docker inspect beer_backend_api` labels point to `/home/cybeer/beer-tap-system/docker-compose.yml`
+- `curl http://localhost:8000/` -> `{"Status":"Beer Tap System Backend is running!"}`
+- `curl http://localhost:8000/api/system/status` -> `{"key":"emergency_stop_enabled","value":"false"}`
+- `docker exec beer_postgres_db psql -U beer_user -d beer_tap_db -c 'SELECT 1;'` succeeded
+- `docker exec beer_backend_api python -m alembic current` -> `0012_m6_rejected_sync (head)`
+- Backend logs show startup check passed for `DATABASE_URL=postgresql://beer_user:***@postgres:5432/beer_tap_db`
+
+### Firewall
+
+- No `ufw` or `firewalld` configuration was present on `cybeer-hub` during migration.
+- No firewall rules were changed.
 
 ## Runbook
 
@@ -194,11 +236,14 @@ docker compose exec beer_backend_api python -m alembic current
 ## Known issues
 
 - Syncthing pairing with the Windows workstation still requires the Windows device ID and folder acceptance on both sides.
+- The first `docker compose up -d --build` attempt on the Raspberry Pi timed out during image build, so the final cutover used the already available backend image plus `--no-build --force-recreate`.
+- If Python dependencies or the backend image definition changes, run a full rebuild later from `/home/cybeer/beer-tap-system`.
 - Historical docs in `docs/reports/` and some older planning files still mention Tilt or `localhost`; they are preserved as historical material, not active runbooks.
 
 ## Rollback
 
 1. Stop the compose stack from `/home/cybeer/beer-tap-system`.
-2. Re-run the old image-based stack only if you intentionally want to return to the previous Tilt-driven flow.
+2. Recreate backend from the previous image-only flow only if you intentionally want to return to the old Tilt-driven process.
 3. Do not remove `beer-tap-system_postgres_data`.
 4. Disable Syncthing user service if needed: `systemctl --user disable --now syncthing`.
+5. Remove `/home/cybeer/beer-tap-system` only if you are sure no synced working copy is needed.

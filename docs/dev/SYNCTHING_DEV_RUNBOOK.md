@@ -47,6 +47,7 @@ docker compose restart beer_backend_api
 - Backend code is bind-mounted from `/home/cybeer/beer-tap-system/backend`.
 - `uvicorn --reload` inside the container is the pilot auto-reload mechanism.
 - Schema changes still require container restart if dependency state changes materially.
+- If `backend/requirements*.txt` or `backend/Dockerfile` changes, run `docker compose up -d --build`.
 
 ## Diagnostics
 
