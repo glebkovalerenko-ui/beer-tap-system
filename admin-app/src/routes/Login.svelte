@@ -10,6 +10,8 @@
   let password = 'fake_password';
   let error = '';
   let isLoading = false;
+  /** @type {import('../components/system/ServerSettingsModal.svelte').default | undefined} */
+  let serverSettingsModal;
 
   async function loginViaHttp() {
     const response = await fetch(`${getApiBaseUrl()}/api/token`, {
@@ -31,7 +33,7 @@
     return data.access_token;
   }
 
-  async function handleLogin() {
+  async function onSubmit() {
     error = '';
     isLoading = true;
 
@@ -59,11 +61,18 @@
       isLoading = false;
     }
   }
+
+  /** @param {MouseEvent} event */
+  async function openServerSettings(event) {
+    event?.preventDefault();
+    await serverSettingsModal?.openModal();
+  }
 </script>
 
 <div class="login-container">
   <h2>Вход</h2>
-  <form on:submit|preventDefault={handleLogin}>
+  <ServerSettingsModal bind:this={serverSettingsModal} showLauncher={false} />
+  <form on:submit|preventDefault={onSubmit}>
     <div class="form-group">
       <label for="username">Имя пользователя</label>
       <input type="text" id="username" bind:value={username} disabled={isLoading} autocomplete="username" required />
@@ -77,7 +86,9 @@
       <button type="submit" disabled={isLoading || !username || !password}>
         {#if isLoading}Вход...{:else}Войти{/if}
       </button>
-      <ServerSettingsModal buttonLabel="Настройки сервера" variant="secondary" />
+      <button type="button" class="secondary" on:click={openServerSettings}>
+        Настройки сервера
+      </button>
     </div>
 
     {#if error}
@@ -122,6 +133,11 @@
     color: white;
     border: none;
     cursor: pointer;
+  }
+
+  .secondary {
+    background: #edf2fb;
+    color: #23416b;
   }
 
   .error {

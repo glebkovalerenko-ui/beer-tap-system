@@ -12,6 +12,9 @@
 
   export let buttonLabel = 'Настройки сервера';
   export let variant = 'default';
+  export let showLauncher = true;
+  /** @type {'button' | 'submit' | 'reset'} */
+  export let launcherType = 'button';
 
   let isOpen = false;
   let draftUrl = '';
@@ -20,7 +23,7 @@
   let isSaving = false;
   let isTesting = false;
 
-  async function openModal() {
+  export async function openModal() {
     await initializeBackendBaseUrl();
     draftUrl = $serverConfigStore.baseUrl;
     inlineError = '';
@@ -32,6 +35,12 @@
     isOpen = false;
     inlineError = '';
     successMessage = '';
+  }
+
+  /** @param {MouseEvent} event */
+  async function handleLauncherClick(event) {
+    event?.preventDefault();
+    await openModal();
   }
 
   async function handleTestConnection() {
@@ -69,9 +78,11 @@
   }
 </script>
 
-<button class={`launcher ${variant}`} on:click={openModal}>
-  {buttonLabel}
-</button>
+{#if showLauncher}
+  <button class={`launcher ${variant}`} type={launcherType} on:click={handleLauncherClick}>
+    {buttonLabel}
+  </button>
+{/if}
 
 {#if isOpen}
   <Modal on:close={closeModal}>
