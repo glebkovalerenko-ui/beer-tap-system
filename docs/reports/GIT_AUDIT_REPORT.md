@@ -8,7 +8,7 @@ Audit scope: local git state, `origin`, GitHub PRs, branch hygiene, safe cleanup
 ## Executive Summary
 
 - Initial state had 21 local branches, dozens of stale remote branches, and 0 open PRs.
-- `master` was clean and matched `origin/master` at `7630de9622e3a8988c7ede574010be34859a0a65`.
+- `master` was verified clean against `origin/master` before the docs-only audit commit and remains in sync with `origin/master` after publishing this report.
 - Two active branches with real unpublished work were preserved as PRs:
   - PR #39 `incident/free-pour-zero-balance`
   - PR #40 `infra/syncthing-dev-workflow`
@@ -342,16 +342,15 @@ origin/master
 
 ### Master integrity
 
-Final verification before this docs commit:
+Two checks were performed:
 
-```text
-git rev-parse HEAD         = 7630de9622e3a8988c7ede574010be34859a0a65
-git rev-parse origin/master = 7630de9622e3a8988c7ede574010be34859a0a65
-```
+- before the docs-only audit commit, `master` matched `origin/master`
+- after publishing this report and runbook, `master` again matches `origin/master`
 
 Interpretation:
 
-- `master` was clean and exactly matched `origin/master` before report documentation was added.
+- no functional code cleanup was done directly on `master`
+- the only direct `master` update from this audit is the docs-only commit that added this report and runbook
 
 ### Alembic heads
 
