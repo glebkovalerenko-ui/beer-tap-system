@@ -999,5 +999,5 @@ Audit:
 M6 clamp-related semantics:
 - normal authorize-based flow must update the existing `pending_sync` row to `sync_status="synced"`;
 - if controller sends sync without successful authorize, backend must keep it non-operational and return `status="audit_only"`;
-- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns terminal `rejected` with `outcome="rejected_missing_pending_authorize"`, writes `audit_missing_pending`, and clears the stale lock/tap state;
+- backend must not create a new accepted pour when `pending_sync` is missing for an active lock; it returns `status="audit_only"` with `outcome="audit_missing_pending"`, writes `sync_missing_pending`, and clears the stale lock/tap state;
 - if a previously authorized sync still hits insufficient funds or keg-volume failure, backend converts the authorize-created row to `sync_status="rejected"`, writes audit (`sync_rejected_insufficient_funds` / `sync_rejected_insufficient_keg_volume`), and clears the stale lock instead of leaving `pending_sync` hanging.

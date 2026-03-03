@@ -619,7 +619,7 @@ Controller behavior:
 Sync behavior:
 - accepted sync must update the authorize-created `pending_sync` row to `synced`;
 - sync without authorize stays `audit_only`;
-- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour; backend rejects it terminally and clears the stale lock;
+- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour; backend returns `audit_only` and clears the stale lock;
 - if sync still cannot be charged after authorize, backend converts that row to `rejected`, records explicit audit, and clears the stale lock/tap state instead of leaving `pending_sync`.
 
 Rules:
