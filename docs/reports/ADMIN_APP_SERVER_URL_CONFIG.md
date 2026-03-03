@@ -39,6 +39,12 @@
 - Web/dev still resolves the backend from `VITE_API_BASE_URL` or `VITE_BACKEND_BASE_URL`.
 - If Tauri runtime commands are unavailable, the frontend stays in build/dev mode and explicitly tells the user to use env config instead of pretending runtime persistence exists.
 
+## Runtime file locations
+
+- Windows: `%APPDATA%\com.beertapsystem.admin\server-config.json`
+- Linux: `~/.config/com.beertapsystem.admin/server-config.json`
+- macOS: `~/Library/Application Support/com.beertapsystem.admin/server-config.json`
+
 ## Validation rules
 
 - Trim whitespace.
@@ -65,6 +71,14 @@ Validation is enforced in both frontend and Rust backend commands.
 
 The current effective URL is shown in the modal.
 
+## Operator notes
+
+- In web/dev, the effective backend URL comes from `VITE_API_BASE_URL` or `VITE_BACKEND_BASE_URL`.
+- In Tauri desktop, the effective backend URL comes from the persisted runtime file `server-config.json`.
+- Operators change the runtime URL through the `Настройки сервера` modal on the login screen or in the top bar.
+- UX rule: the `Настройки сервера` button only opens the modal and never triggers login.
+- Saving an unreachable or otherwise wrong URL is allowed on purpose so the operator can recover later without rebuilding the app.
+
 ## Recovery from wrong URL
 
 If the saved URL is reachable but wrong, or unreachable:
@@ -78,6 +92,7 @@ If the config file itself is corrupted, delete the file manually and restart:
 
 - Windows: `%APPDATA%\com.beertapsystem.admin\server-config.json`
 - Linux: `~/.config/com.beertapsystem.admin/server-config.json`
+- macOS: `~/Library/Application Support/com.beertapsystem.admin/server-config.json`
 
 After file removal, the app falls back to the packaged default `http://cybeer-hub:8000`.
 
@@ -96,8 +111,11 @@ cargo check
 ### Manual smoke
 
 1. Start the desktop app with a working backend.
-2. Open server settings, set a working URL, test, save, and verify normal API operations still work.
-3. Change the URL to an unreachable host, save it, restart the app, and verify:
+2. Enter valid credentials, click `Настройки сервера`, and verify only the modal opens with no login attempt.
+3. Click `Войти` and verify login still succeeds.
+4. Repeat the `Настройки сервера` click with invalid credentials or an unavailable backend and verify behavior does not change.
+5. Open server settings, set a working URL, test, save, and verify normal API operations still work.
+6. Change the URL to an unreachable host, save it, restart the app, and verify:
    - UI still opens.
    - Login/settings screen still opens.
    - Connection-related actions show explicit errors.
