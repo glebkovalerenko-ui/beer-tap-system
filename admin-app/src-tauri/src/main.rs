@@ -7,22 +7,23 @@
 
 // ---  ---
 mod api_client;
-mod nfc_handler; 
+mod nfc_handler;
+mod server_config;
 
 // ---  ---
-use pcsc::{Context, Scope, Error};
+use hex;
+use log::{error, info, warn};
+use pcsc::{Context, Error, Scope};
 use serde::Serialize;
+use serde_json;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{State, Emitter}; 
+use tauri::{Emitter, State};
 use tauri_plugin_log::{Target, TargetKind};
-use log::{info, error};
-use serde_json; 
-use hex;
 
 // =============================================================================
-//   
+//
 // =============================================================================
 
 struct AppState {
@@ -30,7 +31,7 @@ struct AppState {
 }
 
 #[derive(Debug, Serialize, Clone)]
-pub struct AppError { 
+pub struct AppError {
     message: String,
 }
 fn ensure_error_message(message: String) -> String {
@@ -41,10 +42,34 @@ fn ensure_error_message(message: String) -> String {
         trimmed.to_string()
     }
 }
-impl From<Error> for AppError { fn from(err: Error) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
-impl From<String> for AppError { fn from(s: String) -> Self { AppError { message: ensure_error_message(s) } } }
-impl From<&str> for AppError { fn from(s: &str) -> Self { AppError { message: ensure_error_message(s.to_string()) } } }
-impl From<hex::FromHexError> for AppError { fn from(err: hex::FromHexError) -> Self { AppError { message: ensure_error_message(err.to_string()) } } }
+impl From<Error> for AppError {
+    fn from(err: Error) -> Self {
+        AppError {
+            message: ensure_error_message(err.to_string()),
+        }
+    }
+}
+impl From<String> for AppError {
+    fn from(s: String) -> Self {
+        AppError {
+            message: ensure_error_message(s),
+        }
+    }
+}
+impl From<&str> for AppError {
+    fn from(s: &str) -> Self {
+        AppError {
+            message: ensure_error_message(s.to_string()),
+        }
+    }
+}
+impl From<hex::FromHexError> for AppError {
+    fn from(err: hex::FromHexError) -> Self {
+        AppError {
+            message: ensure_error_message(err.to_string()),
+        }
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 struct CardStatusPayload {
@@ -67,28 +92,55 @@ fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
 }
 
 #[tauri::command]
-fn read_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, state: State<AppState> ) -> Result<String, AppError> {
+fn read_mifare_block(
+    reader_name: &str,
+    block_addr: u8,
+    key_type: &str,
+    key_hex: &str,
+    state: State<AppState>,
+) -> Result<String, AppError> {
     // ... ( )
     info!("[COMMAND]     {}", block_addr);
-    let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
+    let card = nfc_handler::connect_and_authenticate(
+        &state.context,
+        reader_name,
+        block_addr,
+        key_type,
+        key_hex,
+    )?;
     let read_apdu = &[0xFF, 0xB0, 0x00, block_addr, 0x10];
     let mut rapdu_buf = [0; 256];
     let rapdu = card.transmit(read_apdu, &mut rapdu_buf)?;
-    if rapdu.len() < 2 || rapdu[rapdu.len()-2..] != [0x90, 0x00] {
+    if rapdu.len() < 2 || rapdu[rapdu.len() - 2..] != [0x90, 0x00] {
         return Err(format!("  : {:?}", hex::encode(rapdu)).into());
     }
-    let data_hex = hex::encode(&rapdu[..rapdu.len()-2]);
+    let data_hex = hex::encode(&rapdu[..rapdu.len() - 2]);
     info!("[COMMAND]  {}  . : {}", block_addr, data_hex);
     Ok(data_hex)
 }
 
 #[tauri::command]
-fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_hex: &str, data_hex: &str, state: State<AppState> ) -> Result<(), AppError> {
+fn write_mifare_block(
+    reader_name: &str,
+    block_addr: u8,
+    key_type: &str,
+    key_hex: &str,
+    data_hex: &str,
+    state: State<AppState>,
+) -> Result<(), AppError> {
     // ... ( )
     info!("[COMMAND]      {}. : {}", block_addr, data_hex);
-    let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, block_addr, key_type, key_hex)?;
+    let card = nfc_handler::connect_and_authenticate(
+        &state.context,
+        reader_name,
+        block_addr,
+        key_type,
+        key_hex,
+    )?;
     let data = hex::decode(data_hex)?;
-    if data.len() != 16 { return Err("     16 ".into()); }
+    if data.len() != 16 {
+        return Err("     16 ".into());
+    }
     let mut write_apdu = vec![0xFF, 0xD6, 0x00, block_addr, 0x10];
     write_apdu.extend_from_slice(&data);
     let mut rapdu_buf = [0; 256];
@@ -101,17 +153,31 @@ fn write_mifare_block( reader_name: &str, block_addr: u8, key_type: &str, key_he
 }
 
 #[tauri::command]
-fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_key_hex: &str, new_key_a: &str, new_key_b: &str, state: State<AppState>) -> Result<(), AppError> {
+fn change_sector_keys(
+    reader_name: &str,
+    sector: u8,
+    key_type: &str,
+    current_key_hex: &str,
+    new_key_a: &str,
+    new_key_b: &str,
+    state: State<AppState>,
+) -> Result<(), AppError> {
     // ... ( )
     info!("[COMMAND]       {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
-    let card = nfc_handler::connect_and_authenticate(&state.context, reader_name, trailer_block_addr, key_type, current_key_hex)?;
+    let card = nfc_handler::connect_and_authenticate(
+        &state.context,
+        reader_name,
+        trailer_block_addr,
+        key_type,
+        current_key_hex,
+    )?;
     let new_key_a_bytes = hex::decode(new_key_a)?;
     let new_key_b_bytes = hex::decode(new_key_b)?;
     if new_key_a_bytes.len() != 6 || new_key_b_bytes.len() != 6 {
         return Err("     6  (12 HEX)".into());
     }
-    let access_bits: [u8; 4] = [0xFF, 0x07, 0x80, 0x69]; 
+    let access_bits: [u8; 4] = [0xFF, 0x07, 0x80, 0x69];
     let mut new_trailer_data: Vec<u8> = Vec::with_capacity(16);
     new_trailer_data.extend_from_slice(&new_key_a_bytes);
     new_trailer_data.extend_from_slice(&access_bits);
@@ -129,10 +195,46 @@ fn change_sector_keys( reader_name: &str, sector: u8, key_type: &str, current_ke
 
 // ---     API ---
 #[tauri::command]
+fn get_server_base_url() -> Result<String, AppError> {
+    Ok(api_client::get_backend_base_url())
+}
+
+#[tauri::command]
+fn set_server_base_url(app: tauri::AppHandle, base_url: String) -> Result<String, AppError> {
+    let normalized =
+        server_config::persist_server_base_url(&app, &base_url).map_err(AppError::from)?;
+    let applied = api_client::set_backend_base_url(&normalized);
+    info!(
+        "[CONFIG] backend base url persisted and applied = {}",
+        applied
+    );
+    Ok(applied)
+}
+
+#[tauri::command]
+async fn test_server_connection(
+    base_url: Option<String>,
+) -> Result<server_config::ServerConnectionTestResult, AppError> {
+    let target = match base_url {
+        Some(value) => server_config::validate_server_base_url(&value).map_err(AppError::from)?,
+        None => api_client::get_backend_base_url(),
+    };
+
+    server_config::test_server_connection(&target)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn login(username: String, password: String) -> Result<String, AppError> {
     info!("[COMMAND]   : {}", username);
-    let credentials = api_client::LoginCredentials { username: &username, password: &password };
-    api_client::login(&credentials).await.map_err(AppError::from)
+    let credentials = api_client::LoginCredentials {
+        username: &username,
+        password: &password,
+    };
+    api_client::login(&credentials)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -142,27 +244,50 @@ async fn get_guests(token: String) -> Result<Vec<api_client::Guest>, AppError> {
 }
 
 #[tauri::command]
-async fn create_guest(token: String, guest_data: api_client::GuestPayload) -> Result<api_client::Guest, AppError> {
+async fn create_guest(
+    token: String,
+    guest_data: api_client::GuestPayload,
+) -> Result<api_client::Guest, AppError> {
     info!("[COMMAND]     ...");
-    api_client::create_guest(&token, &guest_data).await.map_err(AppError::from)
+    api_client::create_guest(&token, &guest_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn update_guest(token: String, guest_id: String, guest_data: api_client::GuestUpdatePayload) -> Result<api_client::Guest, AppError> {
+async fn update_guest(
+    token: String,
+    guest_id: String,
+    guest_data: api_client::GuestUpdatePayload,
+) -> Result<api_client::Guest, AppError> {
     info!("[COMMAND]     ID: {}", guest_id);
-    api_client::update_guest(&token, &guest_id, &guest_data).await.map_err(AppError::from)
+    api_client::update_guest(&token, &guest_id, &guest_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn bind_card_to_guest(token: String, guest_id: String, card_uid: String) -> Result<api_client::Guest, AppError> {
+async fn bind_card_to_guest(
+    token: String,
+    guest_id: String,
+    card_uid: String,
+) -> Result<api_client::Guest, AppError> {
     info!("[COMMAND]     UID: {}   ID: {}", card_uid, guest_id);
-    api_client::bind_card_to_guest(&token, &guest_id, &card_uid).await.map_err(AppError::from)
+    api_client::bind_card_to_guest(&token, &guest_id, &card_uid)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn top_up_balance(token: String, guest_id: String, top_up_data: api_client::TopUpPayload) -> Result<api_client::Guest, AppError> {
+async fn top_up_balance(
+    token: String,
+    guest_id: String,
+    top_up_data: api_client::TopUpPayload,
+) -> Result<api_client::Guest, AppError> {
     info!("[COMMAND]       ID: {}", guest_id);
-    api_client::top_up_balance(&token, &guest_id, &top_up_data).await.map_err(AppError::from)
+    api_client::top_up_balance(&token, &guest_id, &top_up_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -172,21 +297,34 @@ async fn get_kegs(token: String) -> Result<Vec<api_client::Keg>, AppError> {
 }
 
 #[tauri::command]
-async fn create_keg(token: String, keg_data: api_client::KegPayload) -> Result<api_client::Keg, AppError> {
+async fn create_keg(
+    token: String,
+    keg_data: api_client::KegPayload,
+) -> Result<api_client::Keg, AppError> {
     info!("[COMMAND]     ...");
-    api_client::create_keg(&token, &keg_data).await.map_err(AppError::from)
+    api_client::create_keg(&token, &keg_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn update_keg(token: String, keg_id: String, keg_data: api_client::KegUpdatePayload) -> Result<api_client::Keg, AppError> {
+async fn update_keg(
+    token: String,
+    keg_id: String,
+    keg_data: api_client::KegUpdatePayload,
+) -> Result<api_client::Keg, AppError> {
     info!("[COMMAND]     ID: {}", keg_id);
-    api_client::update_keg(&token, &keg_id, &keg_data).await.map_err(AppError::from)
+    api_client::update_keg(&token, &keg_id, &keg_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn delete_keg(token: String, keg_id: String) -> Result<(), AppError> {
     info!("[COMMAND]     ID: {}", keg_id);
-    api_client::delete_keg(&token, &keg_id).await.map_err(AppError::from)
+    api_client::delete_keg(&token, &keg_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -198,58 +336,88 @@ async fn get_taps(token: String) -> Result<Vec<api_client::Tap>, AppError> {
 #[tauri::command]
 async fn get_pours(token: String, limit: u32) -> Result<Vec<api_client::PourResponse>, AppError> {
     info!("[COMMAND]     API...");
-    api_client::get_pours(&token, limit).await.map_err(AppError::from)
+    api_client::get_pours(&token, limit)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn get_beverages(token: String) -> Result<Vec<api_client::Beverage>, AppError> {
     info!("[COMMAND]     API...");
-    api_client::get_beverages(&token).await.map_err(AppError::from)
+    api_client::get_beverages(&token)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn create_beverage(token: String, beverage_data: api_client::BeveragePayload) -> Result<api_client::Beverage, AppError> {
+async fn create_beverage(
+    token: String,
+    beverage_data: api_client::BeveragePayload,
+) -> Result<api_client::Beverage, AppError> {
     info!("[COMMAND]     ...");
-    api_client::create_beverage(&token, &beverage_data).await.map_err(AppError::from)
+    api_client::create_beverage(&token, &beverage_data)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn assign_keg_to_tap(token: String, tap_id: i32, keg_id: String) -> Result<api_client::Tap, AppError> {
+async fn assign_keg_to_tap(
+    token: String,
+    tap_id: i32,
+    keg_id: String,
+) -> Result<api_client::Tap, AppError> {
     info!("[COMMAND]     ID: {}   ID: {}", keg_id, tap_id);
-    api_client::assign_keg_to_tap(&token, tap_id, &keg_id).await.map_err(AppError::from)
+    api_client::assign_keg_to_tap(&token, tap_id, &keg_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn unassign_keg_from_tap(token: String, tap_id: i32) -> Result<api_client::Tap, AppError> {
     info!("[COMMAND]       ID: {}", tap_id);
-    api_client::unassign_keg_from_tap(&token, tap_id).await.map_err(AppError::from)
+    api_client::unassign_keg_from_tap(&token, tap_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn update_tap(token: String, tap_id: i32, payload: api_client::TapUpdatePayload) -> Result<api_client::Tap, AppError> {
+async fn update_tap(
+    token: String,
+    tap_id: i32,
+    payload: api_client::TapUpdatePayload,
+) -> Result<api_client::Tap, AppError> {
     info!("[COMMAND]     ID: {}", tap_id);
-    api_client::update_tap(&token, tap_id, &payload).await.map_err(AppError::from)
+    api_client::update_tap(&token, tap_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn get_system_status(token: String) -> Result<api_client::SystemStateItem, AppError> {
     info!("[COMMAND]   ...");
-    api_client::get_system_status(&token).await.map_err(AppError::from)
+    api_client::get_system_status(&token)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn set_emergency_stop(token: String, value: String) -> Result<api_client::SystemStateItem, AppError> {
+async fn set_emergency_stop(
+    token: String,
+    value: String,
+) -> Result<api_client::SystemStateItem, AppError> {
     info!("[COMMAND]     Emergency Stop  '{}'", value);
     let payload = api_client::SystemStateUpdatePayload { value };
-    api_client::set_emergency_stop(&token, &payload).await.map_err(AppError::from)
+    api_client::set_emergency_stop(&token, &payload)
+        .await
+        .map_err(AppError::from)
 }
-
-
 
 #[tauri::command]
 async fn get_current_shift(token: String) -> Result<api_client::ShiftCurrentResponse, AppError> {
     info!("[COMMAND]   ...");
-    api_client::get_current_shift(&token).await.map_err(AppError::from)
+    api_client::get_current_shift(&token)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -261,25 +429,42 @@ async fn open_shift(token: String) -> Result<api_client::Shift, AppError> {
 #[tauri::command]
 async fn close_shift(token: String) -> Result<api_client::Shift, AppError> {
     info!("[COMMAND]    ...");
-    api_client::close_shift(&token).await.map_err(AppError::from)
+    api_client::close_shift(&token)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn get_shift_x_report(token: String, shift_id: String) -> Result<api_client::ShiftReportPayload, AppError> {
+async fn get_shift_x_report(
+    token: String,
+    shift_id: String,
+) -> Result<api_client::ShiftReportPayload, AppError> {
     info!("[COMMAND]   X-report shift_id={}", shift_id);
-    api_client::get_shift_x_report(&token, &shift_id).await.map_err(AppError::from)
+    api_client::get_shift_x_report(&token, &shift_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn create_shift_z_report(token: String, shift_id: String) -> Result<api_client::ShiftReportDocument, AppError> {
+async fn create_shift_z_report(
+    token: String,
+    shift_id: String,
+) -> Result<api_client::ShiftReportDocument, AppError> {
     info!("[COMMAND]   create Z-report shift_id={}", shift_id);
-    api_client::create_shift_z_report(&token, &shift_id).await.map_err(AppError::from)
+    api_client::create_shift_z_report(&token, &shift_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn get_shift_z_report(token: String, shift_id: String) -> Result<api_client::ShiftReportDocument, AppError> {
+async fn get_shift_z_report(
+    token: String,
+    shift_id: String,
+) -> Result<api_client::ShiftReportDocument, AppError> {
     info!("[COMMAND]   get Z-report shift_id={}", shift_id);
-    api_client::get_shift_z_report(&token, &shift_id).await.map_err(AppError::from)
+    api_client::get_shift_z_report(&token, &shift_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -288,47 +473,87 @@ async fn list_shift_z_reports(
     from_date: String,
     to_date: String,
 ) -> Result<Vec<api_client::ShiftZReportListItem>, AppError> {
-    info!("[COMMAND]   list Z-reports from={} to={}", from_date, to_date);
-    api_client::list_shift_z_reports(&token, &from_date, &to_date).await.map_err(AppError::from)
+    info!(
+        "[COMMAND]   list Z-reports from={} to={}",
+        from_date, to_date
+    );
+    api_client::list_shift_z_reports(&token, &from_date, &to_date)
+        .await
+        .map_err(AppError::from)
 }
 #[tauri::command]
-async fn get_active_visits(token: String) -> Result<Vec<api_client::VisitActiveListItem>, AppError> {
+async fn get_active_visits(
+    token: String,
+) -> Result<Vec<api_client::VisitActiveListItem>, AppError> {
     info!("[COMMAND]    ...");
-    api_client::get_active_visits(&token).await.map_err(AppError::from)
+    api_client::get_active_visits(&token)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 async fn search_active_visit(token: String, query: String) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]      ...");
-    api_client::search_active_visit(&token, &query).await.map_err(AppError::from)
+    api_client::search_active_visit(&token, &query)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn open_visit(token: String, guest_id: String, card_uid: Option<String>) -> Result<api_client::Visit, AppError> {
+async fn open_visit(
+    token: String,
+    guest_id: String,
+    card_uid: Option<String>,
+) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]     ID: {}", guest_id);
     let payload = api_client::VisitOpenPayload { guest_id, card_uid };
-    api_client::open_visit(&token, &payload).await.map_err(AppError::from)
+    api_client::open_visit(&token, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn assign_card_to_visit(token: String, visit_id: String, card_uid: String) -> Result<api_client::Visit, AppError> {
+async fn assign_card_to_visit(
+    token: String,
+    visit_id: String,
+    card_uid: String,
+) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]     ID: {}", visit_id);
     let payload = api_client::VisitAssignCardPayload { card_uid };
-    api_client::assign_card_to_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+    api_client::assign_card_to_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn force_unlock_visit(token: String, visit_id: String, reason: String, comment: Option<String>) -> Result<api_client::Visit, AppError> {
+async fn force_unlock_visit(
+    token: String,
+    visit_id: String,
+    reason: String,
+    comment: Option<String>,
+) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND] Force unlock   ID: {}", visit_id);
     let payload = api_client::VisitForceUnlockPayload { reason, comment };
-    api_client::force_unlock_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+    api_client::force_unlock_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn close_visit(token: String, visit_id: String, closed_reason: String, card_returned: bool) -> Result<api_client::Visit, AppError> {
+async fn close_visit(
+    token: String,
+    visit_id: String,
+    closed_reason: String,
+    card_returned: bool,
+) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]   ID: {}", visit_id);
-    let payload = api_client::VisitClosePayload { closed_reason, card_returned };
-    api_client::close_visit(&token, &visit_id, &payload).await.map_err(AppError::from)
+    let payload = api_client::VisitClosePayload {
+        closed_reason,
+        card_returned,
+    };
+    api_client::close_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -350,7 +575,9 @@ async fn reconcile_pour(
         reason,
         comment,
     };
-    api_client::reconcile_pour(&token, &visit_id, &payload).await.map_err(AppError::from)
+    api_client::reconcile_pour(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -384,17 +611,27 @@ async fn list_lost_cards(
 }
 
 #[tauri::command]
-async fn restore_lost_card(token: String, card_uid: String) -> Result<api_client::LostCardRestoreResponse, AppError> {
-    api_client::restore_lost_card(&token, &card_uid).await.map_err(AppError::from)
+async fn restore_lost_card(
+    token: String,
+    card_uid: String,
+) -> Result<api_client::LostCardRestoreResponse, AppError> {
+    api_client::restore_lost_card(&token, &card_uid)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn resolve_card(token: String, card_uid: String) -> Result<api_client::CardResolveResponse, AppError> {
-    api_client::resolve_card(&token, &card_uid).await.map_err(AppError::from)
+async fn resolve_card(
+    token: String,
+    card_uid: String,
+) -> Result<api_client::CardResolveResponse, AppError> {
+    api_client::resolve_card(&token, &card_uid)
+        .await
+        .map_err(AppError::from)
 }
 
 // =============================================================================
-//   
+//
 // =============================================================================
 
 fn main() {
@@ -405,8 +642,9 @@ fn main() {
         default_panic_hook(panic_info);
     }));
 
-    let context = Arc::new(Mutex::new(Context::establish(Scope::User)
-        .expect("   PC/SC ...")));
+    let context = Arc::new(Mutex::new(
+        Context::establish(Scope::User).expect("   PC/SC ..."),
+    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
@@ -426,6 +664,9 @@ fn main() {
             write_mifare_block,
             change_sector_keys,
             // API - Guests
+            get_server_base_url,
+            set_server_base_url,
+            test_server_connection,
             login,
             get_guests,
             create_guest,
@@ -469,10 +710,24 @@ fn main() {
             resolve_card
         ])
         .setup(move |app| {
-            // ... (  NFC  )
             let app_handle = app.handle().clone();
+            let configured_base_url = match server_config::load_server_base_url(&app_handle) {
+                Ok(base_url) => base_url,
+                Err(error) => {
+                    warn!(
+                        "[CONFIG] failed to load persisted server URL, using packaged default {}: {}",
+                        server_config::DEFAULT_SERVER_BASE_URL,
+                        error
+                    );
+                    server_config::default_server_base_url()
+                }
+            };
+            let applied_base_url = api_client::set_backend_base_url(&configured_base_url);
+            info!("[CONFIG] backend base url = {}", applied_base_url);
+
+            // ... (  NFC  )
             let context_clone = Arc::clone(&context);
-            
+
             info!("     ...");
             //      thread::spawn
             thread::spawn(move || {
@@ -512,7 +767,7 @@ fn main() {
                             CardStatusPayload { uid: None, error: Some("  .".to_string()) }
                         }
                     };
-                    
+
                     //  ,    payload   .
                     match serde_json::to_string(&payload) {
                         Ok(current_payload_json) => {
@@ -537,6 +792,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("   Tauri ");
 }
-
-
-

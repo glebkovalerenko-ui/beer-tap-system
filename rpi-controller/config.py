@@ -1,35 +1,23 @@
 # config.py
-# ==========================================================
-# Конфигурация контроллера Beer Tap System
-# ==========================================================
 
 import os
 
-# IP-адрес и порт вашего центрального сервера (бэкенда)
-# ВАЖНО: Замените "192.168.0.103" на реальный IP вашего компьютера!
-SERVER_URL = os.getenv("SERVER_URL", "http://192.168.0.106:8000")
+DEFAULT_SERVER_URL = "http://cybeer-hub:8000"
 
-# ID этого крана. Должен быть уникальным для каждого RPi.
-# Пока у нас один кран, оставляем значение 1.
+
+def normalize_server_url(value: str | None) -> str:
+    normalized = (value or "").strip().rstrip("/")
+    return normalized or DEFAULT_SERVER_URL
+
+
+SERVER_URL = normalize_server_url(os.getenv("SERVER_URL"))
+
 TAP_ID = 1
-
-# Цена за 100 мл напитка в условных единицах (копейках, центах).
-# В будущем это значение должно приходить с сервера.
 PRICE_PER_100ML_CENTS = 150
-
-# Как часто (в секундах) фоновый процесс будет пытаться
-# отправить накопленные данные на сервер.
 SYNC_INTERVAL_SECONDS = 15
-
-# Пин для управления реле
 PIN_RELAY = 18
-
-# Пин для подключения датчика потока
 PIN_FLOW_SENSOR = 17
-
-# K-фактор для датчика потока YF-S201
 FLOW_SENSOR_K_FACTOR = 7.5
-
 
 
 def normalize_token(value: str | None) -> str:
@@ -40,7 +28,7 @@ def normalize_token(value: str | None) -> str:
         normalized = normalized[1:-1].strip()
     return normalized
 
-# Токен для внутренней аутентификации
+
 INTERNAL_TOKEN = normalize_token(
     os.getenv("INTERNAL_TOKEN") or os.getenv("INTERNAL_API_KEY") or "demo-secret-key"
 )

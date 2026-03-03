@@ -8,6 +8,7 @@
   import { shiftStore } from '../stores/shiftStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { normalizeErrorMessage } from '../lib/errorUtils';
+  import { serverConfigStore, SHOW_API_BASE_URL } from '../lib/config.js';
 
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
@@ -192,6 +193,12 @@
   {/if}
 </div>
 
+{#if SHOW_API_BASE_URL}
+  <section class="ui-card config-diagnostic">
+    <strong>API base URL:</strong> {$serverConfigStore.baseUrl}
+  </section>
+{/if}
+
 <section class="shift-panel ui-card">
   <div>
     <h2>Смена</h2>
@@ -362,6 +369,7 @@
   .emergency-button.active { background-color: #d9534f; }
   .emergency-button:disabled { opacity: 0.6; cursor: not-allowed; }
   .emergency-note { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+  .config-diagnostic { margin-bottom: 1rem; padding: 0.75rem 1rem; }
 
   .shift-panel {
     padding: 1rem;
