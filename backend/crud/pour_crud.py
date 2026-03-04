@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 import models
 import schemas
 from crud import visit_crud
+from pos_adapter import get_pos_adapter
 
 
 def _result(status: str, outcome: str, reason: str) -> dict:
@@ -395,6 +396,9 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     guest.balance -= amount_to_charge
     keg.current_volume_ml -= pour_data.volume_ml
     _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
+    db.flush()
+    db.refresh(pending_pour)
+    get_pos_adapter().notify_pour(db=db, pour=pending_pour, guest=guest)
 
     return _result("accepted", "pending_updated_to_synced", "Pour processed successfully.")
 

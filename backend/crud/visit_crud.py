@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import models
 from crud import lost_card_crud, pour_policy, system_crud
+from pos_adapter import get_pos_adapter
 
 
 def _is_adult(date_of_birth: date) -> bool:
@@ -663,6 +664,7 @@ def reconcile_pour(
 
     price_per_ml = (Decimal(amount) / Decimal(volume_ml)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
     pending_pour = _get_pending_pour_for_visit_tap(db=db, visit_id=visit_id, tap_id=tap_id)
+    finalized_pour = pending_pour
     if pending_pour:
         pending_pour.card_uid = visit.card_uid
         pending_pour.guest_id = visit.guest_id
@@ -679,25 +681,24 @@ def reconcile_pour(
         pending_pour.is_manual_reconcile = True
     else:
         manual_client_tx_id = f"manual-reconcile:{visit_id}:{short_id}"
-        db.add(
-            models.Pour(
-                client_tx_id=manual_client_tx_id,
-                card_uid=visit.card_uid,
-                tap_id=tap_id,
-                visit_id=visit_id,
-                volume_ml=volume_ml,
-                poured_at=func.now(),
-                amount_charged=amount,
-                price_per_ml_at_pour=price_per_ml,
-                duration_ms=duration_ms,
-                guest_id=visit.guest_id,
-                keg_id=tap.keg_id,
-                sync_status="reconciled",
-                reconciled_at=func.now(),
-                short_id=short_id,
-                is_manual_reconcile=True,
-            )
+        finalized_pour = models.Pour(
+            client_tx_id=manual_client_tx_id,
+            card_uid=visit.card_uid,
+            tap_id=tap_id,
+            visit_id=visit_id,
+            volume_ml=volume_ml,
+            poured_at=func.now(),
+            amount_charged=amount,
+            price_per_ml_at_pour=price_per_ml,
+            duration_ms=duration_ms,
+            guest_id=visit.guest_id,
+            keg_id=tap.keg_id,
+            sync_status="reconciled",
+            reconciled_at=func.now(),
+            short_id=short_id,
+            is_manual_reconcile=True,
         )
+        db.add(finalized_pour)
 
     guest.balance -= amount
     keg.current_volume_ml -= volume_ml
@@ -705,6 +706,9 @@ def reconcile_pour(
     visit.lock_set_at = None
     if tap.status == "processing_sync":
         tap.status = "active"
+    db.flush()
+    db.refresh(finalized_pour)
+    get_pos_adapter().notify_pour(db=db, pour=finalized_pour, guest=guest)
 
     _add_audit_log(
         db,

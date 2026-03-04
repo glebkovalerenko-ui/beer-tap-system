@@ -45,7 +45,7 @@
   Сценарий: Отклонение sync без pending authorize после deny по insufficient funds
     Дано Стоимость налива превышает баланс гостя
     Когда Контроллер отправляет этот налив
-    Тогда API должен вернуть 200 OK со статусом "rejected" и reason "missing_pending_authorize"
+    Тогда API должен вернуть 200 OK со статусом "audit_only" и reason "missing_pending_authorize"
 
   @TC-API-CTL-08
   Сценарий: Отклонение налива из-за неактивного крана
