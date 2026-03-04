@@ -472,6 +472,7 @@ pub struct BeveragePayload {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Keg {
     pub keg_id: String,
+    pub beverage_id: String,
     pub initial_volume_ml: i32,
     pub current_volume_ml: i32,
     pub purchase_price: String,
@@ -480,6 +481,14 @@ pub struct Keg {
     pub tapped_at: Option<String>,
     pub finished_at: Option<String>,
     pub beverage: Beverage, // Вложенная структура
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct KegSuggestionResponse {
+    pub recommended_keg: Option<Keg>,
+    pub candidates_count: i32,
+    pub reason: String,
+    pub ordering_keys_used: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -676,6 +685,19 @@ pub async fn get_kegs(token: &str) -> Result<Vec<Keg>, String> {
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
         response.json::<Vec<Keg>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_keg_suggestion(token: &str, beer_type_id: &str) -> Result<KegSuggestionResponse, String> {
+    let url = build_api_url(&format!("kegs/suggest?beer_type_id={}", beer_type_id));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<KegSuggestionResponse>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
