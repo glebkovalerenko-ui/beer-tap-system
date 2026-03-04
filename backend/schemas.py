@@ -49,6 +49,13 @@ class Keg(KegBase):
     beverage: Beverage
     model_config = ConfigDict(from_attributes=True)
 
+
+class KegSuggestionResponse(BaseModel):
+    recommended_keg: Optional[Keg] = None
+    candidates_count: int
+    reason: str
+    ordering_keys_used: list[str]
+
 # --- Схемы для Кранов (Tap) ---
 class TapBase(BaseModel):
     display_name: str = Field(..., json_schema_extra={'example': "Кран №1"})
@@ -325,6 +332,12 @@ class VisitReconcilePourRequest(BaseModel):
 class TopUpRequest(BaseModel):
     amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 500.00}, description="Сумма пополнения, должна быть больше нуля")
     payment_method: str = Field(..., json_schema_extra={'example': "cash"}, description="Метод оплаты (e.g., 'cash', 'card')")
+
+
+class RefundRequest(BaseModel):
+    amount: Decimal = Field(..., gt=0, json_schema_extra={'example': 150.00}, description="Refund amount must be greater than zero")
+    payment_method: str = Field(..., json_schema_extra={'example': "cash"}, description="Refund payment method")
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "demo_refund"})
 
 class HistoryItem(BaseModel):
     timestamp: datetime
