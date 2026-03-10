@@ -1,4 +1,11 @@
 <script>
+  import {
+    formatDateTimeRu,
+    formatMinorUnitsRub,
+    formatShiftReportMetricLabel,
+    formatVolumeRu,
+  } from '../../lib/formatters.js';
+
   export let payload = null;
   export let title = 'Отчёт смены';
   export let reportId = null;
@@ -18,20 +25,20 @@
         <h3>Метаданные</h3>
         <p><strong>Смена:</strong> {payload.meta?.shift_id || '—'}</p>
         <p><strong>Тип:</strong> {payload.meta?.report_type || '—'}</p>
-        <p><strong>Сформирован:</strong> {payload.meta?.generated_at ? new Date(payload.meta.generated_at).toLocaleString() : '—'}</p>
-        <p><strong>Открыта:</strong> {payload.meta?.opened_at ? new Date(payload.meta.opened_at).toLocaleString() : '—'}</p>
-        <p><strong>Закрыта:</strong> {payload.meta?.closed_at ? new Date(payload.meta.closed_at).toLocaleString() : '—'}</p>
+        <p><strong>Сформирован:</strong> {formatDateTimeRu(payload.meta?.generated_at)}</p>
+        <p><strong>Открыта:</strong> {formatDateTimeRu(payload.meta?.opened_at)}</p>
+        <p><strong>Закрыта:</strong> {formatDateTimeRu(payload.meta?.closed_at)}</p>
       </div>
 
       <div class="card">
         <h3>Итоги</h3>
         <p><strong>Наливов:</strong> {payload.totals?.pours_count ?? 0}</p>
-        <p><strong>Объём (мл):</strong> {payload.totals?.total_volume_ml ?? 0}</p>
-        <p><strong>Сумма (коп):</strong> {payload.totals?.total_amount_cents ?? 0}</p>
+        <p><strong>Объём:</strong> {formatVolumeRu(payload.totals?.total_volume_ml ?? 0)}</p>
+        <p><strong>Сумма:</strong> {formatMinorUnitsRub(payload.totals?.total_amount_cents ?? 0)}</p>
         <p><strong>Новых гостей:</strong> {payload.totals?.new_guests_count ?? 0}</p>
-        <p><strong>pending_sync:</strong> {payload.totals?.pending_sync_count ?? 0}</p>
-        <p><strong>reconciled:</strong> {payload.totals?.reconciled_count ?? 0}</p>
-        <p><strong>mismatch:</strong> {payload.totals?.mismatch_count ?? 0}</p>
+        <p><strong>{formatShiftReportMetricLabel('pending_sync')}:</strong> {payload.totals?.pending_sync_count ?? 0}</p>
+        <p><strong>{formatShiftReportMetricLabel('reconciled')}:</strong> {payload.totals?.reconciled_count ?? 0}</p>
+        <p><strong>{formatShiftReportMetricLabel('mismatch')}:</strong> {payload.totals?.mismatch_count ?? 0}</p>
       </div>
     </div>
 
@@ -51,9 +58,9 @@
             <tr>
               <th>Кран</th>
               <th>Наливов</th>
-              <th>Объём (мл)</th>
-              <th>Сумма (коп)</th>
-              <th>pending_sync</th>
+              <th>Объём</th>
+              <th>Сумма</th>
+              <th>{formatShiftReportMetricLabel('pending_sync')}</th>
             </tr>
           </thead>
           <tbody>
@@ -61,8 +68,8 @@
               <tr>
                 <td>{item.tap_id}</td>
                 <td>{item.pours_count}</td>
-                <td>{item.volume_ml}</td>
-                <td>{item.amount_cents}</td>
+                <td>{formatVolumeRu(item.volume_ml)}</td>
+                <td>{formatMinorUnitsRub(item.amount_cents)}</td>
                 <td>{item.pending_sync_count}</td>
               </tr>
             {/each}
@@ -73,8 +80,8 @@
 
     <div class="card">
       <h3>Кеги</h3>
-      <p><strong>Статус:</strong> {payload.kegs?.status || 'not_available_yet'}</p>
-      <p>{payload.kegs?.note || 'Will be added when keg<->pour linkage is implemented'}</p>
+      <p><strong>Статус:</strong> {payload.kegs?.status || 'Пока недоступно'}</p>
+      <p>{payload.kegs?.note || 'Данные появятся после внедрения связки кег и наливов.'}</p>
     </div>
   {/if}
 </section>

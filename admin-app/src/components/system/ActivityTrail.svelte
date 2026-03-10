@@ -1,9 +1,6 @@
 <script>
   import { auditTrailStore } from '../../stores/auditTrailStore.js';
-
-  function fmt(ts) {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
+  import { formatTimeRu } from '../../lib/formatters.js';
 </script>
 
 <section class="trail ui-card">
@@ -14,7 +11,7 @@
     <ul>
       {#each $auditTrailStore as item (item.id)}
         <li>
-          <span>{fmt(item.timestamp)}</span>
+          <span>{formatTimeRu(item.timestamp)}</span>
           <div>
             <strong>{item.event}</strong>
             {#if item.details}<small>{item.details}</small>{/if}

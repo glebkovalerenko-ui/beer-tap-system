@@ -1,6 +1,12 @@
 <!-- src/components/kegs/KegList.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
+  import {
+    formatDateRu,
+    formatKegStatus,
+    formatRubAmount,
+    formatVolumeRangeRu,
+  } from '../../lib/formatters.js';
 
   /** @type {import('../../../../src-tauri/src/api_client').Keg[]} */
   export let kegs = [];
@@ -30,10 +36,10 @@
                 <span class="beverage-type">{keg.beverage.beverage_type}</span>
               </div>
             </td>
-            <td><span class="status {keg.status}">{keg.status}</span></td>
-            <td>{keg.current_volume_ml} / {keg.initial_volume_ml} мл</td>
-            <td>${keg.purchase_price}</td>
-            <td>{new Date(keg.created_at).toLocaleDateString('ru-RU')}</td>
+            <td><span class="status {keg.status}">{formatKegStatus(keg.status)}</span></td>
+            <td>{formatVolumeRangeRu(keg.current_volume_ml, keg.initial_volume_ml)}</td>
+            <td>{formatRubAmount(keg.purchase_price)}</td>
+            <td>{formatDateRu(keg.created_at)}</td>
             <td>
               <div class="action-buttons">
                 <!-- --- ИЗМЕНЕНИЕ: "Оживляем" кнопки --- -->

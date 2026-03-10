@@ -1,18 +1,14 @@
 <!-- src/components/pours/PourFeed.svelte -->
 <script>
+  import {
+    formatDurationRu,
+    formatRubAmount,
+    formatTimeRu,
+    formatVolumeRu,
+  } from '../../lib/formatters.js';
+
   /** @type {import('../../../../src-tauri/src/api_client').PourResponse[]} */
   export let pours = [];
-
-  function formatTime(isoString) {
-    if (!isoString) return '';
-    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function formatDuration(durationMs) {
-    if (durationMs == null) return '';
-    const seconds = Math.max(0, Math.round(durationMs / 1000));
-    return `${seconds}s`;
-  }
 </script>
 
 <div class="pour-feed">
@@ -24,17 +20,17 @@
       <ul>
         {#each pours as pour (pour.pour_id)}
           <li>
-            <div class="time">{formatTime(pour.ended_at || pour.poured_at)}</div>
+            <div class="time">{formatTimeRu(pour.ended_at || pour.poured_at)}</div>
             <div class="info">
               <span class="guest-name">{pour.guest.first_name} {pour.guest.last_name}</span>
               <span class="details">
-                налил {pour.volume_ml}мл из {pour.beverage.name}
+                налил {formatVolumeRu(pour.volume_ml)} {pour.beverage.name}
                 {#if pour.duration_ms != null}
-                  , длительность {formatDuration(pour.duration_ms)}
+                  , длительность {formatDurationRu(pour.duration_ms)}
                 {/if}
               </span>
             </div>
-            <div class="amount">-${pour.amount_charged}</div>
+            <div class="amount">-{formatRubAmount(pour.amount_charged)}</div>
           </li>
         {/each}
       </ul>

@@ -1,4 +1,6 @@
 <script>
+  import { formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
+
   export let taps = [];
   export let kegs = [];
   export let pours = [];
@@ -53,9 +55,6 @@
       : null,
   ].filter(Boolean);
 
-  function fmtMoney(v) {
-    return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(v);
-  }
 </script>
 
 <section class="investor-panel" aria-label="Экран ценности для владельца">
@@ -69,14 +68,14 @@
   <div class="kpi-grid">
     <article class="kpi-card">
       <span class="label">Выручка за сегодня</span>
-      <strong>{fmtMoney(revenueToday)}</strong>
+      <strong>{formatRubAmount(revenueToday)}</strong>
       <small>{poursToday.length} наливов</small>
     </article>
 
     <article class="kpi-card">
       <span class="label">Объем продаж</span>
-      <strong>{litersToday.toFixed(1)} л</strong>
-      <small>Средний чек: {fmtMoney(averageCheck)}</small>
+      <strong>{formatVolumeRu(litersToday * 1000)}</strong>
+      <small>Средний чек: {formatRubAmount(averageCheck)}</small>
     </article>
 
     <article class="kpi-card">

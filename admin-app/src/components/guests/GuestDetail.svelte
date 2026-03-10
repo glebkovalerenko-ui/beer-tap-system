@@ -1,14 +1,10 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { formatCardStatus, formatDateTimeRu, formatRubAmount } from '../../lib/formatters.js';
   export let guest;
   export let recentActivity = [];
 
   const dispatch = createEventDispatcher();
-
-  function formatDateTime(isoString) {
-    if (!isoString) return 'N/A';
-    return new Date(isoString).toLocaleString();
-  }
 
   $: transactions = Array.isArray(guest?.transactions) ? guest.transactions.slice(0, 8) : [];
   $: activity = Array.isArray(recentActivity) ? recentActivity : [];
@@ -29,7 +25,7 @@
   <div class="summary ui-card">
     <div>
       <span class="label">Баланс</span>
-      <span class="balance">{(Number(guest.balance) || 0).toFixed(2)}</span>
+      <span class="balance">{formatRubAmount(guest.balance)}</span>
     </div>
     <div>
       <span class="label">Статус</span>
@@ -50,7 +46,7 @@
         {#each guest.cards as card (card.card_uid)}
           <li class:active={card.status === 'active'} class:inactive={card.status !== 'active'}>
             <span class="card-uid">{card.card_uid}</span>
-            <span class="card-status">{card.status}</span>
+            <span class="card-status">{formatCardStatus(card.status)}</span>
           </li>
         {/each}
       </ul>
@@ -68,9 +64,9 @@
           <li>
             <div>
               <strong>{tx.type || 'Операция'}</strong>
-              <small>{formatDateTime(tx.created_at)}</small>
+              <small>{formatDateTimeRu(tx.created_at)}</small>
             </div>
-            <span>{Number(tx.amount || 0).toFixed(2)}</span>
+            <span>{formatRubAmount(tx.amount || 0)}</span>
           </li>
         {/each}
       </ul>
@@ -80,9 +76,9 @@
           <li>
             <div>
               <strong>Списание за налив</strong>
-              <small>{formatDateTime(item.poured_at)} · {item.beverage?.name || 'Напиток'}</small>
+              <small>{formatDateTimeRu(item.poured_at)} · {item.beverage?.name || 'Напиток'}</small>
             </div>
-            <span>-{Number(item.amount_charged || 0).toFixed(2)}</span>
+            <span>-{formatRubAmount(item.amount_charged || 0)}</span>
           </li>
         {/each}
       </ul>
@@ -93,9 +89,9 @@
 
   <div class="info-block system-info">
     <h4>Системная информация</h4>
-    <p><span class="label">Registered:</span> {formatDateTime(guest.created_at)}</p>
-    <p><span class="label">Last Update:</span> {formatDateTime(guest.updated_at)}</p>
-    <p><span class="label">Guest ID:</span> <span class="uuid">{guest.guest_id}</span></p>
+    <p><span class="label">Создан:</span> {formatDateTimeRu(guest.created_at)}</p>
+    <p><span class="label">Обновлён:</span> {formatDateTimeRu(guest.updated_at)}</p>
+    <p><span class="label">ID гостя:</span> <span class="uuid">{guest.guest_id}</span></p>
   </div>
 </div>
 

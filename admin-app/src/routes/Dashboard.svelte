@@ -16,6 +16,7 @@
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte';
   import ShiftReportView from '../components/reports/ShiftReportView.svelte';
+  import { formatDateTimeRu, formatMinorUnitsRub, formatVolumeRu } from '../lib/formatters.js';
 
   let initialLoadAttempted = false;
   let showConfirmModal = false;
@@ -195,7 +196,7 @@
 
 {#if SHOW_API_BASE_URL}
   <section class="ui-card config-diagnostic">
-    <strong>API base URL:</strong> {$serverConfigStore.baseUrl}
+    <strong>Адрес API:</strong> {$serverConfigStore.baseUrl}
   </section>
 {/if}
 
@@ -204,9 +205,9 @@
     <h2>Смена</h2>
     <p>
       {#if $shiftStore.isOpen}
-        Открыта с {$shiftStore.shift?.opened_at ? new Date($shiftStore.shift.opened_at).toLocaleString() : '—'}
+        Открыта с {formatDateTimeRu($shiftStore.shift?.opened_at)}
       {:else if $shiftStore.shift?.closed_at}
-        Закрыта {$shiftStore.shift?.closed_at ? new Date($shiftStore.shift.closed_at).toLocaleString() : '—'}
+        Закрыта {formatDateTimeRu($shiftStore.shift?.closed_at)}
       {:else}
         Смена закрыта.
       {/if}
@@ -252,8 +253,8 @@
         <tr>
           <th>Сформирован</th>
           <th>Смена</th>
-          <th>Объём (мл)</th>
-          <th>Сумма (коп)</th>
+          <th>Объём</th>
+          <th>Сумма</th>
           <th>Визиты</th>
           <th></th>
         </tr>
@@ -261,10 +262,10 @@
       <tbody>
         {#each zReports as item}
           <tr>
-            <td>{item.generated_at ? new Date(item.generated_at).toLocaleString() : '—'}</td>
+            <td>{formatDateTimeRu(item.generated_at)}</td>
             <td>{item.shift_id}</td>
-            <td>{item.total_volume_ml}</td>
-            <td>{item.total_amount_cents}</td>
+            <td>{formatVolumeRu(item.total_volume_ml)}</td>
+            <td>{formatMinorUnitsRub(item.total_amount_cents)}</td>
             <td>{item.active_visits_count}/{item.closed_visits_count}</td>
             <td>
               <button on:click={() => openReportFromList(item)}>Открыть</button>

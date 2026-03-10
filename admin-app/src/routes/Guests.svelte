@@ -15,6 +15,7 @@
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import { uiStore } from '../stores/uiStore.js';
   import { normalizeError } from '../lib/errorUtils.js';
+  import { formatRubAmount } from '../lib/formatters.js';
 
   let searchTerm = '';
   let selectedGuestId = null;
@@ -97,7 +98,7 @@
       await guestStore.topUpBalance(selectedGuestId, event.detail);
       shiftStore.recordTopUp(event.detail.amount);
       isTopUpModalOpen = false;
-      uiStore.notifySuccess(`Баланс пополнен на ${event.detail.amount}`);
+      uiStore.notifySuccess(`Баланс пополнен на ${formatRubAmount(event.detail.amount)}`);
     } catch (error) {
       topUpError = normalizeError(error);
     }

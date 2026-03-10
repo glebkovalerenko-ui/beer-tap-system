@@ -1,6 +1,7 @@
 <!-- src/components/guests/GuestListItem.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { formatRubAmount } from '../../lib/formatters.js';
   export let guest;
   export let isSelected = false;
 
@@ -26,8 +27,7 @@
     </div>
 
     <div class="guest-balance">
-      <span class="currency">₽</span>
-      <span class="amount">{(Number(guest.balance) || 0).toFixed(2)}</span>
+      <span class="amount">{formatRubAmount(guest.balance)}</span>
     </div>
   </button>
 </li>
@@ -104,12 +104,6 @@
     text-align: right;
     font-feature-settings: "tnum";
     font-variant-numeric: tabular-nums;
-  }
-
-  .currency {
-    font-size: 0.9rem;
-    color: #9aa0a6;
-    margin-right: 2px;
   }
 
   .amount {

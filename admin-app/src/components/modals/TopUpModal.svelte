@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import Modal from '../common/Modal.svelte';
+  import { formatRubAmount } from '../../lib/formatters.js';
 
   const dispatch = createEventDispatcher();
   export let guestName = 'Гость';
@@ -29,8 +30,8 @@
 
   function formatPreview(raw) {
     const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return '0.00';
-    return n.toFixed(2);
+    if (!Number.isFinite(n) || n <= 0) return formatRubAmount(0);
+    return formatRubAmount(n);
   }
 
   function handleSave() {
@@ -63,7 +64,7 @@
 
     <div class="presets">
       {#each presets as preset}
-        <button type="button" class="preset" on:click={() => applyPreset(preset)} disabled={isSaving}>+{preset}</button>
+        <button type="button" class="preset" on:click={() => applyPreset(preset)} disabled={isSaving}>+{formatRubAmount(preset)}</button>
       {/each}
     </div>
 
