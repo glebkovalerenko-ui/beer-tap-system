@@ -9,10 +9,10 @@
 </script>
 
 {#if $demoGuideStore.open}
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="Guided demo mode">
+  <div class="overlay" role="dialog" aria-modal="true" aria-label="Режим демонстрации">
     <section class="panel ui-card">
       <header>
-        <h2>Guided demo mode</h2>
+        <h2>Режим демонстрации</h2>
         <button class="close" on:click={() => demoGuideStore.close()}>Закрыть</button>
       </header>
       <p class="ui-muted">Пошаговый сценарий презентации для инвестора или владельца бара.</p>

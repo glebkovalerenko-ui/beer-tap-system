@@ -8,7 +8,7 @@
     style: 'IPA',
     brewery: '',
     abv: '5.0',
-    sell_price_per_liter: '7.50'
+    sell_price_per_liter: '450.00'
     // Поле description удалено, так как его нет в схеме создания
   };
 
@@ -28,7 +28,7 @@
       formData.name = '';
       formData.brewery = '';
       formData.abv = '5.0';
-      formData.sell_price_per_liter = '7.50';
+      formData.sell_price_per_liter = '450.00';
 
     } catch (error) {
       formError = typeof error === 'string' ? error : (error instanceof Error ? error.message : 'Неизвестная ошибка');
@@ -69,19 +69,19 @@
     </select>
     <input 
       type="text" 
-      placeholder="ABV (напр., 5.0)" 
+      placeholder="Крепость ABV (например, 5.0)" 
       bind:value={formData.abv}
       pattern="^\d*\.?\d*$"
-      title="ABV должно быть числом, напр. 5.0 или 4.5"
+      title="Крепость должна быть числом, например 5.0 или 4.5"
       disabled={$beverageStore.loading}
     />
     <input 
       type="text" 
-      placeholder="Цена за литр (напр., 7.50)" 
+      placeholder="Цена за литр в рублях (например, 450.00)" 
       bind:value={formData.sell_price_per_liter} 
       required 
       pattern="^\d*\.?\d*$"
-      title="Цена должна быть числом, напр. 7.50 или 8"
+      title="Цена должна быть числом, например 450.00 или 500"
       disabled={$beverageStore.loading}
     />
     <button type="submit" disabled={$beverageStore.loading}>

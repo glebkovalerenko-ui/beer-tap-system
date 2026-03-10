@@ -9,7 +9,7 @@
   import DemoModeToggle from '../system/DemoModeToggle.svelte';
   import ServerSettingsModal from '../system/ServerSettingsModal.svelte';
 
-  export let title = 'POS Workspace';
+  export let title = 'Рабочее место оператора';
 
   function changeRole(event) {
     roleStore.setRole(event.target.value);
@@ -53,7 +53,7 @@
       <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
     {/if}
     <DemoModeToggle />
-    <select on:change={changeRole} value={$roleStore.key} aria-label="Role">
+    <select on:change={changeRole} value={$roleStore.key} aria-label="Роль пользователя">
       {#each Object.entries(roleStore.roles) as [key, role]}
         <option value={key}>{role.label}</option>
       {/each}

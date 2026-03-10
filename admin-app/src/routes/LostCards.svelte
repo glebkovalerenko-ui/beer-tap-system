@@ -5,6 +5,7 @@
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import NFCModal from '../components/modals/NFCModal.svelte';
+  import { formatDateTimeRu } from '../lib/formatters.js';
 
   let uidFilter = '';
   let reportedFrom = '';
@@ -19,11 +20,6 @@
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return null;
     return date.toISOString();
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('ru-RU');
   };
 
   async function refresh() {
@@ -143,7 +139,7 @@
 
         {#if cardLookupResult.is_lost}
           <p class="lookup-status lookup-status-danger">Карта отмечена как потерянная</p>
-          <div><strong>Дата отметки:</strong> {formatDateTime(cardLookupResult.lost_card?.reported_at)}</div>
+          <div><strong>Дата отметки:</strong> {formatDateTimeRu(cardLookupResult.lost_card?.reported_at)}</div>
           <div><strong>Комментарий:</strong> {cardLookupResult.lost_card?.comment || '—'}</div>
           <div><strong>Визит:</strong> {cardLookupResult.lost_card?.visit_id || '—'}</div>
           <div class="lookup-actions">
@@ -192,10 +188,10 @@
         {#each $lostCardStore.items as item}
           <div class="row">
             <div><strong>{item.card_uid}</strong></div>
-            <div>reported_at: {new Date(item.reported_at).toLocaleString()}</div>
-            <div>reason: {item.reason || '—'}</div>
-            <div>comment: {item.comment || '—'}</div>
-            <div>visit_id: {item.visit_id || '—'}</div>
+            <div>Дата отметки: {formatDateTimeRu(item.reported_at)}</div>
+            <div>Причина: {item.reason || '—'}</div>
+            <div>Комментарий: {item.comment || '—'}</div>
+            <div>ID визита: {item.visit_id || '—'}</div>
             <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
           </div>
         {/each}

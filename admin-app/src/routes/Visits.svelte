@@ -7,6 +7,12 @@
   import { lostCardStore } from '../stores/lostCardStore.js';
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
+  import {
+    formatDateTimeRu,
+    formatRubAmount,
+    formatVisitStatus,
+    formatVolumeRu,
+  } from '../lib/formatters.js';
 
   let filterQuery = '';
   let forceUnlockReason = '';
@@ -43,11 +49,6 @@
     if (!guestLike) return '—';
     if (guestLike.guest_full_name) return guestLike.guest_full_name;
     return [guestLike.last_name, guestLike.first_name, guestLike.patronymic].filter(Boolean).join(' ');
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return '—';
-    return new Date(value).toLocaleString('ru-RU');
   };
 
   const matchesVisit = (item, query) => {
@@ -193,7 +194,7 @@
     actionError = '';
     if (!visit) return;
     if (!reconcileShortId.trim() || !reconcileVolumeMl || !reconcileAmount || !reconcileReason.trim()) {
-      uiStore.notifyWarning('Fill short_id, volume, amount and reason');
+      uiStore.notifyWarning('Заполните номер налива, объём, сумму и причину.');
       return;
     }
 
@@ -215,9 +216,9 @@
       reconcileAmount = '';
       reconcileReason = 'sync_timeout';
       reconcileComment = '';
-      uiStore.notifySuccess('Manual reconcile completed');
+      uiStore.notifySuccess('Ручная сверка выполнена.');
     } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Manual reconcile failed';
+      actionError = error?.message || error?.toString?.() || 'Не удалось выполнить ручную сверку';
     }
   }
 
@@ -326,7 +327,7 @@
       await guestStore.topUpBalance(visit.guest_id, event.detail);
       await refreshVisits();
       isTopUpModalOpen = false;
-      uiStore.notifySuccess(`Баланс пополнен на ${event.detail.amount}`);
+      uiStore.notifySuccess(`Баланс пополнен на ${formatRubAmount(event.detail.amount)}`);
     } catch (error) {
       topUpError = error?.message || error?.toString?.() || 'Ошибка пополнения баланса';
     }
@@ -391,7 +392,7 @@
             {#each openCandidates as candidate}
               <button class="candidate-item" on:click={() => openVisitWithoutCard(candidate)} disabled={$visitStore.loading}>
                 <div><strong>{fullName(candidate)}</strong></div>
-                <div>{candidate.phone_number} В· Баланс: {candidate.balance}</div>
+                <div>{candidate.phone_number} · Баланс: {formatRubAmount(candidate.balance)}</div>
               </button>
             {/each}
           </div>
@@ -427,7 +428,7 @@
           {#if cardLookupResult.is_lost}
             <p class="lookup-status lookup-status-danger">Карта отмечена как потерянная</p>
             <div class="lookup-meta">
-              <div><strong>Дата отметки:</strong> {formatDateTime(cardLookupResult.lost_card?.reported_at)}</div>
+              <div><strong>Дата отметки:</strong> {formatDateTimeRu(cardLookupResult.lost_card?.reported_at)}</div>
               <div><strong>Комментарий:</strong> {cardLookupResult.lost_card?.comment || '—'}</div>
               <div><strong>Визит:</strong> {cardLookupResult.lost_card?.visit_id || '—'}</div>
             </div>
@@ -486,7 +487,7 @@
               <div>{item.phone_number}</div>
               <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Без карты'}</div>
               {#if item.active_tap_id}
-                <div class="sync-indicator">processing_sync (tap {item.active_tap_id})</div>
+                <div class="sync-indicator">Идёт синхронизация налива на кране #{item.active_tap_id}</div>
               {/if}
             </button>
           {/each}
@@ -501,8 +502,8 @@
           <div><strong>Гость:</strong> {fullName(selectedGuest || visit)}</div>
           <div><strong>Телефон:</strong> {selectedGuest?.phone_number || visit.phone_number || '—'}</div>
           <div><strong>Карта:</strong> {visit.card_uid || 'Не привязана'}</div>
-          <div><strong>Статус:</strong> {visit.status}</div>
-          <div><strong>Баланс:</strong> {selectedGuest?.balance ?? visit.balance ?? '—'}</div>
+          <div><strong>Статус:</strong> {formatVisitStatus(visit.status)}</div>
+          <div><strong>Баланс:</strong> {formatRubAmount(selectedGuest?.balance ?? visit.balance ?? 0)}</div>
           {#if isCurrentCardLost}
             <div class="lost-status"><strong>Статус карты:</strong> {lostCardStatusText || 'Карта помечена как потерянная'}</div>
           {/if}
@@ -512,10 +513,10 @@
           {#if lockActive}
             <strong>Блокировка на кране в„–{visit.active_tap_id}</strong>
             {#if visit.lock_set_at}
-              <div>lock_set_at: {new Date(visit.lock_set_at).toLocaleString()}</div>
-              <div>age: ~{Math.floor(lockAgeSeconds / 60)} min</div>
+              <div>Блокировка установлена: {formatDateTimeRu(visit.lock_set_at)}</div>
+              <div>Возраст блокировки: около {Math.floor(lockAgeSeconds / 60)} мин</div>
             {/if}
-            <div>Синхронизация: {suggestManualReconcile ? 'Нужна ручная сверка' : 'Ожидается sync'}</div>
+            <div>Синхронизация: {suggestManualReconcile ? 'Нужна ручная сверка' : 'Ожидается синхронизация'}</div>
           {:else}
             <strong>Кран свободен</strong>
           {/if}
@@ -569,11 +570,11 @@
   {#if reconcileOpen && visit}
     <section class="ui-card reconcile-modal">
       <h3>Ручная сверка налива</h3>
-      <input type="text" bind:value={reconcileShortId} placeholder="short_id (6-8)" maxlength="8" />
-      <input type="number" bind:value={reconcileVolumeMl} placeholder="volume_ml" min="1" />
-      <input type="number" bind:value={reconcileAmount} placeholder="amount" min="0.01" step="0.01" />
-      <input type="text" bind:value={reconcileReason} placeholder="reason" />
-      <textarea bind:value={reconcileComment} rows="2" placeholder="comment (optional)"></textarea>
+      <input type="text" bind:value={reconcileShortId} placeholder="Короткий номер налива (6-8 символов)" maxlength="8" />
+      <input type="number" bind:value={reconcileVolumeMl} placeholder="Объём, мл" min="1" />
+      <input type="number" bind:value={reconcileAmount} placeholder="Сумма, ₽" min="0.01" step="0.01" />
+      <input type="text" bind:value={reconcileReason} placeholder="Причина сверки" />
+      <textarea bind:value={reconcileComment} rows="2" placeholder="Комментарий (необязательно)"></textarea>
       <div class="modal-actions">
         <button on:click={handleReconcilePour} disabled={$visitStore.loading}>Отправить</button>
         <button on:click={() => (reconcileOpen = false)} disabled={$visitStore.loading}>Отмена</button>

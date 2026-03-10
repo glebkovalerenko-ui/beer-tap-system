@@ -4,7 +4,7 @@
   export let isActive = null;
 
   $: shortUid = cardUid ? `****${cardUid.slice(-4)}` : 'без карты';
-  $: statusLabel = isActive === null ? '—' : (isActive ? 'active' : 'blocked');
+  $: statusLabel = isActive === null ? '—' : (isActive ? 'активен' : 'заблокирован');
 </script>
 
 <div class="chip">

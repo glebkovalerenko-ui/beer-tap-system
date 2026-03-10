@@ -92,7 +92,7 @@
 
     <div class="settings-layout">
       <label class="settings-field" for="server-base-url">
-        <span>Server URL</span>
+        <span>Адрес сервера</span>
         <input
           id="server-base-url"
           type="url"
@@ -108,7 +108,7 @@
         <strong>Текущий URL:</strong> {$serverConfigStore.baseUrl}
       </p>
       <p class="settings-note">
-        Источник: {$serverConfigStore.source === 'runtime-config' ? 'runtime config (Tauri)' : 'build/dev config'}.
+        Источник: {$serverConfigStore.source === 'runtime-config' ? 'runtime-конфиг Tauri' : 'конфиг сборки или dev-среды'}.
       </p>
       <p class="settings-note">
         Если сохранить недоступный URL, приложение всё равно откроется и позволит исправить настройку здесь.
@@ -116,7 +116,7 @@
 
       {#if !$serverConfigStore.runtimeConfigAvailable}
         <p class="warning">
-          Runtime-настройка доступна только в desktop Tauri. В web/dev используйте `VITE_API_BASE_URL`.
+          Runtime-настройка доступна только в desktop-приложении Tauri. В web/dev используйте `VITE_API_BASE_URL`.
         </p>
       {/if}
 

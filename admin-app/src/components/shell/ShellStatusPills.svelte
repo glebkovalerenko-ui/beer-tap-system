@@ -22,7 +22,7 @@
 
 <div class="pills">
   <span class="pill" class:ok={$shiftStore.isOpen} class:warn={!$shiftStore.isOpen}>Смена: {$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}</span>
-  <span class="pill" class:ok={online} class:error={!online}>Сеть: {online ? 'Online' : 'Offline'}</span>
+  <span class="pill" class:ok={online} class:error={!online}>Сеть: {online ? 'Онлайн' : 'Офлайн'}</span>
   <span class="pill" class:ok={$nfcReaderStore.status === 'ok'} class:error={$nfcReaderStore.status === 'error'}>NFC: {$nfcReaderStore.status === 'ok' ? 'Готов' : 'Ошибка'}</span>
 </div>
 

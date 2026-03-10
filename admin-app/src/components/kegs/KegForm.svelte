@@ -17,7 +17,7 @@
     // Реактивно устанавливаем beverage_id, если список доступен
     beverage_id: keg?.beverage.beverage_id || ($beverageStore.beverages[0]?.beverage_id || ''),
     initial_volume_ml: keg?.initial_volume_ml || 50000, 
-    purchase_price: keg?.purchase_price || '100.00',
+    purchase_price: keg?.purchase_price || '3500.00',
   };
   
   // Если список напитков изменится (например, после загрузки), 
@@ -82,14 +82,14 @@
   <fieldset>
     <legend>Финансовая информация</legend>
     <div class="form-group">
-      <label for="purchase_price">Цена покупки ($)</label>
+      <label for="purchase_price">Цена покупки (₽)</label>
       <input 
         id="purchase_price" 
         type="text" 
         bind:value={formData.purchase_price} 
         required
         pattern="^\d*\.?\d*$"
-        title="Цена должна быть числом, напр. 99.50 или 100"
+        title="Цена должна быть числом, например 3500.00 или 4200"
         disabled={isSaving}
       />
     </div>

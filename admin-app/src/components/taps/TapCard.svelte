@@ -4,6 +4,7 @@
   import { tapStore } from '../../stores/tapStore.js';
   import { kegStore } from '../../stores/kegStore.js';
   import { uiStore } from '../../stores/uiStore.js';
+  import { formatTapStatus, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
 
   export let tap;
 
@@ -41,7 +42,7 @@
 
   async function handleStatusChange(newStatus) {
     // Перевод статусов для confirm
-    const statusMap = { 'locked': 'Заблокирован', 'active': 'Активен', 'cleaning': 'Чистка' };
+    const statusMap = { locked: 'Заблокирован', active: 'Активен', cleaning: 'На промывке', empty: 'Пуст' };
     const approved = await uiStore.confirm({
       title: 'Изменение статуса крана',
       message: `Изменить статус ${tap.display_name} на "${statusMap[newStatus] || newStatus}"?`,
@@ -73,11 +74,7 @@
     <span class="tap-name">{tap.display_name}</span>
     <!-- Статус с цветовым кодированием -->
     <span class="status-badge {tap.status}">
-      {#if tap.status === 'active'}Активен
-      {:else if tap.status === 'locked'}Заблокирован
-      {:else if tap.status === 'cleaning'}Чистка
-      {:else if tap.status === 'empty'}Пуст
-      {:else}{tap.status}{/if}
+      {formatTapStatus(tap.status)}
     </span>
   </div>
 
@@ -88,12 +85,12 @@
         <p class="beverage-style">{keg.beverage.style || 'Стиль не указан'}</p>
       </div>
       
-      <div class="progress-container" title="{keg.current_volume_ml} / {keg.initial_volume_ml} мл">
+      <div class="progress-container" title={formatVolumeRangeRu(keg.current_volume_ml, keg.initial_volume_ml)}>
         <div class="progress-bar" style="width: {kegPercentage}%" class:low={kegPercentage < 15}></div>
       </div>
       <div class="volume-labels">
-        <span>{(keg.current_volume_ml / 1000).toFixed(1)} л</span>
-        <span class="text-muted">из {(keg.initial_volume_ml / 1000).toFixed(1)} л</span>
+        <span>{formatVolumeRu(keg.current_volume_ml)}</span>
+        <span class="text-muted">из {formatVolumeRu(keg.initial_volume_ml)}</span>
       </div>
     {:else}
       <div class="empty-state">

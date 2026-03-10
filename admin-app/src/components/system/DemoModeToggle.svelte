@@ -8,7 +8,7 @@
   on:click={() => demoModeStore.toggle()}
   aria-pressed={$demoModeStore}
 >
-  Demo mode: {$demoModeStore ? 'ON' : 'OFF'}
+  Демо-режим: {$demoModeStore ? 'ВКЛ' : 'ВЫКЛ'}
 </button>
 
 <style>

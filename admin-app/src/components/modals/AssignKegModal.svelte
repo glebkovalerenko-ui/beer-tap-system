@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { kegStore } from '../../stores/kegStore';
+  import { formatVolumeRu } from '../../lib/formatters.js';
 
   /** @type {import('../../../../src-tauri/src/api_client').Tap} */
   export let tap;
@@ -40,7 +41,7 @@
   }
 
   function kegLabel(keg) {
-    return `${keg.beverage.name} (${keg.initial_volume_ml / 1000}L) - ID: ...${keg.keg_id.slice(-6)}`;
+    return `${keg.beverage.name} (${formatVolumeRu(keg.initial_volume_ml)}) · ID ...${keg.keg_id.slice(-6)}`;
   }
 
   async function loadSuggestion(beerTypeId) {
@@ -97,7 +98,7 @@
       <div class="suggestion-header">
         <h4>Рекомендованный кег (FIFO)</h4>
         {#if suggestion?.ordering_keys_used?.length}
-          <span class="ordering-keys">{suggestion.ordering_keys_used.join(' -> ')}</span>
+          <span class="ordering-keys">{suggestion.ordering_keys_used.join(' → ')}</span>
         {/if}
       </div>
 

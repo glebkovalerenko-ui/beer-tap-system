@@ -9,7 +9,7 @@
 {#if hasWarning}
   <section class="banner" class:error={!online || nfcStatus === 'error'}>
     {#if demoMode}
-      <strong>Demo mode:</strong> часть данных может быть моковой для стабильного показа.
+      <strong>Демо-режим:</strong> часть данных может быть тестовой для стабильного показа.
     {/if}
 
     {#if !online}

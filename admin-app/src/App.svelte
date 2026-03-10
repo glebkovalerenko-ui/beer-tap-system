@@ -90,7 +90,7 @@
       </div>
     {/if}
 
-    <ShellTopBar title="Beer Tap POS" />
+    <ShellTopBar title="Рабочее место оператора" />
     <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
 
     <div class="workspace-grid">
@@ -103,7 +103,7 @@
           {#if $roleStore.permissions.taps}<a href="#/taps-kegs">Краны и кеги</a>{/if}
         </nav>
 
-        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Guided demo mode</button>
+        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Режим демонстрации</button>
         <ActivityTrail />
       </aside>
 
