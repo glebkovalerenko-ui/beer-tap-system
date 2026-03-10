@@ -1,28 +1,33 @@
 # Documentation Index
 
-## Актуальные документы
-
-- `README.md` — быстрый обзор репозитория и запуск backend + PostgreSQL через Docker Compose.
-- `docs/dev/SYNCTHING_DEV_RUNBOOK.md` — актуальный dev-workflow Windows -> Syncthing -> Linux Docker.
-- `docs/dev/ADMIN_APP_BACKEND_URL.md` — как задавать backend URL для web/dev и Tauri dev без путаницы с `localhost:5173`.
-- `docs/API_REFERENCE.md` — функциональное описание API (нуждается в регулярной сверке с `backend/api/*.py`).
-- `docs/INTERFACE_CONTRACT.md` — контракт между Svelte/Tauri/FastAPI (частично устарел, см. `docs/REPO_AUDIT.md`).
-- `docs/RPI_INTERNALS.md` — внутренняя логика контроллера Raspberry Pi.
-- `docs/REPO_AUDIT.md` — технический аудит соответствия код ↔ документация ↔ тесты.
-- `docs/ADMIN_APP_AUDIT.md` — продуктовый и UX/QX/QI аудит admin-app с приоритетным планом улучшений.
-
-## Исторические / потенциально устаревшие документы
-
-- `docs/reports/TILT_STABILIZATION_REPORT.md` — исторический отчёт о предыдущем Tilt-based workflow.
-- `docs/mvp/*` — пакет MVP-материалов, сформированный под demo-фазу.
-- `project_context.md` — аналитическая сводка, содержит неподтвержденные или устаревшие утверждения.
-- `docs/baseline.md` — baseline-документ с предположениями, не всегда синхронизирован с текущей реализацией.
-- `docs/QA_Checklist.md` — ручной чеклист, не привязан к CI.
-
-## Рекомендуемый порядок чтения для новых участников
+## Start here
 
 1. `README.md`
-2. `docs/REPO_AUDIT.md`
-3. `docs/API_REFERENCE.md`
-4. `docs/INTERFACE_CONTRACT.md`
-5. `docs/RPI_INTERNALS.md`
+2. `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
+3. `docs/architecture/OPERATIONAL_MODEL_V1.md`
+4. `docs/API_REFERENCE.md`
+
+## Core system docs
+
+- `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`: consolidated architecture for the frozen M1-M7 stage.
+- `docs/architecture/OPERATIONAL_MODEL_V1.md`: operational invariants and state transitions.
+- `docs/API_REFERENCE.md`: practical API contract for admin flows and controller sync.
+
+## Developer runbooks
+
+- `docs/dev/SYNCTHING_DEV_RUNBOOK.md`: Windows -> Syncthing -> Linux workflow.
+- `docs/dev/ADMIN_APP_BACKEND_URL.md`: runtime/backend URL model for web/dev and Tauri.
+- `docs/dev/GIT_HYGIENE_RUNBOOK.md`: repository hygiene conventions.
+- `docs/dev/ENCODING_GUARD.md`: encoding guard expectations and usage.
+
+## Stage closing reports
+
+- `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`: closing verdict before the next implementation phase.
+- `docs/reports/REPOSITORY_CLEAN_STATE_AND_ARCHITECTURE_FREEZE.md`: final repository clean-state and architecture freeze report.
+- `docs/reports/M7_VERIFICATION.md`: M7-specific verification notes.
+- `docs/reports/POST_M6_PRE_M7_AUDIT.md`: historical audit that preceded M7.
+
+## Legacy and historical docs
+
+- `docs/mvp/`, `docs/planning/`, and older reports are historical context, not primary entry points.
+- Some older documents still contain encoding debt or historical assumptions. When they conflict with current guidance, prefer `README.md` plus the documents listed under `Start here`.

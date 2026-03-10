@@ -1,240 +1,72 @@
-# 🍺 Beer Tap System — Demo-Ready
-[![Статус проекта: Demo-Ready](https://img.shields.io/badge/status-Demo--Ready-brightgreen)](https://shields.io/)
-[![Технологии: Svelte 5, Tauri 2, FastAPI, PostgreSQL, SQLite](https://img.shields.io/badge/stack-Svelte%205%20|%20Tauri%202%20|%20FastAPI%20|%20PostgreSQL%20|%20SQLite-blue)](https://shields.io/)
-[![Архитектура: Offline-First](https://img.shields.io/badge/architecture-Offline--First-orange)](https://shields.io/)
+# Beer Tap System
 
-## 📖 Документация
+Beer Tap System is a self-pour bar platform for a single location. The current frozen stage covers M1-M7: visit-centric operations, controller/backend sync, shift discipline, lost-card handling, FIFO keg recommendation, and a POS-ready stub seam. Real POS or r_keeper integration is not part of this stage.
 
-Актуальная навигация по документации находится в [`docs/INDEX.md`](./docs/INDEX.md).
+## Current stage
 
-Полный MVP-пакет (исторические материалы demo-фазы) находится в директории [`/docs/mvp`](./docs/mvp).
+- M1: Alembic baseline and migration discipline.
+- M2-M3.5: visit model, active tap lock semantics, open/bind/close visit flow.
+- M4: offline sync, `pending_sync`, manual reconcile, no-double-charge behavior.
+- M5: shift operational mode, X/Z reports, DB-time policy.
+- M6: insufficient funds clamp, rejected sync terminal path, lost cards, controller terminal UX hardening.
+- M7: FIFO keg recommendation and backend POS adapter stub.
 
-- [Инструкция по MVP (`mvp-bar-instruction_v1.0.md`)](./docs/mvp/mvp-bar-instruction_v1.0.md)
-- [Executive Summary (`mvp-bar-exec-summary.md`)](./docs/mvp/mvp-bar-exec-summary.md)
-- [Bill of Materials (BOM)](./docs/mvp/mvp-bar-bom.csv)
-- [Metadata JSON (для автоматизации)](./docs/mvp/mvp-bar-metadata.json)
-- [Технический аудит соответствия](./docs/REPO_AUDIT.md)
+## Main components
 
-**Аппаратно-программный комплекс для бара самообслуживания, спроектированный для полной автономности и надежности.**
+- `backend/`: FastAPI + SQLAlchemy + Alembic. This is the operational source of truth.
+- `rpi-controller/`: Raspberry Pi tap controller with local SQLite queue and sync loop.
+- `admin-app/`: Svelte + Tauri operator/admin application.
+- `docker-compose.yml`: Linux runtime for backend + PostgreSQL.
 
-Этот документ — исчерпывающее руководство по Demo-Ready проекту. Он предназначен для разработчиков, системных администраторов, менеджеров проекта и ИИ-ассистентов, вовлеченных в его развитие и поддержку.
+## Architecture in one paragraph
 
----
+`Visit` is the central operational aggregate. `Transaction` records top-up and refund events, `Pour` records the factual pour lifecycle, `Shift` gates operational activity, and `Card` plus `LostCard` model RFID issuance and recovery. The controller is decoupled from POS and talks only to the backend. POS is represented only by a stub seam (`notify_topup`, `notify_refund`, `notify_pour`) so the core remains POS-ready but not POS-dependent.
 
-## 🔐 Конфигурация окружения
+## Development topology
 
-Перед локальным запуском создайте `.env` на основе шаблона `.env.example` и задайте безопасные значения для `SECRET_KEY`, `INTERNAL_API_KEY` (и при необходимости `INTERNAL_TOKEN` для совместимости с RPi-контроллером). Для dev-совместимости с legacy токеном используется флаг `ALLOW_LEGACY_DEMO_INTERNAL_TOKEN`.
+- Windows workstation: edit code locally and run `admin-app`.
+- Linux host: run `docker compose` for backend + PostgreSQL.
+- Syncthing: sync repository from Windows to Linux.
 
-## 🛠️ Описание работы контроллера (Hardware Mode)
+This repository is optimized around that split. The backend is expected to run from the Linux checkout; the admin app is expected to run locally on Windows.
 
-Контроллер Raspberry Pi:
-- Использует датчики YF-S201 для измерения потока жидкости и считыватель NFC ACR122U.
-- Логика работы: «Приложил карту — клапан открылся, убрал — закрылся».
-- Полностью модульная структура: `hardware.py`, `flow_manager.py`, `sync_manager.py`, `database.py`.
-- Локальная база данных (SQLite) с синхронизацией на центральный сервер (PostgreSQL).
+## Quick start
 
----
+### Backend
 
-## 📂 Структура проекта
-1.  [Философия и ключевые решения](#-философия-и-ключевые-решения)
-2.  [Архитектура системы](#-архитектура-системы)
-    *   [Компоненты](#компоненты)
-    *   [Поток данных (Data Flow)](#поток-данных-data-flow)
-3.  [🚀 Быстрый старт (Getting Started)](#-быстрый-старт-getting-started)
-    *   [Предварительные требования](#предварительные-требования)
-    *   [Пошаговая инструкция по развертыванию](#пошаговая-инструкция-по-развертыванию)
-4.  [🛠️ Технологический стек](#🛠️-технологический-стек)
-5.  [📁 Структура проекта (актуальная)](#-структура-проекта-актуальная)
-6.  [🤝 Как внести свой вклад (Contributing)](#-как-внести-свой-вклад-contributing)
-7.  [🤖 Для AI-агентов и поддерживающих инженеров](#-для-ai-агентов-и-поддерживающих-инженеров)
-
----
-
-##  philosophies Философия и ключевые решения
-
-Этот проект построен на трех фундаментальных принципах, которые продиктовали все архитектурные и технологические решения.
-
-> **[ИСТОЧНИК]** Первоначальный промпт пользователя: *«Система — локальная (нет облака) на начальном этапе... Контроллеры... работают офлайн с локальным SQLite-журналом и синхронизируются с сервером PostgreSQL.»*
-
-1.  **🌍 Локальность (Local-First):** Система полностью автономна и не зависит от внешнего интернета. Все компоненты — сервер, контроллеры, интерфейс — работают в единой локальной сети бара. Это обеспечивает максимальную скорость отклика и независимость от внешних сбоев.
-
-2.  **🛡️ Надежность (Reliability-First):** Главный приоритет — точность учета и отсутствие потерь транзакций. Контроллер спроектирован для работы в режиме "офлайн по умолчанию". Каждая операция сначала надежно фиксируется в локальном журнале и только потом синхронизируется с сервером.
-
-3.  **📦 Воспроизводимость (Reproducibility-First):** Вся серверная среда упакована в Docker-контейнеры. Это гарантирует, что система будет разворачиваться и работать абсолютно одинаково на ноутбуке разработчика и на боевом мини-ПК в баре, устраняя класс проблем "у меня на машине все работало".
-
----
-
-## 🏗️ Архитектура системы
-
-### Компоненты
-
-Система состоит из трех основных логических блоков:
-1.  **Локальный сервер:** "Мозг" операции. Работает на мини-ПК в баре. Включает в себя API, базу данных и веб-сервер.
-2.  **Контроллер крана:** "Руки и глаза" системы. Устройство на базе Raspberry Pi, подключенное к RFID-считывателю и (в будущем) к оборудованию для розлива.
-3.  **Рабочее место бармена:** "Пункт управления". Веб-интерфейс, доступный с любого компьютера в локальной сети.
-
-### Поток данных (Data Flow)
-
-```mermaid
-graph TD
-    subgraph "Бармен (Рабочее место)"
-        AdminUI[Веб-интерфейс в браузере]
-    end
-
-    subgraph "Сервер (Мини-ПК)"
-        NGINX[Nginx]
-        API[Backend API <br> FastAPI]
-        DB[(PostgreSQL)]
-    end
-
-    subgraph "Контроллер (Raspberry Pi)"
-        ControllerApp[Python App]
-        LocalDB[(SQLite)]
-        RFID[ACR122U]
-    end
-
-    AdminUI -- 1. Регистрация гостя --> NGINX
-    NGINX -- /api --> API
-    API -- 2. Сохранение в БД --> DB
-
-    RFID -- 3. Карта приложена --> ControllerApp
-    ControllerApp -- 4. Запись в локальный журнал --> LocalDB
-    ControllerApp -- 5. Фоновая синхронизация (HTTP) --> API
-    API -- 6. Проверка идемпотентности и сохранение --> DB
-    API -- 7. Ответ о статусе --> ControllerApp
-    ControllerApp -- 8. Обновление статуса в журнале --> LocalDB
+```bash
+cd /home/cybeer/beer-tap-system
+cp .env.example .env
+docker compose up -d --build
+docker compose exec -T beer_backend_api python -m alembic current
+curl -fsS http://localhost:8000/
+curl -fsS http://localhost:8000/api/system/status
 ```
 
----
+### Admin app
 
-## 🚀 Быстрый старт (Getting Started)
-
-Это руководство позволит развернуть полную MVP-систему с нуля.
-
-### Предварительные требования
-- **Основной компьютер:** Установлен Docker, Docker Compose, Git, Node.js v22 (через nvm).
-- **Контроллер:** Raspberry Pi 3B+ (или новее) с установленной Raspberry Pi OS Lite (64-bit) и настроенным SSH-доступом.
-- **Оборудование:** RFID-считыватель ACR122U.
-- **Сеть:** Все устройства находятся в одной локальной сети.
-
-### Пошаговая инструкция по развертыванию
-1.  **Клонирование репозитория** на основной компьютер:
-    ```bash
-    git clone <URL_РЕПОЗИТОРИЯ>
-    cd beer-tap-system
-    ```
-
-2.  **Настройка сервера:** Создайте в корне проекта файл `.env` на основе ` .env.example` (если он есть) или используйте следующий шаблон, указав надежный пароль:
-    ```.env
-    POSTGRES_USER=user
-    POSTGRES_PASSWORD=password
-    POSTGRES_DB=db
-    DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    ```
-
-3.  **Запуск серверной части:** Выполните сборку и запуск backend + PostgreSQL.
-    ```bash
-    docker-compose up -d --build
-    ```
-    После старта API доступно по адресу `http://localhost:8000` (Swagger UI: `http://localhost:8000/docs`).
-
-4.  **Запуск admin-app (отдельно от docker-compose):**
-    ```bash
-    cd admin-app
-    npm ci
-    npm run dev
-    ```
-
-5.  **Настройка контроллера:**
-    - Скопируйте содержимое папки `rpi-controller` из репозитория на Raspberry Pi.
-    - Подключитесь к RPi по SSH и перейдите в скопированную папку.
-    - Настройте окружение (установка зависимостей, создание `venv`), следуя финальной инструкции Этапа 3.
-    - Отредактируйте файл `config.py`, указав **реальный IP-адрес вашего основного компьютера** в переменной `SERVER_URL`.
-
-6.  **Запуск контроллера:** Находясь в папке проекта на RPi и с активированным `venv`, запустите основное приложение:
-    ```bash
-    python3 main.py
-    ```
-
-7.  **Проверка:** Система готова к работе. Проверьте доступность API, после чего создайте гостя в admin-app и эмулируйте налив на контроллере.
-
----
-
-## 🛠️ Технологический стек
-
-| Категория | Технология | Версия/Спецификация | Назначение |
-| :--- | :--- | :--- | :--- |
-| **Инфраструктура**| Docker & Docker Compose| latest | Контейнеризация и оркестрация всей системы |
-| **Сервер (Backend)**| Python | 3.11+ | Основной язык |
-| | FastAPI | latest | Высокопроизводительный веб-фреймворк для API |
-| | PostgreSQL | 15+ | Основная реляционная база данных |
-| | SQLAlchemy | 2.x | ORM для работы с PostgreSQL |
-| **Интерфейс (Frontend)**| Svelte 5 | 5.0.0+ | Современный фреймворк для построения UI |
-| | Tauri 2.0 | 2.8.5+ | Фреймворк для создания десктопных приложений |
-| | Rust | latest | Язык для NFC-бэкенда в Tauri |
-| | Vite | 6.0.3+ | Сборщик и сервер для разработки |
-| | Nginx | 1.21+ | Веб-сервер и reverse proxy |
-| | Node.js | 22.x | Среда выполнения для сборки фронтенда |
-| **Контроллер** | Raspberry Pi OS Lite | 64-bit | Операционная система |
-| | Python | 3.x | Основной язык |
-| | SQLite | 3.x (WAL) | Локальная, отказоустойчивая база данных |
-| | gpiozero | latest | Библиотека для работы с GPIO |
-| | LGPIOFactory | latest | Фабрика для управления GPIO пинами |
-| | Pyscard | latest | Библиотека для работы с RFID-считывателем |
-
----
-
-## 📁 Структура проекта (актуальная)
-
-```
-beer-tap-system/
-├── backend/                      # FastAPI + SQLAlchemy + Alembic
-│   ├── api/                      # Роутеры API
-│   ├── crud/                     # Операции доступа к данным
-│   ├── tests/                    # Backend тесты
-│   ├── main.py                   # Точка входа API
-│   ├── models.py                 # Модели БД
-│   └── schemas.py                # Pydantic-схемы
-├── admin-app/                    # Svelte + Tauri приложение
-│   ├── src/                      # UI
-│   └── src-tauri/                # Rust/Tauri слой
-├── rpi-controller/               # ПО контроллера Raspberry Pi
-│   ├── main.py                   # Точка входа контроллера
-│   ├── hardware.py               # Работа с GPIO/NFC
-│   ├── flow_manager.py           # Учет расхода
-│   ├── database.py               # Локальная SQLite
-│   └── sync_manager.py           # Синхронизация с backend
-├── docs/                         # Документация и контракты
-├── .github/workflows/            # CI/CD и проверки
-├── docker-compose.yml            # Подъем backend + postgres
-└── README.md                     # Текущий обзор проекта
+```powershell
+$env:VITE_API_BASE_URL="http://cybeer-hub:8000"
+cd admin-app
+npm ci
+npm run dev
 ```
 
-> Если возникает конфликт между README и профильной документацией, источником правды считается профильный документ в `docs/` и фактическая реализация в коде.
+### Controller
 
----
+Controller code lives in `rpi-controller/`. It authorizes pours through the backend, stores unsynced pours locally, and pushes them later through `/api/sync/pours`.
 
-## 🤝 Как внести свой вклад (Contributing)
+## Read next
 
-1.  Создайте форк репозитория.
-2.  Создайте новую ветку для вашей фичи (`git checkout -b feature/AmazingFeature`).
-3.  Сделайте коммит ваших изменений (`git commit -m 'Add some AmazingFeature'`).
-4.  Отправьте в ветку (`git push origin feature/AmazingFeature`).
-5.  Откройте Pull Request.
+- `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
+- `docs/architecture/OPERATIONAL_MODEL_V1.md`
+- `docs/API_REFERENCE.md`
+- `docs/dev/SYNCTHING_DEV_RUNBOOK.md`
+- `docs/dev/ADMIN_APP_BACKEND_URL.md`
+- `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`
 
----
+## Stage boundary
 
-## 🤖 Для AI-агентов и поддерживающих инженеров
-
-Чтобы избежать рассинхрона документации и кода, используйте следующий порядок проверки:
-
-1. **Сначала код и контракты:**
-   - backend API и роутеры: `backend/main.py`, `backend/api/*.py`;
-   - схемы данных: `backend/models.py`, `backend/schemas.py`;
-   - контроллер: `rpi-controller/main.py`, `rpi-controller/sync_manager.py`.
-2. **Потом профильные документы в `docs/`:**
-   - `docs/INDEX.md` как карта документации;
-   - `docs/API_REFERENCE.md` и `docs/INTERFACE_CONTRACT.md` для API/интеграций;
-   - `docs/RPI_INTERNALS.md` для контроллера.
-3. **README используйте как обзор**, но не как единственный source of truth для точных API-контрактов и структуры модулей.
-4. **Перед изменениями всегда перепроверяйте соответствие** между README, `docs/` и текущей реализацией.
+- POS/r_keeper foundation is prepared.
+- Real POS integration is intentionally deferred.
+- Controller and POS remain decoupled through the backend seam.
