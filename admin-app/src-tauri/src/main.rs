@@ -297,6 +297,17 @@ async fn get_kegs(token: String) -> Result<Vec<api_client::Keg>, AppError> {
 }
 
 #[tauri::command]
+async fn get_keg_suggestion(
+    token: String,
+    beer_type_id: String,
+) -> Result<api_client::KegSuggestionResponse, AppError> {
+    info!("[COMMAND]   FIFO keg suggestion beer_type_id={}", beer_type_id);
+    api_client::get_keg_suggestion(&token, &beer_type_id)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn create_keg(
     token: String,
     keg_data: api_client::KegPayload,
@@ -675,6 +686,7 @@ fn main() {
             top_up_balance,
             // API - Kegs & Taps
             get_kegs,
+            get_keg_suggestion,
             create_keg,
             update_keg,
             delete_keg,

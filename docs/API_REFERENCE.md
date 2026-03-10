@@ -144,6 +144,21 @@ Top up guest balance.
 }
 ```
 
+#### POST `/api/guests/{guest_id}/refund`
+Refund guest balance.
+- **Authentication**: JWT required
+- **Operational Rule**: Requires an open shift (`POST /api/shifts/open`)
+- **Behavior**: Writes a `refund` transaction, decreases operational balance, and emits a POS stub event.
+
+**Request Body:**
+```json
+{
+  "amount": 150.00,
+  "payment_method": "cash",
+  "reason": "demo_refund"
+}
+```
+
 #### GET `/api/guests/{guest_id}/history`
 Get guest transaction history.
 - **Authentication**: JWT required
@@ -307,6 +322,45 @@ Get list of all kegs.
 - **Query Parameters**:
   - `skip`: int (default: 0)
   - `limit`: int (default: 100)
+
+#### GET `/api/kegs/suggest?beer_type_id={uuid}`
+Get FIFO recommendation for the oldest warehouse keg of the requested beer type.
+- **Authentication**: JWT required
+- **Current schema note**: `beer_type_id` maps to `beverage_id` in the current backend model.
+- **Eligibility**:
+  - same `beverage_id`
+  - `status = full`
+  - `current_volume_ml > 0`
+  - not assigned to a tap
+- **Ordering**: `created_at ASC`, then `keg_id ASC`
+
+**Response Example:**
+```json
+{
+  "recommended_keg": {
+    "keg_id": "00000000-0000-0000-0000-000000000101",
+    "beverage_id": "550e8400-e29b-41d4-a716-446655440000",
+    "initial_volume_ml": 50000,
+    "current_volume_ml": 50000,
+    "purchase_price": "10000.00",
+    "status": "full",
+    "created_at": "2026-03-04T10:00:00Z",
+    "tapped_at": null,
+    "finished_at": null,
+    "beverage": {
+      "beverage_id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "FIFO Lager",
+      "brewery": null,
+      "style": null,
+      "abv": null,
+      "sell_price_per_liter": "350.00"
+    }
+  },
+  "candidates_count": 3,
+  "reason": "oldest_available",
+  "ordering_keys_used": ["created_at", "keg_id"]
+}
+```
 
 #### GET `/api/kegs/{keg_id}`
 Get specific keg by UUID.

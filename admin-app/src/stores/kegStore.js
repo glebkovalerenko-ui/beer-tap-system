@@ -6,6 +6,7 @@ import { logError, normalizeError } from '../lib/errorUtils';
 
 /**
  * @typedef {import('../../../src-tauri/src/api_client').Keg} Keg
+ * @typedef {import('../../../src-tauri/src/api_client').KegSuggestionResponse} KegSuggestionResponse
  * @typedef {import('../../../src-tauri/src/api_client').KegPayload} KegPayload
  * @typedef {import('../../../src-tauri/src/api_client').KegUpdatePayload} KegUpdatePayload
  */
@@ -38,6 +39,19 @@ function createKegStore() {
       } catch (error) {
         const errorMessage = toErrorMessage('kegStore.fetchKegs', error);
         set({ kegs: [], loading: false, error: errorMessage });
+      }
+    },
+
+    getSuggestion: async (beerTypeId) => {
+      const token = get(sessionStore).token;
+      if (!token) throw new Error('Not authenticated');
+
+      try {
+        /** @type {KegSuggestionResponse} */
+        const suggestion = await invoke('get_keg_suggestion', { token, beerTypeId });
+        return suggestion;
+      } catch (error) {
+        throw new Error(toErrorMessage('kegStore.getSuggestion', error));
       }
     },
 

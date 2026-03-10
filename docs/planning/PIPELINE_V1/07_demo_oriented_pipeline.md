@@ -370,6 +370,11 @@ Out of scope (intentionally):
 - FIFO suggestion deterministic for same beer type candidates.
 - Stub notifications emitted for top-up/refund/pour paths.
 
+**Implementation note (current repo)**
+- Reused existing `kegs.created_at` as FIFO warehouse timestamp; no extra keg metadata column was added.
+- Current schema uses `beverage_id` as the runtime equivalent of `beer_type_id`.
+- POS demo visibility is provided through `[POS_STUB]` logs and mirrored `audit_logs` entries.
+
 ---
 
 ## Safe rollout order and feature flags

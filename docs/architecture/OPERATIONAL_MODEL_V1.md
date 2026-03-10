@@ -631,3 +631,28 @@ Rules:
 - For shift reports:
   - X report window is `shift.opened_at .. DB now()`;
   - Z report window is strictly `shift.opened_at .. shift.closed_at`.
+
+---
+
+# 6. M7 Demo Boundary
+
+## 6.1 FIFO Recommendation
+
+- Current codebase uses `beverage_id` as the operational equivalent of `beer_type_id`.
+- FIFO recommendation is recommendation-only and does not auto-assign a keg.
+- Eligible warehouse stock is defined as:
+  - same `beverage_id`
+  - `status = full`
+  - `current_volume_ml > 0`
+  - `tap.keg_id IS NULL`
+- Deterministic FIFO ordering is `created_at ASC`, then `keg_id ASC`.
+
+## 6.2 POS-Ready Seam
+
+- Backend exposes a `POSAdapter` seam with a stub implementation only.
+- Stub mode writes structured log lines with prefix `[POS_STUB]` and mirrors events into `audit_logs`.
+- Stub notifications are emitted for:
+  - guest top-up
+  - guest refund
+  - finalized pour (`synced` and `reconciled`)
+- Pour notification deduplication is keyed by `pour_id`, so duplicate sync or late-sync-after-reconcile does not emit a second POS event.
