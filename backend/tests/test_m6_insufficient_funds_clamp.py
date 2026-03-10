@@ -358,6 +358,68 @@ def test_insufficient_funds_deny_writes_audit_event(client):
     assert details["min_start_ml"] == 20
 
 
+def test_sync_accepts_tail_overdraft_when_base_volume_fits_balance(client, db_session):
+    headers, guest_id, visit_id, tap_id = _prepare_active_visit(
+        client,
+        suffix="97009",
+        card_uid="CARD-M6-97009",
+        sell_price_per_liter=500.0,
+        topup_amount=25.0,
+    )
+
+    authorize = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M6-97009", "tap_id": tap_id},
+    )
+    assert authorize.status_code == 200
+    assert authorize.json()["max_volume_ml"] == 48
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m6-tail-sync-97009",
+                    "card_uid": "CARD-M6-97009",
+                    "tap_id": tap_id,
+                    "short_id": "T97009",
+                    "duration_ms": 3500,
+                    "volume_ml": 52,
+                    "tail_volume_ml": 4,
+                    "price_cents": 2600,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    result = sync_resp.json()["results"][0]
+    assert result["status"] == "accepted"
+
+    guest = client.get(f"/api/guests/{guest_id}", headers=headers)
+    assert guest.status_code == 200
+    assert guest.json()["balance"] == "-1.00"
+
+    db_session.expire_all()
+    synced = (
+        db_session.query(models.Pour)
+        .filter(models.Pour.visit_id == uuid.UUID(visit_id), models.Pour.short_id == "T97009")
+        .one()
+    )
+    assert synced.sync_status == "synced"
+    assert synced.volume_ml == 52
+
+    audit_resp = client.get("/api/audit/", headers=headers)
+    assert audit_resp.status_code == 200
+    accepted_entries = [entry for entry in audit_resp.json() if entry["action"] == "sync_tail_overdraft_accepted"]
+    assert accepted_entries
+    details = json.loads(accepted_entries[0]["details"])
+    assert details["tap_id"] == tap_id
+    assert details["tail_volume_ml"] == 4
+    assert details["amount_to_charge"] == "26.00"
+
+
 def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_unlocks(client, db_session):
     headers, guest_id, visit_id, tap_id = _prepare_active_visit(
         client,
