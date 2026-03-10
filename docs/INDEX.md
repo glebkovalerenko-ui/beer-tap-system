@@ -22,6 +22,7 @@
 
 ## Stage closing reports
 
+- `docs/reports/RUS_LOCALIZATION_PHASE1_IMPLEMENTATION.md`: report for Phase 1 Russian display-layer localization.
 - `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`: closing verdict before the next implementation phase.
 - `docs/reports/REPOSITORY_CLEAN_STATE_AND_ARCHITECTURE_FREEZE.md`: final repository clean-state and architecture freeze report.
 - `docs/reports/M7_VERIFICATION.md`: M7-specific verification notes.
