@@ -443,10 +443,14 @@ class PourData(BaseModel):
     start_ts: Optional[datetime] = None
     end_ts: Optional[datetime] = None
     volume_ml: int
+    tail_volume_ml: int = Field(default=0, ge=0)
     price_cents: int
 
     @model_validator(mode="after")
     def validate_duration_or_legacy_range(self):
+        if self.tail_volume_ml > self.volume_ml:
+            raise ValueError("tail_volume_ml must not exceed volume_ml")
+
         if self.duration_ms is not None:
             return self
 
@@ -484,6 +488,24 @@ class Controller(BaseModel):
     created_at: datetime
     last_seen: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class ControllerFlowEventRequest(BaseModel):
+    tap_id: int = Field(..., ge=1, json_schema_extra={"example": 1})
+    volume_ml: int = Field(..., ge=1, json_schema_extra={"example": 15})
+    duration_ms: int = Field(default=0, ge=0, json_schema_extra={"example": 1800})
+    card_present: bool = Field(default=False)
+    session_state: str = Field(..., min_length=1, max_length=64, json_schema_extra={"example": "no_card_no_session"})
+    reason: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        json_schema_extra={"example": "flow_detected_when_valve_closed_without_active_session"},
+    )
+
+
+class ControllerFlowEventResponse(BaseModel):
+    accepted: bool = True
 
 # --- Схемы для Глобального Состояния Системы ---
 class SystemStateItem(BaseModel):

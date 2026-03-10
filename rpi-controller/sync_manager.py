@@ -156,6 +156,41 @@ class SyncManager:
             "safety_ml": int(context.get("safety_ml") or 0),
         }
 
+    def report_flow_anomaly(self, *, tap_id, volume_ml, duration_ms, card_present, session_state, reason):
+        url = "/".join([self.server_url, "api", "controllers", "flow-events"])
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        payload = {
+            "tap_id": tap_id,
+            "volume_ml": int(volume_ml or 0),
+            "duration_ms": int(duration_ms or 0),
+            "card_present": bool(card_present),
+            "session_state": session_state,
+            "reason": reason,
+        }
+        try:
+            response = self.session.post(url, json=payload, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            logging.error("Не удалось отправить flow anomaly на backend: url=%s error=%s", url, exc)
+            return False
+
+        if response.status_code in {200, 202}:
+            logging.warning(
+                "Flow anomaly отправлен на backend: tap_id=%s volume_ml=%s duration_ms=%s session_state=%s",
+                tap_id,
+                payload["volume_ml"],
+                payload["duration_ms"],
+                session_state,
+            )
+            return True
+
+        logging.error(
+            "Backend отклонил flow anomaly: url=%s status_code=%s body=%s",
+            url,
+            response.status_code,
+            response.text,
+        )
+        return False
+
     def sync_cycle(self, db_handler):
         pours = db_handler.get_unsynced_pours(limit=20)
         if not pours:
@@ -179,6 +214,7 @@ class SyncManager:
                 "tap_id": item.get("tap_id"),
                 "duration_ms": item.get("duration_ms"),
                 "volume_ml": item.get("volume_ml"),
+                "tail_volume_ml": int(item.get("tail_volume_ml") or 0),
                 "price_cents": item.get("price_cents"),
             }
             if payload_item["duration_ms"] is None and item.get("start_ts") and item.get("end_ts"):

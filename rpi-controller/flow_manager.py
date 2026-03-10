@@ -16,6 +16,10 @@ class FlowManager:
     LOOP_INTERVAL_SECONDS = 0.1
     EMERGENCY_CHECK_INTERVAL_SECONDS = 3.0
     FLOW_TIMEOUT_SECONDS = 15.0
+    FLOW_TAIL_IDLE_SECONDS = 0.5
+    FLOW_TAIL_MAX_SECONDS = 3.0
+    CLOSED_VALVE_FLOW_REPORT_MIN_VOLUME_ML = 5
+    CLOSED_VALVE_FLOW_RESET_SECONDS = 1.0
 
     def __init__(
         self,
@@ -38,10 +42,18 @@ class FlowManager:
         self._sleep = sleep_fn or time.sleep
         self._log_throttle = log_throttle or LogThrottle(time_source=self._time_source)
         self._progress_factory = progress_factory or (lambda: TerminalProgressDisplay(time_source=self._time_source))
+        self._unexpected_flow_started_at = None
+        self._unexpected_flow_last_seen_at = None
+        self._unexpected_flow_volume_liters = 0.0
+        self._unexpected_flow_reported = False
 
     @staticmethod
     def _legacy_price_cents(volume_ml):
         return int((max(int(volume_ml), 0) / 100.0) * PRICE_PER_100ML_CENTS)
+
+    @staticmethod
+    def _liters_to_ml(volume_liters: float) -> int:
+        return int(max(float(volume_liters or 0.0), 0.0) * 1000)
 
     def _log_throttled(
         self,
@@ -60,6 +72,106 @@ class FlowManager:
             state=state,
         )
 
+    def _reset_unexpected_flow_state(self):
+        self._unexpected_flow_started_at = None
+        self._unexpected_flow_last_seen_at = None
+        self._unexpected_flow_volume_liters = 0.0
+        self._unexpected_flow_reported = False
+        self._log_throttle.reset("unexpected_closed_valve_flow")
+
+    def _observe_closed_valve_flow(self, *, card_present: bool, session_state: str):
+        volume_delta_liters = self.hardware.get_volume_liters()
+        if volume_delta_liters > 0:
+            now = self._time_source()
+            if self._unexpected_flow_started_at is None:
+                self._unexpected_flow_started_at = now
+                self._unexpected_flow_volume_liters = 0.0
+                self._unexpected_flow_reported = False
+
+            self._unexpected_flow_last_seen_at = now
+            self._unexpected_flow_volume_liters += volume_delta_liters
+            total_volume_ml = self._liters_to_ml(self._unexpected_flow_volume_liters)
+            self._log_throttled(
+                "unexpected_closed_valve_flow",
+                "Обнаружен flow при закрытом клапане вне активной pour-сессии. volume=%s card_present=%s session_state=%s"
+                % (format_volume(total_volume_ml), card_present, session_state),
+                level=logging.WARNING,
+                interval_seconds=2.0,
+                state=(session_state, card_present),
+            )
+            if (
+                not self._unexpected_flow_reported
+                and total_volume_ml >= self.CLOSED_VALVE_FLOW_REPORT_MIN_VOLUME_ML
+            ):
+                duration_ms = int((now - self._unexpected_flow_started_at) * 1000)
+                self.sync_manager.report_flow_anomaly(
+                    tap_id=TAP_ID,
+                    volume_ml=total_volume_ml,
+                    duration_ms=duration_ms,
+                    card_present=card_present,
+                    session_state=session_state,
+                    reason="flow_detected_when_valve_closed_without_active_session",
+                )
+                self._unexpected_flow_reported = True
+            return
+
+        if self._unexpected_flow_started_at is None:
+            return
+
+        now = self._time_source()
+        if (
+            self._unexpected_flow_last_seen_at is not None
+            and now - self._unexpected_flow_last_seen_at >= self.CLOSED_VALVE_FLOW_RESET_SECONDS
+        ):
+            if self._unexpected_flow_reported:
+                logging.info(
+                    "Flow при закрытом клапане прекратился. total_volume=%s duration_ms=%s",
+                    format_volume(self._liters_to_ml(self._unexpected_flow_volume_liters)),
+                    int((self._unexpected_flow_last_seen_at - self._unexpected_flow_started_at) * 1000),
+                )
+            self._reset_unexpected_flow_state()
+
+    def _collect_post_close_flow(
+        self,
+        *,
+        total_volume_liters: float,
+        total_volume_ml: int,
+        tail_volume_liters: float,
+        max_volume_ml: int,
+        price_per_ml_cents: int,
+        has_authorized_price: bool,
+        progress_display,
+    ):
+        close_started_at = self._time_source()
+        last_tail_flow_at = None
+
+        while True:
+            now = self._time_source()
+            if now - close_started_at >= self.FLOW_TAIL_MAX_SECONDS:
+                return total_volume_liters, total_volume_ml, tail_volume_liters
+
+            volume_delta_liters = self.hardware.get_volume_liters()
+            if volume_delta_liters > 0:
+                total_volume_liters += volume_delta_liters
+                tail_volume_liters += volume_delta_liters
+                total_volume_ml = self._liters_to_ml(total_volume_liters)
+                last_tail_flow_at = now
+                progress_display.update(
+                    total_volume_ml,
+                    max_volume_ml=max_volume_ml,
+                    estimated_cost_cents=(
+                        calculate_price_cents(total_volume_ml, price_per_ml_cents)
+                        if has_authorized_price
+                        else self._legacy_price_cents(total_volume_ml)
+                    ),
+                )
+            elif last_tail_flow_at is not None and now - last_tail_flow_at >= self.FLOW_TAIL_IDLE_SECONDS:
+                return total_volume_liters, total_volume_ml, tail_volume_liters
+            elif last_tail_flow_at is None and now - close_started_at >= self.FLOW_TAIL_IDLE_SECONDS:
+                return total_volume_liters, total_volume_ml, tail_volume_liters
+
+            self._sleep(self.LOOP_INTERVAL_SECONDS)
+
     def _enter_card_must_be_removed(self, reason: str):
         self.hardware.valve_close()
         if not self.card_must_be_removed or self._card_must_be_removed_reason != reason:
@@ -68,9 +180,9 @@ class FlowManager:
         self._card_removed_since = None
         self._card_must_be_removed_reason = reason
 
-    def _handle_card_must_be_removed(self):
+    def _handle_card_must_be_removed(self, *, card_present: bool):
         self.hardware.valve_close()
-        if self.hardware.is_card_present():
+        if card_present:
             self._card_removed_since = None
             self._log_throttled(
                 "card_must_be_removed_wait",
@@ -101,8 +213,19 @@ class FlowManager:
 
     def process(self):
         if self.card_must_be_removed:
-            self._handle_card_must_be_removed()
+            card_present = self.hardware.is_card_present()
+            self._observe_closed_valve_flow(
+                card_present=card_present,
+                session_state="card_present_no_session" if card_present else "no_card_no_session",
+            )
+            self._handle_card_must_be_removed(card_present=card_present)
             return
+
+        card_present = self.hardware.is_card_present()
+        self._observe_closed_valve_flow(
+            card_present=card_present,
+            session_state="card_present_no_session" if card_present else "no_card_no_session",
+        )
 
         if self.db_handler.has_unsynced_for_tap(TAP_ID):
             self._log_throttled(
@@ -111,12 +234,12 @@ class FlowManager:
                 interval_seconds=self.PROCESSING_SYNC_REMINDER_SECONDS,
                 state="blocked",
             )
-            if self.hardware.is_card_present():
+            if card_present:
                 self._enter_card_must_be_removed("processing_sync")
             return
         self._log_throttle.reset("processing_sync_block")
 
-        if not self.hardware.is_card_present():
+        if not card_present:
             return
 
         card_uid = self.hardware.get_card_uid()
@@ -183,15 +306,18 @@ class FlowManager:
             TAP_ID,
             format_volume(max_volume_ml),
         )
+        self.hardware.reset_pulses()
         self.hardware.valve_open()
         started_monotonic = self._time_source()
         total_volume_liters = 0.0
         total_volume_ml = 0
+        tail_volume_liters = 0.0
         last_flow_at = started_monotonic
         next_emergency_check_at = started_monotonic + self.EMERGENCY_CHECK_INTERVAL_SECONDS
         client_tx_id = str(uuid.uuid4())
         short_id = client_tx_id.replace("-", "")[:8].upper()
         card_removed_by_timeout = False
+        stop_reason = "card_removed"
         progress_display = self._progress_factory()
 
         try:
@@ -200,16 +326,24 @@ class FlowManager:
                 if now >= next_emergency_check_at:
                     if self.sync_manager.check_emergency_stop():
                         logging.info("Экстренная остановка активна. Закрываем клапан.")
+                        stop_reason = "emergency_stop"
                         break
                     next_emergency_check_at = now + self.EMERGENCY_CHECK_INTERVAL_SECONDS
 
                 volume_delta_liters = self.hardware.get_volume_liters()
                 if volume_delta_liters > 0:
                     total_volume_liters += volume_delta_liters
-                    total_volume_ml = int(total_volume_liters * 1000)
+                    total_volume_ml = self._liters_to_ml(total_volume_liters)
                     if has_reached_pour_limit(total_volume_ml, max_volume_ml):
-                        total_volume_ml = max_volume_ml
-                        logging.info("Клапан закрыт по лимиту авторизации на отметке %s", format_volume(max_volume_ml))
+                        overflow_ml = max(total_volume_ml - max_volume_ml, 0)
+                        if overflow_ml > 0:
+                            tail_volume_liters += overflow_ml / 1000.0
+                        logging.info(
+                            "Клапан закрыт по лимиту авторизации. limit=%s actual_before_close=%s",
+                            format_volume(max_volume_ml),
+                            format_volume(total_volume_ml),
+                        )
+                        stop_reason = "limit_reached"
                         break
                     last_flow_at = now
 
@@ -226,6 +360,7 @@ class FlowManager:
                 if now - last_flow_at >= self.FLOW_TIMEOUT_SECONDS:
                     logging.info("Клапан закрыт по таймауту")
                     card_removed_by_timeout = True
+                    stop_reason = "flow_timeout"
                     timeout_price_cents = (
                         calculate_price_cents(total_volume_ml, price_per_ml_cents)
                         if has_authorized_price
@@ -242,8 +377,17 @@ class FlowManager:
                 self._sleep(self.LOOP_INTERVAL_SECONDS)
         finally:
             self.hardware.valve_close()
+            total_volume_liters, total_volume_ml, tail_volume_liters = self._collect_post_close_flow(
+                total_volume_liters=total_volume_liters,
+                total_volume_ml=total_volume_ml,
+                tail_volume_liters=tail_volume_liters,
+                max_volume_ml=max_volume_ml,
+                price_per_ml_cents=price_per_ml_cents,
+                has_authorized_price=has_authorized_price,
+                progress_display=progress_display,
+            )
             if not card_removed_by_timeout:
-                logging.info("Клапан закрыт: карта извлечена")
+                logging.info("Клапан закрыт: причина=%s", stop_reason)
             progress_display.finish(total_volume_ml)
 
         if total_volume_ml > 1:
@@ -260,6 +404,7 @@ class FlowManager:
                 "tap_id": TAP_ID,
                 "duration_ms": duration_ms,
                 "volume_ml": total_volume_ml,
+                "tail_volume_ml": self._liters_to_ml(tail_volume_liters),
                 "price_cents": price_cents,
                 "price_per_ml_at_pour": float(
                     price_per_ml_cents if has_authorized_price else (PRICE_PER_100ML_CENTS / 100.0)
@@ -268,6 +413,5 @@ class FlowManager:
             self.db_handler.add_pour(pour_data)
             logging.info("Запись о наливе сохранена в локальную БД")
 
-        self.hardware.reset_pulses()
         if self.hardware.is_card_present():
             self._enter_card_must_be_removed("session_completed")
