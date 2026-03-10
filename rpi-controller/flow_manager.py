@@ -3,6 +3,7 @@ import time
 import uuid
 
 from config import PRICE_PER_100ML_CENTS, TAP_ID
+from display_formatters import format_money_minor_units, format_volume
 from log_throttle import LogThrottle
 from pour_session import calculate_price_cents, has_reached_pour_limit
 from terminal_progress import TerminalProgressDisplay
@@ -62,7 +63,7 @@ class FlowManager:
     def _enter_card_must_be_removed(self, reason: str):
         self.hardware.valve_close()
         if not self.card_must_be_removed or self._card_must_be_removed_reason != reason:
-            logging.warning("Entering CARD_MUST_BE_REMOVED state: reason=%s", reason)
+            logging.warning("Переход в режим ожидания снятия карты: причина=%s", reason)
         self.card_must_be_removed = True
         self._card_removed_since = None
         self._card_must_be_removed_reason = reason
@@ -73,7 +74,7 @@ class FlowManager:
             self._card_removed_since = None
             self._log_throttled(
                 "card_must_be_removed_wait",
-                "CARD_MUST_BE_REMOVED: remove card to continue. reason=%s" % self._card_must_be_removed_reason,
+                "Извлеките карту из считывателя для продолжения. причина=%s" % self._card_must_be_removed_reason,
                 level=logging.WARNING,
                 interval_seconds=self.CARD_REMOVE_REMINDER_SECONDS,
                 state=self._card_must_be_removed_reason,
@@ -94,7 +95,7 @@ class FlowManager:
         self._card_must_be_removed_reason = None
         self._log_throttle.reset("card_must_be_removed_wait")
         logging.info(
-            "CARD_MUST_BE_REMOVED released: reader clear and debounce passed. previous_reason=%s",
+            "Режим ожидания снятия карты завершён: считыватель свободен, задержка выдержана. предыдущая_причина=%s",
             released_reason,
         )
 
@@ -106,7 +107,7 @@ class FlowManager:
         if self.db_handler.has_unsynced_for_tap(TAP_ID):
             self._log_throttled(
                 "processing_sync_block",
-                "Tap is in processing_sync: unsynced pour exists, blocking new pour start.",
+                "Кран занят синхронизацией: есть несинхронизированный налив, новый запуск заблокирован.",
                 interval_seconds=self.PROCESSING_SYNC_REMINDER_SECONDS,
                 state="blocked",
             )
@@ -128,7 +129,7 @@ class FlowManager:
             reason_code = auth_result.get("reason_code") or "authorize_denied"
             self._log_throttled(
                 f"authorize_denied:{reason_code}",
-                "Authorize denied for card %s. status_code=%s reason=%s"
+                "Старт налива отклонён для карты %s. status_code=%s reason=%s"
                 % (card_uid, auth_result.get("status_code"), auth_result.get("reason")),
                 level=logging.WARNING,
                 interval_seconds=2.0,
@@ -137,7 +138,7 @@ class FlowManager:
             if reason_code == "lost_card":
                 self._log_throttled(
                     "authorize_denied_lost_card",
-                    "Card is marked as lost. Pour denied. Remove the card from the reader.",
+                    "Карта отмечена как потерянная. Налив запрещён. Извлеките карту из считывателя.",
                     level=logging.WARNING,
                     interval_seconds=2.0,
                     state=reason_code,
@@ -146,7 +147,7 @@ class FlowManager:
             elif reason_code == "insufficient_funds":
                 self._log_throttled(
                     "authorize_denied_insufficient_funds",
-                    "Insufficient funds to start pour. Top up balance and remove the card from the reader.",
+                    "Недостаточно средств для начала налива. Пополните баланс и извлеките карту из считывателя.",
                     level=logging.WARNING,
                     interval_seconds=2.0,
                     state=reason_code,
@@ -168,7 +169,7 @@ class FlowManager:
         if max_volume_ml <= 0:
             self._log_throttled(
                 "authorize_invalid_contract",
-                "Authorize returned invalid clamp data. max_volume_ml=%s price_per_ml_cents=%s"
+                "Авторизация вернула некорректные лимиты. max_volume_ml=%s price_per_ml_cents=%s"
                 % (max_volume_ml, price_per_ml_cents),
                 level=logging.ERROR,
                 interval_seconds=2.0,
@@ -177,10 +178,10 @@ class FlowManager:
             return
 
         logging.info(
-            "Authorize OK for card %s on tap %s. Opening valve with max_volume_ml=%s.",
+            "Авторизация подтверждена для карты %s на кране %s. Открываем клапан, лимит %s.",
             card_uid,
             TAP_ID,
-            max_volume_ml,
+            format_volume(max_volume_ml),
         )
         self.hardware.valve_open()
         started_monotonic = self._time_source()
@@ -198,7 +199,7 @@ class FlowManager:
                 now = self._time_source()
                 if now >= next_emergency_check_at:
                     if self.sync_manager.check_emergency_stop():
-                        logging.info("Emergency stop is enabled. Closing valve.")
+                        logging.info("Экстренная остановка активна. Закрываем клапан.")
                         break
                     next_emergency_check_at = now + self.EMERGENCY_CHECK_INTERVAL_SECONDS
 
@@ -208,7 +209,7 @@ class FlowManager:
                     total_volume_ml = int(total_volume_liters * 1000)
                     if has_reached_pour_limit(total_volume_ml, max_volume_ml):
                         total_volume_ml = max_volume_ml
-                        logging.info("Valve closed by authorized volume clamp at %s ml", max_volume_ml)
+                        logging.info("Клапан закрыт по лимиту авторизации на отметке %s", format_volume(max_volume_ml))
                         break
                     last_flow_at = now
 
@@ -223,7 +224,7 @@ class FlowManager:
                 )
 
                 if now - last_flow_at >= self.FLOW_TIMEOUT_SECONDS:
-                    logging.info("Valve closed by timeout")
+                    logging.info("Клапан закрыт по таймауту")
                     card_removed_by_timeout = True
                     timeout_price_cents = (
                         calculate_price_cents(total_volume_ml, price_per_ml_cents)
@@ -231,10 +232,10 @@ class FlowManager:
                         else self._legacy_price_cents(total_volume_ml)
                     )
                     logging.info(
-                        "Timeout details: short_id=%s, volume_ml=%s, cost_cents=%s",
+                        "Детали таймаута: short_id=%s, volume=%s, amount=%s",
                         short_id,
-                        total_volume_ml,
-                        timeout_price_cents,
+                        format_volume(total_volume_ml),
+                        format_money_minor_units(timeout_price_cents),
                     )
                     break
 
@@ -242,7 +243,7 @@ class FlowManager:
         finally:
             self.hardware.valve_close()
             if not card_removed_by_timeout:
-                logging.info("Valve closed (card removed)")
+                logging.info("Клапан закрыт: карта извлечена")
             progress_display.finish(total_volume_ml)
 
         if total_volume_ml > 1:
@@ -265,7 +266,7 @@ class FlowManager:
                 ),
             }
             self.db_handler.add_pour(pour_data)
-            logging.info("Pour record added to local DB")
+            logging.info("Запись о наливе сохранена в локальную БД")
 
         self.hardware.reset_pulses()
         if self.hardware.is_card_present():

@@ -89,10 +89,10 @@ def test_flow_manager_throttles_processing_sync_logs(caplog):
         clock.sleep(10.1)
         manager.process()
 
-    messages = [record.message for record in caplog.records if "processing_sync" in record.message]
+    messages = [record.message for record in caplog.records if "синхронизацией" in record.message]
     assert messages == [
-        "Tap is in processing_sync: unsynced pour exists, blocking new pour start.",
-        "Tap is in processing_sync: unsynced pour exists, blocking new pour start.",
+        "Кран занят синхронизацией: есть несинхронизированный налив, новый запуск заблокирован.",
+        "Кран занят синхронизацией: есть несинхронизированный налив, новый запуск заблокирован.",
     ]
 
 
@@ -122,9 +122,9 @@ def test_flow_manager_shows_progress_and_accumulates_volume():
     manager.process()
 
     output_lines = buffer.getvalue().splitlines()
-    assert "Pouring: 15 ml / 100 ml | est. cost: 22 cents" in output_lines
-    assert "Pouring: 35 ml / 100 ml | est. cost: 52 cents" in output_lines
-    assert output_lines[-1] == "Session finished. Poured: 35 ml"
+    assert "Налив: 15 мл из 100 мл | сумма: 0,22 ₽" in output_lines
+    assert "Налив: 35 мл из 100 мл | сумма: 0,52 ₽" in output_lines
+    assert output_lines[-1] == "Сессия завершена. Налито: 35 мл"
     assert db_handler.pours[0]["volume_ml"] == 35
     assert db_handler.pours[0]["price_cents"] == 52
     assert hardware.valve_open_calls == 1

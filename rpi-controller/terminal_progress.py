@@ -1,6 +1,8 @@
 import sys
 import time
 
+from display_formatters import format_money_minor_units, format_volume
+
 
 class TerminalProgressDisplay:
     def __init__(
@@ -45,7 +47,7 @@ class TerminalProgressDisplay:
         return True
 
     def finish(self, total_volume_ml):
-        final_line = f"Session finished. Poured: {int(total_volume_ml)} ml"
+        final_line = f"Сессия завершена. Налито: {format_volume(total_volume_ml)}"
         if self._supports_live and self._line_active:
             self.stream.write("\r" + " " * self._last_line_length + "\r")
         self.stream.write(final_line + "\n")
@@ -56,9 +58,9 @@ class TerminalProgressDisplay:
 
     @staticmethod
     def _format_line(current_volume_ml, *, max_volume_ml=None, estimated_cost_cents=None):
-        parts = [f"Pouring: {int(current_volume_ml)} ml"]
+        parts = [f"Налив: {format_volume(current_volume_ml)}"]
         if max_volume_ml:
-            parts.append(f"/ {int(max_volume_ml)} ml")
+            parts.append(f"из {format_volume(max_volume_ml)}")
         if estimated_cost_cents is not None:
-            parts.append(f"| est. cost: {int(estimated_cost_cents)} cents")
+            parts.append(f"| сумма: {format_money_minor_units(estimated_cost_cents)}")
         return " ".join(parts)

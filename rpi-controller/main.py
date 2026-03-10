@@ -32,10 +32,10 @@ def main():
             flow_manager.process()
             time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\nShutdown requested...")
+        print("\nПолучен сигнал остановки...")
     finally:
         hardware.valve_close()
-        print("Valve closed. Controller stopped.")
+        print("Клапан закрыт. Контроллер остановлен.")
 
 
 if __name__ == "__main__":

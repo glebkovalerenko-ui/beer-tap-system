@@ -24,7 +24,7 @@ class SyncManager:
         try:
             resolved = sorted({item[4][0] for item in socket.getaddrinfo(host, None)})
         except socket.gaierror as exc:
-            logging.warning("Controller backend DNS lookup failed: host=%s error=%s", host, exc)
+            logging.warning("Не удалось разрешить DNS backend-сервера контроллера: host=%s error=%s", host, exc)
             return host, []
 
         return host, resolved
@@ -34,7 +34,7 @@ class SyncManager:
         host, resolved_ips = self._resolve_backend_host()
         resolved_text = ",".join(resolved_ips) if resolved_ips else "<unresolved>"
         logging.info(
-            "Controller backend config: SERVER_URL=%s RESOLVED_HOST=%s RESOLVED_IPS=%s INTERNAL_TOKEN=%s",
+            "Конфигурация backend-сервера контроллера: SERVER_URL=%s RESOLVED_HOST=%s RESOLVED_IPS=%s INTERNAL_TOKEN=%s",
             self.server_url,
             host or "<missing>",
             resolved_text,
@@ -47,16 +47,16 @@ class SyncManager:
         try:
             response = self.session.get(url, headers=headers, timeout=5)
         except requests.RequestException as exc:
-            logging.error("Backend startup probe failed: url=%s error=%s", url, exc)
+            logging.error("Проверка backend при запуске не удалась: url=%s error=%s", url, exc)
             return False
 
         if response.status_code == 200:
-            logging.info("Backend startup probe OK: url=%s status_code=%s", url, response.status_code)
+            logging.info("Проверка backend при запуске успешна: url=%s status_code=%s", url, response.status_code)
             return True
 
         body = (response.text or "").strip()
         logging.error(
-            "Backend startup probe failed: url=%s status_code=%s body=%s",
+            "Проверка backend при запуске не удалась: url=%s status_code=%s body=%s",
             url,
             response.status_code,
             body,
@@ -80,9 +80,9 @@ class SyncManager:
             if response.status_code == 200:
                 data = response.json()
                 return str(data.get("value", "")).lower() == "true"
-            logging.error("Emergency stop check failed: url=%s status_code=%s", url, response.status_code)
+            logging.error("Не удалось проверить статус экстренной остановки: url=%s status_code=%s", url, response.status_code)
         except requests.RequestException as exc:
-            logging.error("Error checking emergency stop: url=%s error=%s", url, exc)
+            logging.error("Ошибка проверки экстренной остановки: url=%s error=%s", url, exc)
         return False
 
     def authorize_pour(self, card_uid, tap_id):
@@ -164,7 +164,7 @@ class SyncManager:
 
         self._log_throttled(
             "sync_processing",
-            f"processing_sync: pending_records={len(pours)}",
+            f"Синхронизация налива в очереди: записей={len(pours)}",
             interval_seconds=10.0,
             state=len(pours),
         )
@@ -192,7 +192,7 @@ class SyncManager:
         try:
             response = self.session.post(url, json=payload, headers=headers, timeout=10)
         except requests.RequestException as exc:
-            logging.error("Error during sync: url=%s error=%s", url, exc)
+            logging.error("Ошибка синхронизации: url=%s error=%s", url, exc)
             return
 
         if response.status_code == 200:
@@ -205,7 +205,7 @@ class SyncManager:
                 client_tx_id = res.get("client_tx_id")
                 result_status = res.get("status")
                 outcome = res.get("outcome", "unknown")
-                reason = res.get("reason", "Not specified")
+                reason = res.get("reason", "Не указана")
 
                 if result_status == "accepted":
                     db_handler.update_status(client_tx_id, "confirmed")
@@ -214,7 +214,7 @@ class SyncManager:
                     db_handler.update_status(client_tx_id, "audit_only")
                     audit_only_count += 1
                     logging.warning(
-                        "Transaction %s stored as audit-only. outcome=%s reason=%s",
+                        "Транзакция %s сохранена только в аудит. outcome=%s reason=%s",
                         client_tx_id,
                         outcome,
                         reason,
@@ -223,7 +223,7 @@ class SyncManager:
                     db_handler.update_status(client_tx_id, "rejected")
                     rejected_count += 1
                     logging.warning(
-                        "Transaction %s rejected by backend. outcome=%s reason=%s",
+                        "Транзакция %s отклонена backend-сервером. outcome=%s reason=%s",
                         client_tx_id,
                         outcome,
                         reason,
@@ -232,14 +232,14 @@ class SyncManager:
                     db_handler.mark_retry(client_tx_id)
                     retry_count += 1
                     logging.warning(
-                        "Transaction %s not terminal yet. Will retry. outcome=%s reason=%s",
+                        "Транзакция %s ещё не завершена. Повторим синхронизацию. outcome=%s reason=%s",
                         client_tx_id,
                         outcome,
                         reason,
                     )
 
             logging.info(
-                "sync cycle completed: accepted=%s audit_only=%s rejected=%s retried=%s",
+                "Цикл синхронизации завершён: принято=%s audit_only=%s отклонено=%s повторов=%s",
                 accepted_count,
                 audit_only_count,
                 rejected_count,
@@ -248,7 +248,7 @@ class SyncManager:
             return
 
         if response.status_code == 409:
-            logging.warning("Sync conflict from backend (409): url=%s body=%s", url, response.text)
+            logging.warning("Конфликт синхронизации от backend (409): url=%s body=%s", url, response.text)
             return
 
-        logging.error("Sync failed: url=%s status_code=%s body=%s", url, response.status_code, response.text)
+        logging.error("Синхронизация не удалась: url=%s status_code=%s body=%s", url, response.status_code, response.text)

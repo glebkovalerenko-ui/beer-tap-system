@@ -32,9 +32,9 @@ def test_terminal_progress_fallback_rate_limits_lines():
     display.finish(18)
 
     assert buffer.getvalue().splitlines() == [
-        "Pouring: 12 ml | est. cost: 18 cents",
-        "Pouring: 18 ml | est. cost: 27 cents",
-        "Session finished. Poured: 18 ml",
+        "Налив: 12 мл | сумма: 0,18 ₽",
+        "Налив: 18 мл | сумма: 0,27 ₽",
+        "Сессия завершена. Налито: 18 мл",
     ]
 
 
@@ -53,6 +53,6 @@ def test_terminal_progress_live_mode_uses_carriage_return():
     display.finish(20)
 
     output = buffer.getvalue()
-    assert "\rPouring: 10 ml | est. cost: 15 cents" in output
-    assert "\rPouring: 20 ml | est. cost: 30 cents" in output
-    assert output.endswith("Session finished. Poured: 20 ml\n")
+    assert "\rНалив: 10 мл | сумма: 0,15 ₽" in output
+    assert "\rНалив: 20 мл | сумма: 0,30 ₽" in output
+    assert output.endswith("Сессия завершена. Налито: 20 мл\n")
