@@ -1,658 +1,130 @@
-# Beer Tap System
 # Operational Model v1
-## (Integrated Self-Pour Core)
 
-Version: 1.0  
-Status: Approved for Implementation  
-Scope: Single Location, Integrated with External POS (R-Keeper / iiko)
+Date: 2026-03-10
+Scope: frozen M1-M7 operational core
 
----
+This document focuses on runtime invariants. For the full system overview, start with `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`.
 
-# 1. Product Positioning
+## 1. Core operational principles
 
-## 1.1 Current Strategy
+- `Visit` is the center of service operations.
+- Backend is the source of truth for operational state.
+- Controller measures factual volume and duration, but not official timestamps.
+- Shift state gates operational work.
+- POS is outside the core operational path for this stage.
 
-Beer Tap System is an **access-control and usage-metering platform** for self-pour bars.
+## 2. Main invariants
 
-The system:
+### Visit
 
-- Manages guest identification
-- Controls tap access
-- Tracks pour volume
-- Maintains operational balance
-- Manages keg lifecycle and rotation
-- Handles shift discipline
-- Logs incidents and alerts
+- one guest can have only one active visit;
+- one card can belong to only one active visit at a time;
+- a visit may open without a card;
+- active visit close is blocked while unresolved `pending_sync` exists.
 
-The system DOES NOT:
+### Card
 
-- Perform fiscalization
-- Process payments
-- Handle acquiring
-- Act as a cash register
+- card assignment is separate from visit open;
+- active visit card becomes `active`;
+- closing the visit deactivates the card;
+- `card_returned=true` also clears guest binding.
 
-All financial operations are executed in external POS (R-Keeper / iiko).
+### Shift
 
----
+- only one open shift exists;
+- no open shift means:
+  - no visit open;
+  - no pour authorize;
+  - no top-up or refund.
 
-## 1.2 Future Strategy
+### Pour
 
-Architecture must allow:
+- authorize creates or reuses exactly one backend `pending_sync` row for the visit/tap pair;
+- finalization ends in one of:
+  - `synced`
+  - `reconciled`
+  - `rejected`
+- late sync after manual reconcile is audit-only;
+- duplicate sync must not double charge.
 
-- Adding internal financial module
-- Operating independently from external POS
-- Multi-location scaling
-- Centralized monitoring
+## 3. Visit lifecycle
 
-Core domain must remain independent from POS integration.
+1. Register or find guest.
+2. Open visit.
+3. Optionally assign/bind card.
+4. Top up balance if needed.
+5. Controller authorizes and performs pours.
+6. Reconcile unresolved pours if needed.
+7. Close visit and deactivate card.
 
----
+## 4. Pour lifecycle
 
-# 1.3 Operator UI Principles
+### Authorize stage
 
-Operator UI is a functional layer that must reflect backend invariants first.
+- Controller requests `POST /api/visits/authorize-pour`.
+- Backend checks lost-card state, active visit, active tap lock, tap configuration, shift gate, and balance/clamp policy.
+- On success backend:
+  - sets `visit.active_tap_id`;
+  - sets `visit.lock_set_at`;
+  - moves tap to `processing_sync`;
+  - creates or reuses one `pending_sync` row.
 
-- **Visit is the center**: operator actions are performed from an active visit context.
-- **Visit opens by guest identity**: card may be absent at open time and can be issued/bound later.
-- **Card bind/issue is separate**: issuing or binding card is handled as a separate operational step.
-- **Lock state visible**: active tap lock (`active_tap_id`) is always explicit in UI.
-- **Manual intervention visible**: force unlock / close actions are clear and require intent data where needed.
-- **Audit transparency**: manual actions must remain traceable through backend audit trail and status transitions.
+### Sync stage
 
----
+- Controller later submits `/api/sync/pours`.
+- If a matching pending row exists and business checks pass, backend:
+  - writes factual amount/volume/duration;
+  - moves row to `synced`;
+  - clears visit lock;
+  - returns tap to `active` unless keg is empty.
 
-# 2. Domain Model
+### Manual reconcile stage
 
----
+- Operator uses `POST /api/visits/{visit_id}/reconcile-pour`.
+- Backend finalizes the pour as `reconciled`, updates balance/keg state, clears lock, and keeps the flow idempotent by `visit_id + short_id`.
 
-## 2.1 Location
+### Rejected stage
 
-Represents a physical bar location.
+- If a previously authorized sync cannot be safely charged, backend marks the pending row as `rejected` and clears stale lock/tap state.
 
-```
+## 5. Lost card model
 
-Location
+- Lost cards live in a dedicated registry.
+- Authorize for lost cards is hard-denied with `reason="lost_card"`.
+- Operator can report lost card from active visit or restore the card later.
+- NFC resolve endpoint provides a single operator lookup path.
 
-* id
-* name
-* timezone
+## 6. FIFO keg recommendation
 
-```
-
-Note: Even if only one location exists now, the field must remain.
-
----
-
-## 2.2 Guest
-
-```
-
-Guest
-
-* id
-* full_name
-* phone
-* passport_series
-* passport_number
-* birth_date
-* consent_number
-* created_at
-* last_activity_at
-* is_blocked
-
-```
-
-Rules:
-
-- Passport is unique.
-- Guests under 18 cannot receive a card.
-- Passport modifications must be audit-logged.
-- Balance is operational (not fiscal).
-
----
-
-## 2.3 Visit
-
-Represents a single bar visit session.
-
-```
-
-Visit
-
-* id
-* guest_id
-* card_uid
-* active_tap_id (nullable)
-* status: active / closed
-* opened_at
-* closed_at
-* closed_reason
-
-```
-
-Rules:
-
-- One guest = one active visit.
-- One visit = one active card.
-- Card is deactivated when visit closes.
-- Close visit card binding rule (atomic with visit close):
-  - `card_returned=true` -> set card `status=inactive`, clear `card.guest_id` (card is reusable by another guest).
-  - `card_returned=false` -> set card `status=inactive`, keep `card.guest_id` (card remains owned by the same guest).
-- Active visits prevent shift closure.
-
----
-
-## 2.4 LostCard
-
-Tracks reported lost cards.
-
-```
-
-LostCard
-
-* id
-* card_uid
-* guest_id
-* visit_id
-* reported_at
-* reported_by
-
-```
-
-Behavior:
-
-- If lost card UID is used в†’ block + critical alert.
-- Visit entity is not overloaded with historical card records.
-- Pilot implementation detail: staff reports lost card from active visit (`POST /api/visits/{visit_id}/report-lost-card`), UID source is `visit.card_uid`.
-- Manual UID entry is out of scope for pilot; attaching lost card is not required.
-
----
-
-## 2.5 BeerType
-
-```
-
-BeerType
-
-* id
-* name
-* style
-* price_per_ml
-* is_active
-
-```
-
----
-
-## 2.6 Keg
-
-```
-
-Keg
-
-* id
-* beer_type_id
-* supplier
-* declared_volume_l
-* received_at
-* connected_at
-* disconnected_at
-* remaining_volume_l
-* status: warehouse / connected / empty / retired
-
-```
-
----
-
-## 2.7 Tap
-
-```
-
-Tap
-
-* id
-* controller_id
-* current_keg_id
-* status:
-  active
-  processing_sync
-  out_of_keg
-  maintenance
-  error
-
-```
-
----
-
-## 2.8 PourSession
-
-```
-
-PourSession
-
-* id
-* visit_id
-* tap_id
-* keg_id
-* duration_ms (nullable)
-* started_at
-* ended_at
-* volume_ml
-* cost
-* sync_status: pending_sync / synced / reconciled / rejected
-* authorized_at (DB timestamp)
-* synced_at (DB timestamp)
-* reconciled_at (DB timestamp)
-
-```
-
-Controller is the source of truth for volume and duration only.
-Postgres is the source of truth for event timestamps.
-
----
-
-## 2.9 Shift
-
-```
-
-Shift
-
-* id
-* location_id
-* opened_at
-* closed_at
-* status
-
-ShiftMember
-
-* shift_id
-* user_id
-* joined_at
-* left_at
-
-```
-
-Rules:
-
-- Shift represents bar operating period.
-- Staff rotation does NOT create new shift.
-- Active visits must be closed before shift closure.
-
----
-
-## 2.10 Alert
-
-```
-
-Alert
-
-* id
-* severity: info / warning / critical
-* source_type
-* source_id
-* message
-* created_at
-* acknowledged_by
-* resolved_at
-* resolution_comment
-
-```
-
----
-
-# 3. Core Processes
-
----
-
-# 3.1 Visit Opening
-
-1. Guest registration or lookup.
-2. Age verification.
-3. External POS performs financial operation.
-4. System opens Visit.
-5. Card UID assigned.
-
----
-
-# 3.2 Pour Authorization Flow
-
-Before pour begins, backend verifies:
-
-- Visit is active.
-- Card UID matches visit.
-- Card UID not in LostCard.
-- active_tap_id is null.
-- Balance в‰Ґ minimal_pour_cost.
-
-If valid:
-
-- active_tap_id = tap_id
-- Controller receives balance
-- Pour session starts
-
-If `card_uid` exists in `lost_cards`:
-- hard deny (`403` with `detail.reason="lost_card"`),
-- valve must not open,
-- backend writes audit event `lost_card_blocked` with `card_uid`, `tap_id`, and block time.
-
-### Operator flow: found card (NFC resolve)
-
-When staff physically finds a card:
-
-1. Open either Visits or Lost Cards page.
-2. Click `Find by card (NFC)` and scan card via existing `NFCModal`.
-3. Admin app requests `GET /api/cards/{card_uid}/resolve`.
-4. Operator receives one actionable state:
-   - lost card: restore lost mark and optionally open related visit;
-   - active visit: open visit card to continue service;
-   - guest-bound with no active visit: open new visit for that guest;
-   - unknown card: no unsafe actions by default.
-
----
-
-# 3.3 Simultaneous Card Usage Prevention
-
-If active_tap_id is not null:
-
-- Deny access
-- Display: "Card already in use on Tap X"
-- Log event
-
----
-
-# 3.4 Connectivity Loss During Pour
-
-If controller loses connection mid-session:
-
-- Continue pour until completion.
-- Deduct locally stored balance.
-- Mark session as pending_sync.
-- Tap в†’ processing_sync.
-- No new card accepted.
-
----
-
-# 3.5 Sync Recovery
-
-When connection restored:
-
-- Controller sends final volume.
-- Backend updates balance.
-- active_tap_id cleared.
-- Tap returns to active.
-
-If mismatch with manual entry в†’ create BalanceMismatch alert.
-
----
-
-# 3.6 Server Unavailable
-
-If backend is unavailable:
-
-- All controllers block new pours.
-- Active pours complete.
-- Display: "Server unavailable".
-
-Future: primary + secondary server replication.
-
----
-
-# 4. Keg Lifecycle & Rotation
-
----
-
-## 4.1 Keg Replacement
-
-When keg is empty:
-
-1. Tap в†’ out_of_keg.
-2. System suggests next keg using FIFO:
-   - Same BeerType
-   - Status = warehouse
-   - Oldest received_at.
-3. Staff confirms replacement.
-4. Keg в†’ connected.
-5. Tap в†’ active.
-
----
-
-## 4.2 Keg Alerts
-
-- Info: <20% remaining
-- Warning: <10% remaining
-- Critical: 0% or no flow detected
-
----
-
-# 5. Shift Closing Wizard
-
-Before shift closure:
-
-1. No active visits.
-2. No pending_sync sessions.
-3. Display unresolved alerts.
-4. Equipment inspection confirmation.
-5. Show shift summary.
-6. Final confirmation.
-
-Critical alerts do not block closure but must be acknowledged.
-
----
-
-# 6. Shift Report
-
-Minimum contents:
-
-- Number of visits
-- Total poured volume
-- Total pour amount
-- Cancelled pours
-- Unresolved alerts
-- Lost cards
-- Staff involved in shift
-
----
-
-# 7. POS Integration Boundary
-
-System exposes integration interface:
-
-```
-
-POSAdapter
-
-* notify_topup(guest, amount)
-* notify_refund(guest, amount)
-* notify_pour(guest, amount, beer_type)
-
-```
-
-MVP allows semi-manual synchronization.
-
----
-
-# 8. Roles
-
-Architecture supports roles.
-
-MVP:
-- Single unified role for all staff.
-
-Future:
-- Cashier
-- Admin
-- Manager
-
----
-
-# 9. MVP Scope
-
-Must include:
-
-- Visit lifecycle
-- Tap control
-- Pour sessions
-- Offline sync logic
-- LostCard registry
-- FIFO keg rotation
-- Shift model
-- Alert system
-- Audit logging
-
----
-
-# 10. Deferred Features
-
-- Internal fiscal module
-- Multi-location support
-- Advanced card cryptography
-- Keg weight sensors
-- Complex warehouse accounting
-- Inactivity fees
-- Advanced role hierarchy
-
----
-
-# End of Document
-# 11. M4 Offline + Manual Reconcile State Machine (2026-02-25)
-
-Operational source of truth:
-- Controller detects and reports pour completion.
-- Backend is the only component that changes operational lock state (`visit.active_tap_id`, `visit.lock_set_at`).
-
-State transitions:
-1. `authorize-pour` accepted -> `active_tap_id=tap_id`, `lock_set_at=DB now`, tap domain shown as `processing_sync`; backend creates `pending_sync` row with `authorized_at=DB now`.
-1a. `authorize-pour` denied with `reason=insufficient_funds` (or `lost_card`) -> backend returns `403`, does not set lock, and does not create `pending_sync`.
-2. Normal sync accepted (`/api/sync/pours`) -> pour transitions to `sync_status='synced'`, `synced_at=DB now`, lock cleared.
-3. Timeout/manual path (`/api/visits/{visit_id}/reconcile-pour`) -> pour transitions to `sync_status='reconciled'`, `reconciled_at=DB now`, lock cleared.
-4. Late sync after manual reconcile:
-   - same `short_id` -> `late_sync_matched` audit event, no second debit.
-   - different/missing `short_id` -> `late_sync_mismatch` audit event, no second debit.
-
-No-double-charge invariant:
-- If visit is already unlocked and a late sync arrives, backend must not perform a second balance deduction.
-
-Data keys introduced by M4:
-- `pours.sync_status` (`pending_sync | synced | reconciled | rejected`)
-- `pours.short_id` (6-8 chars)
-- `pours.duration_ms` (controller-provided duration)
-- `pours.authorized_at` / `pours.synced_at` / `pours.reconciled_at` (DB timestamps)
-- `visits.lock_set_at` (timestamp for UI-side timeout policy)
-
-# 12. M5 Shift Operational Mode (2026-02-26)
-
-Pilot scope implements a minimal but strict backend shift lifecycle.
-
-Shift entity (implemented fields):
-- `id`
-- `opened_at` (not null)
-- `closed_at` (nullable)
-- `status` (`open | closed`)
-- `opened_by` (nullable)
-- `closed_by` (nullable)
-
-Invariants:
-- Only one `open` shift is allowed at a time.
-- If no shift is open, operations are blocked:
-  - `POST /api/visits/open` -> `403`
-  - `POST /api/visits/authorize-pour` -> `403`
-  - `POST /api/guests/{id}/topup` -> `403`
-
-Shift close precheck:
-- active visits exist -> `409` (`active_visits_exist`)
-- pending sync pours exist -> `409` (`pending_sync_pours_exist`)
-
-If precheck passes:
-- shift is transitioned to `closed`,
-- `closed_at` and `closed_by` are written by backend.
-
-# 13. M5.X Shift Reports: X vs Z (2026-02-26)
-
-X report:
-- operational/intermediate report for current shift state;
-- computed on demand;
-- not required to be persisted in database.
-
-Z report:
-- final closing report for a shift;
-- persisted in `shift_reports`;
-- exactly one Z report per shift (idempotent create);
-- available for historical lookup by date range.
-
-v1 report focus:
-- primary KPI is poured volume (`total_volume_ml`);
-- money totals are stored in parallel (`total_amount_cents`) for future POS/cash evolution;
-- keg section is currently placeholder (`not_available_yet`) until stable keg-to-pour linkage is expanded.
-
-
-# 14. M5 Time Source Policy (2026-02-27)
-
-Single source of operational time is Postgres DB time.
-
-# 15. M6 Insufficient Funds Clamp (2026-02-28)
-
-Operational rule:
-- backend decides whether a pour may start and how much may be poured for the current balance;
-- controller executes the returned clamp locally and must not improvise its own threshold values.
-
-Runtime config in `system_states`:
-- `min_start_ml` default `20`
-- `safety_ml` default `2`
-- `allowed_overdraft_cents` default `0`
-
-Authorize policy:
-1. Controller calls `POST /api/visits/authorize-pour`.
-2. Backend calculates conservative `price_per_ml_cents` plus:
-   - `balance_cents`
-   - `min_start_ml`
-   - `max_volume_ml`
-   - `allowed_overdraft_cents`
-   - `safety_ml`
-3. If `max_volume_ml < min_start_ml`, backend returns `403 detail.reason="insufficient_funds"`, writes `insufficient_funds_blocked`, and does not create `pending_sync`.
-4. If authorize succeeds, backend creates/keeps exactly one `pending_sync` row and sets visit lock with DB time.
-
-Controller behavior:
-- valve open is allowed only after successful authorize;
-- valve must close when measured volume reaches `max_volume_ml`, even if network is lost after authorize;
-- controller continues to send `duration_ms` first, never polls backend for server time on every request.
-
-Sync behavior:
-- accepted sync must update the authorize-created `pending_sync` row to `synced`;
-- sync without authorize stays `audit_only`;
-- missing `pending_sync` for an active lock is an anomaly (`audit_missing_pending`), not a successful pour; backend returns `audit_only` and clears the stale lock;
-- if sync still cannot be charged after authorize, backend converts that row to `rejected`, records explicit audit, and clears the stale lock/tap state instead of leaving `pending_sync`.
-
-Rules:
-- Official timestamps (`*_at`) are written by DB:
-  - create/open/report events use `server_default=now()`;
-  - close/restore/update events use `func.now()` in update statements.
-- Application `datetime.now()/utcnow()` must not be used as source of truth for official DB timestamps.
-- Controller absolute timestamps are not authoritative for backend official timestamps.
-- For shift reports:
-  - X report window is `shift.opened_at .. DB now()`;
-  - Z report window is strictly `shift.opened_at .. shift.closed_at`.
-
----
-
-# 6. M7 Demo Boundary
-
-## 6.1 FIFO Recommendation
-
-- Current codebase uses `beverage_id` as the operational equivalent of `beer_type_id`.
-- FIFO recommendation is recommendation-only and does not auto-assign a keg.
-- Eligible warehouse stock is defined as:
+- Current schema uses `beverage_id` as the practical beer-type key.
+- FIFO recommendation is suggestion-only.
+- Eligible stock is:
   - same `beverage_id`
   - `status = full`
   - `current_volume_ml > 0`
-  - `tap.keg_id IS NULL`
-- Deterministic FIFO ordering is `created_at ASC`, then `keg_id ASC`.
+  - not already assigned to a tap
+- Ordering is deterministic:
+  - `created_at ASC`
+  - `keg_id ASC`
 
-## 6.2 POS-Ready Seam
+## 7. Reports and time policy
 
-- Backend exposes a `POSAdapter` seam with a stub implementation only.
-- Stub mode writes structured log lines with prefix `[POS_STUB]` and mirrors events into `audit_logs`.
-- Stub notifications are emitted for:
-  - guest top-up
-  - guest refund
-  - finalized pour (`synced` and `reconciled`)
-- Pour notification deduplication is keyed by `pour_id`, so duplicate sync or late-sync-after-reconcile does not emit a second POS event.
+- X report is computed, not persisted.
+- Z report is persisted and idempotent.
+- Report time windows use DB time only.
+- Backend official timestamps are DB-authored only.
+
+## 8. POS-ready boundary
+
+Current stage includes:
+
+- `notify_topup`
+- `notify_refund`
+- `notify_pour`
+
+Current stage does not include:
+
+- `notify_open_visit`
+- `notify_close_visit`
+- `visit.pos_order_id`
+- real POS transport or retry/outbox delivery
