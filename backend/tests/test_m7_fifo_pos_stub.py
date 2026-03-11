@@ -109,7 +109,7 @@ def test_fifo_suggestion_endpoint_uses_oldest_created_at_then_keg_id(client, db_
     db_session.add_all(
         [
             models.Keg(
-                keg_id=uuid.UUID("00000000-0000-0000-0000-000000000102"),
+                keg_id=uuid.UUID("00000000-0000-0000-0000-00000000010b"),
                 beverage_id=beer_type_id,
                 initial_volume_ml=30000,
                 current_volume_ml=30000,
@@ -118,7 +118,7 @@ def test_fifo_suggestion_endpoint_uses_oldest_created_at_then_keg_id(client, db_
                 created_at=datetime(2026, 1, 1, 8, 0, tzinfo=timezone.utc),
             ),
             models.Keg(
-                keg_id=uuid.UUID("00000000-0000-0000-0000-000000000101"),
+                keg_id=uuid.UUID("00000000-0000-0000-0000-00000000010a"),
                 beverage_id=beer_type_id,
                 initial_volume_ml=30000,
                 current_volume_ml=30000,
@@ -127,7 +127,7 @@ def test_fifo_suggestion_endpoint_uses_oldest_created_at_then_keg_id(client, db_
                 created_at=datetime(2026, 1, 1, 8, 0, tzinfo=timezone.utc),
             ),
             models.Keg(
-                keg_id=uuid.UUID("00000000-0000-0000-0000-000000000201"),
+                keg_id=uuid.UUID("00000000-0000-0000-0000-00000000020a"),
                 beverage_id=beer_type_id,
                 initial_volume_ml=30000,
                 current_volume_ml=30000,
@@ -145,7 +145,7 @@ def test_fifo_suggestion_endpoint_uses_oldest_created_at_then_keg_id(client, db_
     assert body["candidates_count"] == 3
     assert body["reason"] == "oldest_available"
     assert body["ordering_keys_used"] == ["created_at", "keg_id"]
-    assert body["recommended_keg"]["keg_id"] == "00000000-0000-0000-0000-000000000101"
+    assert body["recommended_keg"]["keg_id"] == "00000000-0000-0000-0000-00000000010a"
 
 
 def test_fifo_suggestion_excludes_ineligible_kegs(client, db_session):

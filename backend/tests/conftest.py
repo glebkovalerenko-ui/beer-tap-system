@@ -13,6 +13,8 @@ from pytest_bdd import given, when, then, parsers
 import models
 
 # Импортируем ключевые компоненты нашего приложения
+import main
+import security
 from main import app
 from database import Base, get_db, DATABASE_URL
 
@@ -21,6 +23,9 @@ from database import Base, get_db, DATABASE_URL
 # =============================================================================
 
 USE_POSTGRES = os.getenv("TEST_USE_POSTGRES", "").strip().lower() in {"1", "true", "yes"}
+
+if not USE_POSTGRES:
+    main.verify_database_ready = lambda *args, **kwargs: None
 
 
 def _derive_postgres_test_url(base_url: str) -> str:
@@ -62,6 +67,8 @@ else:
     TEST_DATABASE_URL = "sqlite:///:memory:"
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+security.SessionLocal = TestingSessionLocal
 
 def override_get_db():
     try:

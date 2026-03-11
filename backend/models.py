@@ -65,6 +65,7 @@ class Keg(Base):
     tap = relationship("Tap", back_populates="keg", uselist=False)
     # Связь "один ко многим": из одной кеги может быть много наливов
     pours = relationship("Pour", back_populates="keg")
+    non_sale_flows = relationship("NonSaleFlow", back_populates="keg")
 
 
 class Tap(Base):
@@ -87,6 +88,7 @@ class Tap(Base):
     keg = relationship("Keg", back_populates="tap")
     # Связь "один ко многим": с одного крана может быть много наливов
     pours = relationship("Pour", back_populates="tap")
+    non_sale_flows = relationship("NonSaleFlow", back_populates="tap")
 
 
 class Guest(Base):
@@ -267,6 +269,40 @@ class Pour(Base):
         if ended_at is None or self.duration_ms is None:
             return None
         return ended_at - timedelta(milliseconds=self.duration_ms)
+
+
+class NonSaleFlow(Base):
+    __tablename__ = "non_sale_flows"
+    __table_args__ = (
+        CheckConstraint("volume_ml >= 0", name="ck_non_sale_flows_volume_non_negative"),
+        CheckConstraint("accounted_volume_ml >= 0", name="ck_non_sale_flows_accounted_volume_non_negative"),
+    )
+
+    non_sale_flow_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id = Column(String(128), nullable=False, unique=True, index=True)
+    tap_id = Column(Integer, ForeignKey("taps.tap_id"), nullable=False, index=True)
+    keg_id = Column(UUID(as_uuid=True), ForeignKey("kegs.keg_id"), nullable=True, index=True)
+
+    volume_ml = Column(Integer, nullable=False, default=0)
+    accounted_volume_ml = Column(Integer, nullable=False, default=0)
+    duration_ms = Column(Integer, nullable=False, default=0)
+
+    flow_category = Column(String(64), nullable=False, index=True)
+    session_state = Column(String(64), nullable=False)
+    reason = Column(String(128), nullable=False)
+    card_present = Column(Boolean, nullable=False, default=False)
+    valve_open = Column(Boolean, nullable=False, default=False)
+    card_uid = Column(String(50), nullable=True, index=True)
+    short_id = Column(String(8), nullable=True, index=True)
+
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    finalized_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    tap = relationship("Tap", back_populates="non_sale_flows")
+    keg = relationship("Keg", back_populates="non_sale_flows")
 
 class Transaction(Base):
     """

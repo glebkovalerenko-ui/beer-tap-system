@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -32,7 +33,7 @@ def get_kegs(db: Session, skip: int = 0, limit: int = 100):
 
 
 def get_fifo_candidate_kegs(db: Session, beer_type_id: uuid.UUID):
-    return (
+    candidates = (
         db.query(models.Keg)
         .options(joinedload(models.Keg.beverage))
         .outerjoin(models.Tap, models.Tap.keg_id == models.Keg.keg_id)
@@ -42,8 +43,14 @@ def get_fifo_candidate_kegs(db: Session, beer_type_id: uuid.UUID):
             models.Keg.current_volume_ml > 0,
             models.Tap.tap_id.is_(None),
         )
-        .order_by(models.Keg.created_at.asc(), models.Keg.keg_id.asc())
         .all()
+    )
+    return sorted(
+        candidates,
+        key=lambda keg: (
+            keg.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            str(keg.keg_id),
+        ),
     )
 
 

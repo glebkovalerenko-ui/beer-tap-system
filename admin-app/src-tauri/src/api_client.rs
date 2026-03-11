@@ -145,6 +145,62 @@ pub struct PourResponse {
     pub tap: Tap,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LivePourFeedGuest {
+    pub guest_id: String,
+    pub last_name: String,
+    pub first_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LivePourFeedItem {
+    pub item_id: String,
+    pub item_type: String,
+    pub status: String,
+    pub tap_id: i32,
+    pub tap_name: Option<String>,
+    pub timestamp: String,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub volume_ml: i32,
+    pub amount_charged: Option<String>,
+    pub short_id: Option<String>,
+    pub guest: Option<LivePourFeedGuest>,
+    pub beverage_name: Option<String>,
+    pub card_uid: Option<String>,
+    pub card_present: Option<bool>,
+    pub session_state: Option<String>,
+    pub valve_open: Option<bool>,
+    pub reason: Option<String>,
+    pub event_status: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FlowSummaryBreakdownItem {
+    pub reason_code: String,
+    pub volume_ml: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TapFlowSummaryItem {
+    pub tap_id: i32,
+    pub tap_name: Option<String>,
+    pub sale_volume_ml: i32,
+    pub non_sale_volume_ml: i32,
+    pub total_volume_ml: i32,
+    pub non_sale_breakdown: Vec<FlowSummaryBreakdownItem>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct FlowSummaryResponse {
+    pub sale_volume_ml: i32,
+    pub non_sale_volume_ml: i32,
+    pub total_volume_ml: i32,
+    pub non_sale_breakdown: Vec<FlowSummaryBreakdownItem>,
+    pub by_tap: Vec<TapFlowSummaryItem>,
+}
+
 // --- Guests ---
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Guest {
@@ -760,6 +816,32 @@ pub async fn get_pours(token: &str, limit: u32) -> Result<Vec<PourResponse>, Str
     if response.status().is_success() {
         response
             .json::<Vec<PourResponse>>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_live_pour_feed(token: &str, limit: u32) -> Result<Vec<LivePourFeedItem>, String> {
+    let url = build_api_url(&format!("pours/live-feed?limit={}", limit));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<Vec<LivePourFeedItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_flow_summary(token: &str) -> Result<FlowSummaryResponse, String> {
+    let url = build_api_url("reports/flow-summary");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<FlowSummaryResponse>()
             .await
             .map_err(|e| e.to_string())
     } else {

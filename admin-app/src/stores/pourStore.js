@@ -14,11 +14,14 @@ function toErrorMessage(context, error) {
 function createPourStore() {
   let pollInterval = null;
 
-  const { subscribe, set, update } = writable({
+  const initialState = {
     pours: [],
+    feedItems: [],
+    flowSummary: null,
     loading: false,
     error: null,
-  });
+  };
+  const { subscribe, set, update } = writable(initialState);
 
   async function fetchPours() {
     const token = get(sessionStore).token;
@@ -28,15 +31,19 @@ function createPourStore() {
     }
 
     update((s) => {
-      if (s.pours.length === 0) {
+      if (s.pours.length === 0 && s.feedItems.length === 0) {
         return { ...s, loading: true, error: null };
       }
       return s;
     });
 
     try {
-      const pours = await invoke('get_pours', { token, limit: 20 });
-      set({ pours, loading: false, error: null });
+      const [pours, feedItems, flowSummary] = await Promise.all([
+        invoke('get_pours', { token, limit: 20 }),
+        invoke('get_live_pour_feed', { token, limit: 20 }),
+        invoke('get_flow_summary', { token }),
+      ]);
+      set({ pours, feedItems, flowSummary, loading: false, error: null });
     } catch (error) {
       const errorMessage = toErrorMessage('pourStore.fetchPours', error);
       update((s) => ({ ...s, loading: false, error: errorMessage }));
@@ -64,7 +71,7 @@ function createPourStore() {
       startPolling();
     } else {
       stopPolling();
-      set({ pours: [], loading: false, error: null });
+      set(initialState);
     }
   });
 

@@ -7,8 +7,56 @@
     formatVolumeRu,
   } from '../../lib/formatters.js';
 
-  /** @type {import('../../../../src-tauri/src/api_client').PourResponse[]} */
-  export let pours = [];
+  export let items = [];
+
+  function tapLabel(item) {
+    return item.tap_name || `Кран #${item.tap_id}`;
+  }
+
+  function titleFor(item) {
+    if (item.item_type === 'pour') {
+      if (item.guest) {
+        return `${item.guest.first_name} ${item.guest.last_name}`;
+      }
+      return tapLabel(item);
+    }
+
+    if (item.session_state === 'authorized_session') {
+      return `${tapLabel(item)} • активный налив`;
+    }
+    if (item.card_present) {
+      return `${tapLabel(item)} • flow при закрытом клапане`;
+    }
+    return `${tapLabel(item)} • flow без карты`;
+  }
+
+  function statusFor(item) {
+    if (item.item_type === 'pour') {
+      return item.status === 'rejected' ? 'отклонён' : 'завершён';
+    }
+    if (item.event_status === 'stopped') {
+      return 'остановлен';
+    }
+    return 'идёт';
+  }
+
+  function detailsFor(item) {
+    if (item.item_type === 'pour') {
+      const beverage = item.beverage_name || 'напиток';
+      return `налил ${formatVolumeRu(item.volume_ml)} ${beverage}${item.duration_ms != null ? `, длительность ${formatDurationRu(item.duration_ms)}` : ''}`;
+    }
+
+    const parts = [`${statusFor(item)} ${formatVolumeRu(item.volume_ml)}`];
+    if (item.duration_ms != null) {
+      parts.push(`длительность ${formatDurationRu(item.duration_ms)}`);
+    }
+    if (item.reason === 'flow_detected_when_valve_closed_without_active_session') {
+      parts.push('клапан закрыт, активной сессии нет');
+    } else if (item.reason === 'authorized_pour_in_progress') {
+      parts.push('данные идут с контроллера');
+    }
+    return parts.join(', ');
+  }
 </script>
 
 <div class="pour-feed">
@@ -16,21 +64,20 @@
     <h4>Живая лента</h4>
   </div>
   <div class="feed-body">
-    {#if pours.length > 0}
+    {#if items.length > 0}
       <ul>
-        {#each pours as pour (pour.pour_id)}
-          <li>
-            <div class="time">{formatTimeRu(pour.ended_at || pour.poured_at)}</div>
+        {#each items as item (item.item_id)}
+          <li class:live={item.item_type === 'flow_event' && item.event_status !== 'stopped'}>
+            <div class="time">{formatTimeRu(item.ended_at || item.timestamp)}</div>
             <div class="info">
-              <span class="guest-name">{pour.guest.first_name} {pour.guest.last_name}</span>
-              <span class="details">
-                налил {formatVolumeRu(pour.volume_ml)} {pour.beverage.name}
-                {#if pour.duration_ms != null}
-                  , длительность {formatDurationRu(pour.duration_ms)}
-                {/if}
-              </span>
+              <span class="guest-name">{titleFor(item)}</span>
+              <span class="details">{detailsFor(item)}</span>
             </div>
-            <div class="amount">-{formatRubAmount(pour.amount_charged)}</div>
+            {#if item.item_type === 'pour' && item.amount_charged != null}
+              <div class="amount">-{formatRubAmount(item.amount_charged)}</div>
+            {:else}
+              <div class="badge">{statusFor(item)}</div>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -74,6 +121,9 @@
     padding: 0.75rem 0.5rem;
     border-bottom: 1px solid #f5f5f5;
   }
+  li.live {
+    background: rgba(198, 31, 53, 0.06);
+  }
   li:last-child {
     border-bottom: none;
   }
@@ -99,6 +149,12 @@
     font-weight: bold;
     color: #dc3545;
     font-size: 1rem;
+  }
+  .badge {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #9a1c2f;
   }
   .no-pours-message {
     text-align: center;

@@ -156,6 +156,76 @@ class SyncManager:
             "safety_ml": int(context.get("safety_ml") or 0),
         }
 
+    def report_flow_event(
+        self,
+        *,
+        event_id,
+        event_status,
+        tap_id,
+        volume_ml,
+        duration_ms,
+        card_present,
+        session_state,
+        reason,
+        valve_open=False,
+        card_uid=None,
+        short_id=None,
+    ):
+        url = "/".join([self.server_url, "api", "controllers", "flow-events"])
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        payload = {
+            "event_id": event_id,
+            "event_status": event_status,
+            "tap_id": tap_id,
+            "volume_ml": int(volume_ml or 0),
+            "duration_ms": int(duration_ms or 0),
+            "card_present": bool(card_present),
+            "valve_open": bool(valve_open),
+            "session_state": session_state,
+            "card_uid": card_uid,
+            "short_id": short_id,
+            "reason": reason,
+        }
+        try:
+            response = self.session.post(url, json=payload, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            logging.error("Не удалось отправить flow event на backend: url=%s error=%s", url, exc)
+            return False
+
+        if response.status_code in {200, 202}:
+            logging.warning(
+                "Flow event отправлен на backend: event_id=%s status=%s tap_id=%s volume_ml=%s duration_ms=%s session_state=%s",
+                event_id,
+                event_status,
+                tap_id,
+                payload["volume_ml"],
+                payload["duration_ms"],
+                session_state,
+            )
+            return True
+
+        logging.error(
+            "Backend отклонил flow event: url=%s status_code=%s body=%s",
+            url,
+            response.status_code,
+            response.text,
+        )
+        return False
+
+    def report_flow_anomaly(self, *, tap_id, volume_ml, duration_ms, card_present, session_state, reason):
+        event_id = f"closed-valve:{tap_id}:{int(time.time() * 1000)}"
+        return self.report_flow_event(
+            event_id=event_id,
+            event_status="started",
+            tap_id=tap_id,
+            volume_ml=volume_ml,
+            duration_ms=duration_ms,
+            card_present=card_present,
+            session_state=session_state,
+            reason=reason,
+            valve_open=False,
+        )
+
     def sync_cycle(self, db_handler):
         pours = db_handler.get_unsynced_pours(limit=20)
         if not pours:
@@ -179,6 +249,7 @@ class SyncManager:
                 "tap_id": item.get("tap_id"),
                 "duration_ms": item.get("duration_ms"),
                 "volume_ml": item.get("volume_ml"),
+                "tail_volume_ml": int(item.get("tail_volume_ml") or 0),
                 "price_cents": item.get("price_cents"),
             }
             if payload_item["duration_ms"] is None and item.get("start_ts") and item.get("end_ts"):

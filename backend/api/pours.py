@@ -20,3 +20,8 @@ def read_pours(skip: int = 0, limit: int = 20, db: Session = Depends(get_db)):
     на дашборде и в истории.
     """
     return pour_crud.get_pours(db, skip=skip, limit=limit)
+
+
+@router.get("/live-feed", response_model=List[schemas.LivePourFeedItem], summary="Получить живую ленту наливов и flow-событий")
+def read_live_pour_feed(limit: int = 20, db: Session = Depends(get_db)):
+    return pour_crud.get_live_feed(db, limit=limit)

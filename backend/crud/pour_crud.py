@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 import models
 import schemas
-from crud import visit_crud
+from crud import controller_crud, visit_crud
 from pos_adapter import get_pos_adapter
 
 
@@ -322,34 +322,62 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     price_per_ml = pending_pour.price_per_ml_at_pour
     if price_per_ml is None or price_per_ml <= 0:
         price_per_ml = beverage.sell_price_per_liter / Decimal(1000)
+    tail_volume_ml = min(max(int(getattr(pour_data, "tail_volume_ml", 0) or 0), 0), int(pour_data.volume_ml))
+    non_tail_volume_ml = max(int(pour_data.volume_ml) - tail_volume_ml, 0)
     amount_to_charge = (Decimal(pour_data.volume_ml) * price_per_ml).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    non_tail_amount_to_charge = (Decimal(non_tail_volume_ml) * price_per_ml).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
 
     if guest.balance < amount_to_charge:
-        return _finalize_rejected_pending_pour(
-            db,
-            pending_pour=pending_pour,
-            active_visit=active_visit,
-            tap=tap,
-            keg=keg,
-            pour_data=pour_data,
-            duration_ms=duration_ms,
-            actor_id="internal_rpi",
-            audit_action="sync_rejected_insufficient_funds",
-            audit_details={
-                "card_uid": card.card_uid,
-                "guest_id": str(guest.guest_id),
-                "tap_id": pour_data.tap_id,
-                "client_tx_id": pour_data.client_tx_id,
-                "short_id": pour_data.short_id,
-                "volume_ml": pour_data.volume_ml,
-                "balance_before_charge": str(guest.balance),
-                "amount_to_charge": str(amount_to_charge),
-            },
-            reason="insufficient_funds",
-            outcome="rejected_insufficient_funds",
-        )
+        if tail_volume_ml > 0 and guest.balance >= non_tail_amount_to_charge:
+            _add_audit_log(
+                db,
+                actor_id="internal_rpi",
+                action="sync_tail_overdraft_accepted",
+                target_entity="Visit",
+                target_id=str(active_visit.visit_id),
+                details={
+                    "card_uid": card.card_uid,
+                    "guest_id": str(guest.guest_id),
+                    "tap_id": pour_data.tap_id,
+                    "client_tx_id": pour_data.client_tx_id,
+                    "short_id": pour_data.short_id,
+                    "volume_ml": pour_data.volume_ml,
+                    "tail_volume_ml": tail_volume_ml,
+                    "balance_before_charge": str(guest.balance),
+                    "non_tail_amount_to_charge": str(non_tail_amount_to_charge),
+                    "amount_to_charge": str(amount_to_charge),
+                },
+            )
+        else:
+            return _finalize_rejected_pending_pour(
+                db,
+                pending_pour=pending_pour,
+                active_visit=active_visit,
+                tap=tap,
+                keg=keg,
+                pour_data=pour_data,
+                duration_ms=duration_ms,
+                actor_id="internal_rpi",
+                audit_action="sync_rejected_insufficient_funds",
+                audit_details={
+                    "card_uid": card.card_uid,
+                    "guest_id": str(guest.guest_id),
+                    "tap_id": pour_data.tap_id,
+                    "client_tx_id": pour_data.client_tx_id,
+                    "short_id": pour_data.short_id,
+                    "volume_ml": pour_data.volume_ml,
+                    "tail_volume_ml": tail_volume_ml,
+                    "balance_before_charge": str(guest.balance),
+                    "non_tail_amount_to_charge": str(non_tail_amount_to_charge),
+                    "amount_to_charge": str(amount_to_charge),
+                },
+                reason="insufficient_funds",
+                outcome="rejected_insufficient_funds",
+            )
 
     if keg.current_volume_ml < pour_data.volume_ml:
         return _finalize_rejected_pending_pour(
@@ -369,6 +397,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "client_tx_id": pour_data.client_tx_id,
                 "short_id": pour_data.short_id,
                 "volume_ml": pour_data.volume_ml,
+                "tail_volume_ml": tail_volume_ml,
                 "keg_id": str(keg.keg_id),
                 "keg_current_volume_ml": keg.current_volume_ml,
             },
@@ -424,3 +453,73 @@ def get_pours(db: Session, skip: int = 0, limit: int = 20):
         .limit(limit)
         .all()
     )
+
+
+def get_live_feed(db: Session, limit: int = 20):
+    pours = (
+        db.query(models.Pour)
+        .options(
+            joinedload(models.Pour.guest),
+            joinedload(models.Pour.tap),
+            joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
+        )
+        .filter(models.Pour.sync_status != "pending_sync", models.Pour.volume_ml > 0)
+        .order_by(
+            func.coalesce(
+                models.Pour.synced_at,
+                models.Pour.reconciled_at,
+                models.Pour.authorized_at,
+                models.Pour.poured_at,
+                models.Pour.created_at,
+            ).desc()
+        )
+        .limit(limit)
+        .all()
+    )
+    flow_events = controller_crud.get_latest_flow_events(db, limit=limit)
+
+    items = []
+    terminal_short_ids = {pour.short_id for pour in pours if pour.short_id}
+    for pour in pours:
+        timestamp = pour.ended_at or pour.poured_at or pour.authorized_at or pour.created_at
+        items.append(
+            {
+                "item_id": str(pour.pour_id),
+                "item_type": "pour",
+                "status": pour.sync_status,
+                "tap_id": pour.tap_id,
+                "tap_name": pour.tap.display_name if pour.tap else None,
+                "timestamp": timestamp,
+                "started_at": pour.started_at,
+                "ended_at": pour.ended_at,
+                "duration_ms": pour.duration_ms,
+                "volume_ml": pour.volume_ml,
+                "amount_charged": pour.amount_charged,
+                "short_id": pour.short_id,
+                "guest": {
+                    "guest_id": pour.guest.guest_id,
+                    "last_name": pour.guest.last_name,
+                    "first_name": pour.guest.first_name,
+                }
+                if pour.guest
+                else None,
+                "beverage_name": pour.beverage.name if pour.beverage else None,
+                "card_uid": pour.card_uid,
+                "card_present": True,
+                "session_state": "authorized_session",
+                "valve_open": False,
+                "reason": None,
+                "event_status": None,
+            }
+        )
+
+    for flow_event in flow_events:
+        if (
+            flow_event.get("session_state") == "authorized_session"
+            and flow_event.get("short_id")
+            and flow_event.get("short_id") in terminal_short_ids
+        ):
+            continue
+        items.append(flow_event)
+    items.sort(key=lambda item: item["timestamp"], reverse=True)
+    return items[:limit]

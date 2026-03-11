@@ -1,5 +1,11 @@
-from hardware import HardwareHandler
 import time
+
+import pytest
+
+pytest.importorskip("gpiozero")
+pytest.importorskip("smartcard")
+
+from hardware import HardwareHandler
 
 def main():
     hw = HardwareHandler()

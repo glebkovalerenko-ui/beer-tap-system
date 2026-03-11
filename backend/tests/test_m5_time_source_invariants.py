@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import timedelta, timezone
 import uuid
 
 import models
@@ -48,7 +48,7 @@ def test_guest_created_at_is_not_earlier_than_shift_opened_at(client, db_session
     assert _normalize_dt(guest.created_at) >= _normalize_dt(shift.opened_at)
 
 
-def test_new_guests_count_is_stable_for_x_and_z_windows(client):
+def test_new_guests_count_is_stable_for_x_and_z_windows(client, db_session):
     headers = _login(client)
 
     open_shift = client.post("/api/shifts/open", headers=headers)
@@ -65,7 +65,12 @@ def test_new_guests_count_is_stable_for_x_and_z_windows(client):
     assert close_shift.status_code == 200
 
     # Guest created after close must not enter Z window for this shift.
-    _create_guest(client, headers, suffix="95012")
+    guest_after_close_id = uuid.UUID(_create_guest(client, headers, suffix="95012"))
+    shift = db_session.query(models.Shift).filter(models.Shift.id == uuid.UUID(shift_id)).one()
+    db_session.query(models.Guest).filter(models.Guest.guest_id == guest_after_close_id).update(
+        {"created_at": shift.closed_at + timedelta(seconds=1)}
+    )
+    db_session.commit()
 
     z_report_first = client.post(f"/api/shifts/{shift_id}/reports/z", headers=headers)
     assert z_report_first.status_code == 200
