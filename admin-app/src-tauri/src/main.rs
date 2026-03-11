@@ -8,18 +8,17 @@
 // ---  ---
 mod api_client;
 mod nfc_handler;
+mod reader_manager;
 mod server_config;
 
 // ---  ---
 use hex;
 use log::{error, info, warn};
-use pcsc::{Context, Error, Scope};
+use pcsc::Error;
+use reader_manager::{ReaderManager, ReaderStatePayload};
 use serde::Serialize;
-use serde_json;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-use tauri::{Emitter, State};
+use std::sync::Arc;
+use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
 // =============================================================================
@@ -27,7 +26,7 @@ use tauri_plugin_log::{Target, TargetKind};
 // =============================================================================
 
 struct AppState {
-    context: Arc<Mutex<Context>>,
+    reader_manager: Arc<ReaderManager>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -71,8 +70,8 @@ impl From<hex::FromHexError> for AppError {
     }
 }
 
-#[derive(Clone, serde::Serialize)]
-struct CardStatusPayload {
+#[derive(Clone, serde::Serialize, PartialEq, Eq)]
+pub struct CardStatusPayload {
     uid: Option<String>,
     error: Option<String>,
 }
@@ -84,11 +83,16 @@ struct CardStatusPayload {
 // ---     NFC ---
 #[tauri::command]
 fn list_readers(state: State<AppState>) -> Result<Vec<String>, AppError> {
-    // ... ( )
-    info!("[COMMAND]   ...");
-    let readers_vec = nfc_handler::list_readers_internal(&state.context)?;
+    info!("[COMMAND] NFC list_readers");
+    let context = state.reader_manager.get_command_context()?;
+    let readers_vec = nfc_handler::list_readers_internal(&context)?;
     info!("[COMMAND]  : {}", readers_vec.len());
     Ok(readers_vec)
+}
+
+#[tauri::command]
+fn get_nfc_reader_state(state: State<AppState>) -> Result<ReaderStatePayload, AppError> {
+    Ok(state.reader_manager.get_reader_state())
 }
 
 #[tauri::command]
@@ -99,10 +103,10 @@ fn read_mifare_block(
     key_hex: &str,
     state: State<AppState>,
 ) -> Result<String, AppError> {
-    // ... ( )
     info!("[COMMAND]     {}", block_addr);
+    let context = state.reader_manager.get_command_context()?;
     let card = nfc_handler::connect_and_authenticate(
-        &state.context,
+        &context,
         reader_name,
         block_addr,
         key_type,
@@ -128,10 +132,10 @@ fn write_mifare_block(
     data_hex: &str,
     state: State<AppState>,
 ) -> Result<(), AppError> {
-    // ... ( )
     info!("[COMMAND]      {}. : {}", block_addr, data_hex);
+    let context = state.reader_manager.get_command_context()?;
     let card = nfc_handler::connect_and_authenticate(
-        &state.context,
+        &context,
         reader_name,
         block_addr,
         key_type,
@@ -162,11 +166,11 @@ fn change_sector_keys(
     new_key_b: &str,
     state: State<AppState>,
 ) -> Result<(), AppError> {
-    // ... ( )
     info!("[COMMAND]       {}", sector);
     let trailer_block_addr = (sector * 4) + 3;
+    let context = state.reader_manager.get_command_context()?;
     let card = nfc_handler::connect_and_authenticate(
-        &state.context,
+        &context,
         reader_name,
         trailer_block_addr,
         key_type,
@@ -301,7 +305,10 @@ async fn get_keg_suggestion(
     token: String,
     beer_type_id: String,
 ) -> Result<api_client::KegSuggestionResponse, AppError> {
-    info!("[COMMAND]   FIFO keg suggestion beer_type_id={}", beer_type_id);
+    info!(
+        "[COMMAND]   FIFO keg suggestion beer_type_id={}",
+        beer_type_id
+    );
     api_client::get_keg_suggestion(&token, &beer_type_id)
         .await
         .map_err(AppError::from)
@@ -665,16 +672,12 @@ async fn resolve_card(
 // =============================================================================
 
 fn main() {
-    // ... (panic_hook  PC/SC context  )
     let default_panic_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         error!("!!! THREAD PANICKED !!!: {}", panic_info);
         default_panic_hook(panic_info);
     }));
-
-    let context = Arc::new(Mutex::new(
-        Context::establish(Scope::User).expect("   PC/SC ..."),
-    ));
+    let reader_manager = ReaderManager::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new()
@@ -685,11 +688,13 @@ fn main() {
             ])
             .level(log::LevelFilter::Debug)
             .build())
-        .manage(AppState { context: Arc::clone(&context) })
-        // --- :      ---
+        .manage(AppState {
+            reader_manager: Arc::clone(&reader_manager),
+        })
         .invoke_handler(tauri::generate_handler![
             // NFC
             list_readers,
+            get_nfc_reader_state,
             read_mifare_block,
             write_mifare_block,
             change_sector_keys,
@@ -757,69 +762,7 @@ fn main() {
             };
             let applied_base_url = api_client::set_backend_base_url(&configured_base_url);
             info!("[CONFIG] backend base url = {}", applied_base_url);
-
-            // ... (  NFC  )
-            let context_clone = Arc::clone(&context);
-
-            info!("     ...");
-            //      thread::spawn
-            thread::spawn(move || {
-                let mut last_payload_json = String::new(); //    
-
-                loop {
-                    let payload = match nfc_handler::list_readers_internal(&context_clone) {
-                        // :      
-                        Ok(mut names) if !names.is_empty() => {
-                            let reader_name = names.remove(0);
-                            //  .   .
-                            match nfc_handler::get_card_uid_internal(&context_clone, &reader_name) {
-                                Ok(uid_bytes) => {
-                                    //  .
-                                    CardStatusPayload { uid: Some(hex::encode(uid_bytes)), error: None }
-                                },
-                                Err(pcsc::Error::NoSmartcard) | Err(pcsc::Error::RemovedCard) => {
-                                    //  ,    ( ).  , "" .
-                                    CardStatusPayload { uid: None, error: None }
-                                },
-                                Err(e) => {
-                                    //   PC/SC,   .
-                                    error!("   ( ): {}", e);
-                                    CardStatusPayload { uid: None, error: Some(e.to_string()) }
-                                }
-                            }
-                        },
-                        // +++  :  ,    ( ,  Rust )
-                        Ok(_) => {
-                            error!(":   ,   .");
-                            CardStatusPayload { uid: None, error: Some("  .".to_string()) }
-                        }
-                        // :    -  PC/SC
-                        Err(e) => {
-                            //       .
-                            error!("  PC/SC: {}", e);
-                            CardStatusPayload { uid: None, error: Some("  .".to_string()) }
-                        }
-                    };
-
-                    //  ,    payload   .
-                    match serde_json::to_string(&payload) {
-                        Ok(current_payload_json) => {
-                            if current_payload_json != last_payload_json {
-                                info!(" NFC ,  : {}", current_payload_json);
-                                if let Err(e) = app_handle.emit("card-status-changed", payload.clone()) { //  .clone()
-                                    error!("    card-status-changed: {}", e);
-                                }
-                                last_payload_json = current_payload_json;
-                            }
-                        },
-                        Err(e) => {
-                            error!("   payload: {}", e);
-                        }
-                    }
-
-                    thread::sleep(Duration::from_millis(500));
-                }
-            });
+            reader_manager.start(app_handle);
             Ok(())
         })
         .run(tauri::generate_context!())
