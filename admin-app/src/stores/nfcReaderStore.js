@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { logError, normalizeError } from '../lib/errorUtils';
 
+const READER_EVENT_DEBOUNCE_MS = 300;
+
 const INITIAL_STATE = {
   readerName: null,
   status: 'initializing',
@@ -81,29 +83,88 @@ function normalizeReaderPayload(payload = {}) {
   }
 }
 
+function areStatesEqual(left, right) {
+  return (
+    left.readerName === right.readerName &&
+    left.status === right.status &&
+    left.lifecycleState === right.lifecycleState &&
+    left.message === right.message &&
+    left.error === right.error &&
+    left.lastUid === right.lastUid &&
+    left.cardPresent === right.cardPresent &&
+    left.recovering === right.recovering
+  );
+}
+
 function createNfcReaderStore() {
   const { subscribe, update } = writable(INITIAL_STATE);
 
   let unlistenCard = null;
   let unlistenReader = null;
   let setupPromise = null;
+  let readerEventDebounceTimer = null;
+  let currentSnapshot = INITIAL_STATE;
+
+  const commitState = (producer) => {
+    update((currentState) => {
+      const nextState = producer(currentState);
+      currentSnapshot = nextState;
+      return nextState;
+    });
+  };
+
+  const clearReaderEventDebounce = () => {
+    if (readerEventDebounceTimer) {
+      clearTimeout(readerEventDebounceTimer);
+      readerEventDebounceTimer = null;
+    }
+  };
+
+  const applyReaderState = (next) => {
+    commitState((currentState) => {
+      const nextState = {
+        ...currentState,
+        ...next,
+        lastUid:
+          next.status === 'disconnected' || next.status === 'recovering' || next.status === 'error'
+            ? null
+            : currentState.lastUid,
+      };
+
+      return areStatesEqual(currentState, nextState) ? currentState : nextState;
+    });
+  };
 
   const handleReaderEvent = (payload) => {
     const next = normalizeReaderPayload(payload);
-    update((currentState) => ({
-      ...currentState,
-      ...next,
-      lastUid:
-        next.status === 'disconnected' || next.status === 'recovering' || next.status === 'error'
-          ? null
-          : currentState.lastUid,
-    }));
+
+    if (currentSnapshot.lifecycleState === next.lifecycleState && currentSnapshot.status === next.status) {
+      clearReaderEventDebounce();
+      return;
+    }
+
+    if (
+      next.status === 'scanning' &&
+      (currentSnapshot.status === 'disconnected' || currentSnapshot.status === 'recovering')
+    ) {
+      clearReaderEventDebounce();
+      readerEventDebounceTimer = setTimeout(() => {
+        readerEventDebounceTimer = null;
+        applyReaderState(next);
+      }, READER_EVENT_DEBOUNCE_MS);
+      return;
+    }
+
+    clearReaderEventDebounce();
+    applyReaderState(next);
   };
 
   const handleCardEvent = (payload) => {
-    update((currentState) => {
+    commitState((currentState) => {
+      let nextState;
+
       if (payload.error) {
-        return {
+        nextState = {
           ...currentState,
           error: normalizeError(payload.error),
           lastUid: null,
@@ -113,14 +174,16 @@ function createNfcReaderStore() {
               ? currentState.status
               : 'error',
         };
+      } else {
+        nextState = {
+          ...currentState,
+          error: null,
+          lastUid: payload.uid || null,
+          cardPresent: Boolean(payload.uid),
+        };
       }
 
-      return {
-        ...currentState,
-        error: null,
-        lastUid: payload.uid || null,
-        cardPresent: Boolean(payload.uid),
-      };
+      return areStatesEqual(currentState, nextState) ? currentState : nextState;
     });
   };
 
@@ -146,7 +209,7 @@ function createNfcReaderStore() {
       handleReaderEvent(initialState);
     })().catch((error) => {
       const message = toErrorMessage('nfcReaderStore.setupListener', error);
-      update((currentState) => ({
+      commitState((currentState) => ({
         ...currentState,
         status: 'error',
         lifecycleState: 'error',
