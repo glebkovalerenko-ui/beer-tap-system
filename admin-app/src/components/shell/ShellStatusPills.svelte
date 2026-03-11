@@ -9,6 +9,17 @@
     online = navigator.onLine;
   };
 
+  $: nfcLabel =
+    $nfcReaderStore.status === 'ok'
+      ? 'Готов'
+      : $nfcReaderStore.status === 'recovering'
+        ? 'Восстановление'
+        : $nfcReaderStore.status === 'disconnected'
+          ? 'Отключен'
+          : $nfcReaderStore.status === 'scanning' || $nfcReaderStore.status === 'initializing'
+            ? 'Поиск'
+            : 'Ошибка';
+
   onMount(() => {
     window.addEventListener('online', updateOnline);
     window.addEventListener('offline', updateOnline);
@@ -23,7 +34,14 @@
 <div class="pills">
   <span class="pill" class:ok={$shiftStore.isOpen} class:warn={!$shiftStore.isOpen}>Смена: {$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}</span>
   <span class="pill" class:ok={online} class:error={!online}>Сеть: {online ? 'Онлайн' : 'Офлайн'}</span>
-  <span class="pill" class:ok={$nfcReaderStore.status === 'ok'} class:error={$nfcReaderStore.status === 'error'}>NFC: {$nfcReaderStore.status === 'ok' ? 'Готов' : 'Ошибка'}</span>
+  <span
+    class="pill"
+    class:ok={$nfcReaderStore.status === 'ok'}
+    class:warn={$nfcReaderStore.status === 'recovering' || $nfcReaderStore.status === 'disconnected' || $nfcReaderStore.status === 'scanning' || $nfcReaderStore.status === 'initializing'}
+    class:error={$nfcReaderStore.status === 'error'}
+  >
+    NFC: {nfcLabel}
+  </span>
 </div>
 
 <style>
