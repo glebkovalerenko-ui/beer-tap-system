@@ -115,14 +115,37 @@ Backoff:
 
 Текущий NFC modal flow (`uid-read`) сохранен.
 
-## 7. Risks / remaining limitations
+## 7. UI flicker investigation and fix
+
+### Root cause
+
+- `ReaderManager` already deduplicated byte-identical payloads, but it still emitted different lifecycle payloads during the "reader absent" path.
+- When `list_readers_internal(context)` returned an empty list, `run_context_session()` emitted `disconnected`, then called `wait_for_topology_change()`.
+- `wait_for_topology_change()` returned success both for a real PC/SC topology change and for `STATUS_CHANGE_TIMEOUT`.
+- After every timeout the loop emitted `scanning` again, even though topology had not changed. On the next iteration it emitted `disconnected` again.
+- Result: UI received `disconnected -> scanning -> disconnected` roughly once per `2 s` timeout while no reader was connected. `nfcReaderStore.js` also called `update()` for every reader event, so Svelte re-rendered and the modal flickered.
+
+### Fix
+
+- Backend: `wait_for_topology_change()` now returns `true` only when `\\?PnP?\\Notification` reports a real topology change. Timeout no longer re-emits `scanning`.
+- Backend: `ReaderManager` now keeps `last_emitted_reader_state` and suppresses `reader-state-changed` when the lifecycle state matches the last emitted state.
+- Backend: a `300 ms` guard suppresses transient `scanning` immediately after `disconnected` or `recovering`, which stabilizes short reconnect oscillations without affecting hot-plug recovery or card detection.
+- Frontend: `nfcReaderStore.js` now skips `update()` when the computed store snapshot is unchanged and debounces transient `scanning` after `disconnected/recovering`.
+
+### UX impact
+
+- Reader unplugged or absent: UI stays on `Считыватель отключен` without periodic blinking.
+- Runtime recovery: UI stays on `Восстановление соединения...` without `recovering/scanning` flicker.
+- Reader reconnected: UI transitions back to `Готов к чтению карты` once the reader is actually available again.
+
+## 8. Risks / remaining limitations
 
 - Автоматический hot-plug test в CI не добавлялся: физический reader нужен реально.
 - Для чтения UID по-прежнему используется APDU polling on demand после reader/card state changes, а не полная event-only card pipeline.
 - При редких командных гонках во время физического reconnect одноразовый Tauri command (`read_mifare_block`, `write_mifare_block`, `change_sector_keys`) может вернуть ошибку и потребовать повторить операцию, но background reader lifecycle восстанавливается автоматически.
 - Если в системе несколько reader, сейчас используется один active reader за раз: повторно выбирается preferred reader, иначе первый доступный.
 
-## 8. Manual Windows verification plan
+## 9. Manual Windows verification plan
 
 1. App start with reader connected
    - Запустить `Admin App` при подключенном reader.
