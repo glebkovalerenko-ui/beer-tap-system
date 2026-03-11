@@ -3,7 +3,8 @@
   export let online = true;
   export let nfcStatus = 'ok';
 
-  $: hasWarning = demoMode || !online || nfcStatus === 'error';
+  $: nfcHasWarning = nfcStatus === 'error' || nfcStatus === 'disconnected' || nfcStatus === 'recovering';
+  $: hasWarning = demoMode || !online || nfcHasWarning;
 </script>
 
 {#if hasWarning}
@@ -16,8 +17,16 @@
       <span>Сеть недоступна. Используйте действия, не требующие онлайн-подтверждения.</span>
     {/if}
 
+    {#if nfcStatus === 'disconnected'}
+      <span>NFC-считыватель отключен. Подключите устройство, приложение подхватит его автоматически.</span>
+    {/if}
+
+    {#if nfcStatus === 'recovering'}
+      <span>NFC восстанавливается после потери подключения. Перезапуск приложения не требуется.</span>
+    {/if}
+
     {#if nfcStatus === 'error'}
-      <span>NFC недоступен. Для демонстрации продолжайте сценарий с уже привязанной картой.</span>
+      <span>NFC недоступен из-за ошибки runtime. Проверьте лог Admin App и состояние PC/SC.</span>
     {/if}
   </section>
 {/if}

@@ -1,6 +1,12 @@
-<!-- src/components/system/NfcReaderStatus.svelte -->
 <script>
   import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
+
+  $: isReady = $nfcReaderStore.status === 'ok';
+  $: isWarning =
+    $nfcReaderStore.status === 'initializing' ||
+    $nfcReaderStore.status === 'scanning' ||
+    $nfcReaderStore.status === 'disconnected' ||
+    $nfcReaderStore.status === 'recovering';
 </script>
 
 <div class="status-widget">
@@ -8,21 +14,29 @@
     <h4>Считыватель NFC</h4>
   </div>
   <div class="body">
-    {#if $nfcReaderStore.status === 'initializing'}
-      <p>Инициализация...</p>
-    {:else if $nfcReaderStore.status === 'ok'}
-      <div class="status-indicator ok"></div>
-      <div class="info">
+    <div class="status-indicator" class:ok={isReady} class:warn={isWarning} class:error={$nfcReaderStore.status === 'error'}></div>
+
+    <div class="info">
+      {#if $nfcReaderStore.status === 'initializing'}
+        <span class="status-text">Инициализация</span>
+        <span class="detail">Запускаем NFC-подсистему...</span>
+      {:else if $nfcReaderStore.status === 'scanning'}
+        <span class="status-text warn-text">Поиск считывателя</span>
+        <span class="detail">{$nfcReaderStore.message || 'Идет поиск NFC-считывателя.'}</span>
+      {:else if $nfcReaderStore.status === 'disconnected'}
+        <span class="status-text warn-text">Считыватель отключен</span>
+        <span class="detail">{$nfcReaderStore.message || 'Подключите NFC-считыватель.'}</span>
+      {:else if $nfcReaderStore.status === 'recovering'}
+        <span class="status-text warn-text">Восстановление</span>
+        <span class="detail">{$nfcReaderStore.message || 'Пытаемся восстановить подключение к NFC.'}</span>
+      {:else if $nfcReaderStore.status === 'ok'}
         <span class="status-text">Подключено</span>
         <span class="detail">Считыватель: {$nfcReaderStore.readerName || 'ACR122U'}</span>
-      </div>
-    {:else if $nfcReaderStore.status === 'error'}
-      <div class="status-indicator error"></div>
-      <div class="info">
+      {:else}
         <span class="status-text error-text">Ошибка</span>
-        <span class="detail error-detail">{$nfcReaderStore.error}</span>
-      </div>
-    {/if}
+        <span class="detail error-detail">{$nfcReaderStore.error || $nfcReaderStore.message}</span>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -50,10 +64,15 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
+    background-color: #cfd4db;
   }
   .status-indicator.ok {
     background-color: #28a745;
     box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+  }
+  .status-indicator.warn {
+    background-color: #f0ad4e;
+    box-shadow: 0 0 10px rgba(240, 173, 78, 0.4);
   }
   .status-indicator.error {
     background-color: #dc3545;
@@ -66,6 +85,9 @@
   .status-text {
     font-weight: 600;
     font-size: 1rem;
+  }
+  .warn-text {
+    color: #8d5b00;
   }
   .error-text {
     color: #dc3545;

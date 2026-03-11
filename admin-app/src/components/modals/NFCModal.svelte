@@ -1,106 +1,144 @@
-<!-- src/components/modals/NFCModal.svelte -->
 <script>
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import Modal from '../common/Modal.svelte';
+  import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
 
   const dispatch = createEventDispatcher();
 
-  // --- Props ---
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Добавляем prop для внешней ошибки +++
-  /**
-   * Позволяет родительскому компоненту передать ошибку бизнес-логики (например, от API),
-   * чтобы отобразить ее в этом модальном окне.
-   * @type {string}
-   */
   export let externalError = '';
-  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
 
-  // --- Состояние компонента ---
-  let status = 'waiting'; // 'waiting', 'success', 'error'
+  let status = 'waiting';
   let cardUid = null;
   let errorMessage = null;
-  
-  // --- Переменная для хранения функции отписки от события ---
+  let helperMessage = 'Поднесите RFID-карту к считывателю.';
   let unlisten = null;
-
-  // --- Переменная для таймера автозакрытия ---
   let closeTimer = null;
 
-  // --- Жизненный цикл компонента ---
+  function clearCloseTimer() {
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+    }
+  }
+
+  function syncWithReaderState() {
+    if (status === 'success' || externalError) {
+      return;
+    }
+
+    if ($nfcReaderStore.status === 'recovering') {
+      status = 'recovering';
+      errorMessage = null;
+      helperMessage = $nfcReaderStore.message || 'Восстанавливаем подключение к NFC-считывателю.';
+      return;
+    }
+
+    if ($nfcReaderStore.status === 'disconnected') {
+      status = 'reader-unavailable';
+      errorMessage = null;
+      helperMessage = $nfcReaderStore.message || 'Считыватель NFC отключен. Подключите устройство.';
+      return;
+    }
+
+    if ($nfcReaderStore.status === 'error') {
+      status = 'error';
+      errorMessage = $nfcReaderStore.error || $nfcReaderStore.message || 'Ошибка NFC-считывателя.';
+      return;
+    }
+
+    status = 'waiting';
+    errorMessage = null;
+    helperMessage = 'Поднесите RFID-карту к считывателю.';
+  }
+
   onMount(async () => {
-    status = 'waiting'; 
+    status = 'waiting';
     cardUid = null;
     errorMessage = null;
+    helperMessage = 'Поднесите RFID-карту к считывателю.';
+    syncWithReaderState();
 
     try {
       unlisten = await listen('card-status-changed', (event) => {
-        // Игнорируем события, если мы уже в состоянии успеха или внешней ошибки
         if (status === 'success' || externalError) return;
 
         if (event.payload.error) {
-          status = 'error';
-          errorMessage = event.payload.error;
-        } else if (event.payload.uid) {
+          syncWithReaderState();
+          if (status !== 'recovering' && status !== 'reader-unavailable') {
+            status = 'error';
+            errorMessage = event.payload.error;
+          }
+          return;
+        }
+
+        if (event.payload.uid) {
           status = 'success';
           cardUid = event.payload.uid;
-          
+
           dispatch('uid-read', { uid: cardUid });
 
-          // Закрываем модальное окно через 1.5 секунды, но только если нет внешней ошибки
           if (!externalError) {
+            clearCloseTimer();
             closeTimer = setTimeout(() => {
               dispatch('close');
             }, 1500);
           }
-
-        } else {
-          status = 'waiting';
+          return;
         }
+
+        syncWithReaderState();
       });
-    } catch (e) {
+    } catch (error) {
       status = 'error';
-      errorMessage = 'Не удалось подписаться на события NFC. Перезапустите приложение.';
-      console.error(e);
+      errorMessage = 'Не удалось подписаться на события NFC. Проверьте лог приложения.';
+      console.error(error);
     }
   });
 
   onDestroy(() => {
     if (unlisten) unlisten();
-    if (closeTimer) clearTimeout(closeTimer); // Очищаем таймер при размонтировании
+    clearCloseTimer();
   });
 
-  // +++ НАЧАЛО ИЗМЕНЕНИЙ: Реактивный блок для обработки внешней ошибки +++
-  // КОММЕНТАРИЙ: Этот блок будет выполняться каждый раз, когда `externalError` изменится.
   $: if (externalError) {
-    status = 'error'; // Принудительно переключаем в состояние ошибки
-    errorMessage = externalError; // Показываем текст внешней ошибки
-    if (closeTimer) {
-      clearTimeout(closeTimer); // Отменяем автоматическое закрытие, если оно было запланировано
-      closeTimer = null;
-    }
+    status = 'error';
+    errorMessage = externalError;
+    clearCloseTimer();
   }
-  // +++ КОНЕЦ ИЗМЕНЕНИЙ +++
+
+  $: readerStateSnapshot = `${$nfcReaderStore.status}|${$nfcReaderStore.message || ''}|${$nfcReaderStore.error || ''}`;
+  $: if (!externalError) {
+    readerStateSnapshot;
+    syncWithReaderState();
+  }
 </script>
 
 <Modal on:close={() => dispatch('close')}>
   <div class="nfc-modal-content">
     {#if status === 'waiting'}
-      <div class="status-icon">🟡</div>
+      <div class="status-icon">...</div>
       <h2>Ожидание карты</h2>
-      <p>Поднесите RFID-карту к считывателю.</p>
+      <p>{helperMessage}</p>
+    {:else if status === 'recovering'}
+      <div class="status-icon">...</div>
+      <h2>Восстановление считывателя</h2>
+      <p>{helperMessage}</p>
+    {:else if status === 'reader-unavailable'}
+      <div class="status-icon">...</div>
+      <h2>Считыватель не подключен</h2>
+      <p>{helperMessage}</p>
     {:else if status === 'success'}
-      <div class="status-icon">✅</div>
-      <h2>Карта успешно считана!</h2>
+      <div class="status-icon">OK</div>
+      <h2>Карта успешно считана</h2>
       <p class="uid-display">UID: <strong>{cardUid}</strong></p>
     {:else if status === 'error'}
-      <div class="status-icon">❌</div>
+      <div class="status-icon">ERR</div>
       <h2>Ошибка</h2>
       <p class="error-message">{errorMessage}</p>
     {/if}
 
     <button on:click={() => dispatch('close')} class="close-button">
-      <!-- +++ ИЗМЕНЕНИЕ: Меняем текст кнопки в зависимости от ситуации +++ -->
       {#if status === 'success'}
         Готово
       {:else}
@@ -116,8 +154,10 @@
     padding: 1rem;
   }
   .status-icon {
-    font-size: 3rem;
+    font-size: 2.5rem;
     margin-bottom: 1rem;
+    font-weight: 700;
+    color: #355070;
   }
   h2 {
     margin: 0 0 0.5rem 0;
