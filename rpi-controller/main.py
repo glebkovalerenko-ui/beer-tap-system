@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import time
 
@@ -16,6 +17,11 @@ def start_sync_worker(db, sync_manager):
 
 
 def main():
+    for stream_name in ("stdout", "stderr"):
+        reconfigure = getattr(getattr(sys, stream_name, None), "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     db_handler = DatabaseHandler()
