@@ -353,6 +353,25 @@ async fn get_pours(token: String, limit: u32) -> Result<Vec<api_client::PourResp
 }
 
 #[tauri::command]
+async fn get_live_pour_feed(
+    token: String,
+    limit: u32,
+) -> Result<Vec<api_client::LivePourFeedItem>, AppError> {
+    info!("[COMMAND]     live feed API...");
+    api_client::get_live_pour_feed(&token, limit)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_flow_summary(token: String) -> Result<api_client::FlowSummaryResponse, AppError> {
+    info!("[COMMAND]     flow summary API...");
+    api_client::get_flow_summary(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn get_beverages(token: String) -> Result<Vec<api_client::Beverage>, AppError> {
     info!("[COMMAND]     API...");
     api_client::get_beverages(&token)
@@ -692,6 +711,8 @@ fn main() {
             delete_keg,
             get_taps,
             get_pours,
+            get_live_pour_feed,
+            get_flow_summary,
             // API - Beverages
             get_beverages,
             create_beverage,

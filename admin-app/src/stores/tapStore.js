@@ -38,7 +38,7 @@ function createTapStore() {
 
     assignKegToTap: async (tapId, kegId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       try {
         /** @type {Tap} */
@@ -57,7 +57,7 @@ function createTapStore() {
 
     unassignKegFromTap: async (tapId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       try {
         const updatedTap = await invoke('unassign_keg_from_tap', { token, tapId });
@@ -73,7 +73,7 @@ function createTapStore() {
 
     updateTapStatus: async (tapId, status) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       try {
         const payload = { status };

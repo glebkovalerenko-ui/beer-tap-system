@@ -8,7 +8,7 @@ function createDemoGuideStore() {
     subscribe,
     open: () => {
       update((s) => ({ ...s, open: true }));
-      auditTrailStore.add('demo_guide_opened', 'Открыт guided demo mode');
+      auditTrailStore.add('Демо-режим', 'Открыт демонстрационный сценарий');
     },
     close: () => update((s) => ({ ...s, open: false })),
   };

@@ -1,8 +1,13 @@
 const DEFAULT_ERROR_MESSAGE = 'Неизвестная ошибка';
 const ERROR_MESSAGE_MAP = [
   [/^Not authenticated$/i, 'Требуется повторный вход в систему'],
+  [/^Authentication token not found\.?$/i, 'Требуется повторный вход в систему'],
   [/^Shift already open$/i, 'Смена уже открыта'],
   [/^Shift is already closed$/i, 'Смена уже закрыта'],
+  [/^Login failed$/i, 'Не удалось выполнить вход'],
+  [/^Unauthorized$/i, 'Доступ запрещён. Требуется повторный вход'],
+  [/^API request failed$/i, 'Не удалось выполнить запрос к серверу'],
+  [/^request failed for /i, 'Не удалось выполнить запрос к серверу'],
   [/active_visits_exist/i, 'Есть активные визиты'],
   [/pending_sync_pours_exist/i, 'Есть несинхронизированные наливы'],
   [/processing_sync/i, 'Идёт синхронизация налива. Дождитесь завершения'],

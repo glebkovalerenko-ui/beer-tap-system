@@ -14,29 +14,36 @@ function toErrorMessage(context, error) {
 function createPourStore() {
   let pollInterval = null;
 
-  const { subscribe, set, update } = writable({
+  const initialState = {
     pours: [],
+    feedItems: [],
+    flowSummary: null,
     loading: false,
     error: null,
-  });
+  };
+  const { subscribe, set, update } = writable(initialState);
 
   async function fetchPours() {
     const token = get(sessionStore).token;
     if (!token) {
-      console.warn('fetchPours called without a token. Polling will not start.');
+      console.warn('Опрос наливов не запущен: отсутствует токен авторизации.');
       return;
     }
 
     update((s) => {
-      if (s.pours.length === 0) {
+      if (s.pours.length === 0 && s.feedItems.length === 0) {
         return { ...s, loading: true, error: null };
       }
       return s;
     });
 
     try {
-      const pours = await invoke('get_pours', { token, limit: 20 });
-      set({ pours, loading: false, error: null });
+      const [pours, feedItems, flowSummary] = await Promise.all([
+        invoke('get_pours', { token, limit: 20 }),
+        invoke('get_live_pour_feed', { token, limit: 20 }),
+        invoke('get_flow_summary', { token }),
+      ]);
+      set({ pours, feedItems, flowSummary, loading: false, error: null });
     } catch (error) {
       const errorMessage = toErrorMessage('pourStore.fetchPours', error);
       update((s) => ({ ...s, loading: false, error: errorMessage }));
@@ -46,14 +53,14 @@ function createPourStore() {
 
   function startPolling() {
     if (pollInterval) return;
-    console.log('Starting pours polling...');
+    console.log('Запуск опроса наливов.');
     fetchPours();
     pollInterval = setInterval(fetchPours, POLL_INTERVAL_MS);
   }
 
   function stopPolling() {
     if (pollInterval) {
-      console.log('Stopping pours polling.');
+      console.log('Остановка опроса наливов.');
       clearInterval(pollInterval);
       pollInterval = null;
     }
@@ -64,7 +71,7 @@ function createPourStore() {
       startPolling();
     } else {
       stopPolling();
-      set({ pours: [], loading: false, error: null });
+      set(initialState);
     }
   });
 

@@ -27,7 +27,7 @@ function createRoleStore() {
       if (!ROLES[roleKey]) return;
       localStorage.setItem('admin_role', roleKey);
       set({ key: roleKey, ...ROLES[roleKey] });
-      auditTrailStore.add('role_changed', `Роль изменена на: ${ROLES[roleKey].label}`);
+      auditTrailStore.add('Смена роли', `Роль изменена на: ${ROLES[roleKey].label}`);
     }
   };
 }

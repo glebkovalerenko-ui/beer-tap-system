@@ -42,7 +42,7 @@ function createBeverageStore() {
 
     createBeverage: async (beverageData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {

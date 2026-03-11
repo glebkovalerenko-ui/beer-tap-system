@@ -25,7 +25,7 @@ export async function login(username, password) {
   });
 
   if (!response.ok) {
-    throw new Error('Login failed');
+    throw new Error('Не удалось выполнить вход');
   }
 
   const data = await response.json();
@@ -49,10 +49,10 @@ export async function apiFetch(url, options = {}) {
 
   if (response.status === 401) {
     logout();
-    throw new Error('Unauthorized');
+    throw new Error('Требуется повторный вход в систему');
   }
   if (!response.ok) {
-    throw new Error('API request failed');
+    throw new Error('Не удалось выполнить запрос к серверу');
   }
   return response.json();
 }

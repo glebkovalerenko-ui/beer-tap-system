@@ -1,9 +1,8 @@
-# backend/api/controllers.py
-from typing import List, Annotated
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated, List
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-# Абсолютные импорты
 import schemas
 import security
 from crud import controller_crud
@@ -14,21 +13,12 @@ router = APIRouter(
     tags=["Controllers"]
 )
 
+
 @router.post("/register", response_model=schemas.Controller, summary="Зарегистрировать контроллер (check-in)")
 def register_controller(
-    controller: schemas.ControllerRegister, 
+    controller: schemas.ControllerRegister,
     db: Session = Depends(get_db)
 ):
-    """
-    Эндпоинт для регистрации или обновления данных контроллера (check-in).
-
-    **Логика (Upsert):**
-    - Если контроллер с таким `controller_id` не найден, он будет создан.
-    - Если контроллер уже существует, его данные (`ip_address`, `firmware_version`)
-      и время последнего визита (`last_seen`) будут обновлены.
-
-    Этот эндпоинт является публичным и предназначен для использования RPi-контроллерами.
-    """
     return controller_crud.register_controller(db=db, controller=controller)
 
 
@@ -37,9 +27,24 @@ def read_controllers(
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)],
     db: Session = Depends(get_db)
 ):
-    """
-    Возвращает список всех зарегистрированных контроллеров и их последнее состояние.
-
-    Доступно только для аутентифицированных пользователей (администраторов).
-    """
     return controller_crud.get_controllers(db)
+
+
+@router.post(
+    "/flow-events",
+    response_model=schemas.ControllerFlowEventResponse,
+    status_code=202,
+    summary="Report controller flow anomaly",
+)
+def report_flow_event(
+    payload: schemas.ControllerFlowEventRequest,
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+    db: Session = Depends(get_db),
+):
+    controller_crud.record_flow_event(
+        db=db,
+        payload=payload,
+        actor_id=(current_user or {}).get("username", "internal_rpi"),
+    )
+    db.commit()
+    return schemas.ControllerFlowEventResponse(accepted=True)

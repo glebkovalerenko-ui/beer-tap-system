@@ -51,7 +51,7 @@
     try {
       const normalized = validateApiBaseUrl(draftUrl);
       const result = await testServerConnection(normalized);
-      successMessage = `Соединение OK: ${result.checked_url} (HTTP ${result.status_code})`;
+      successMessage = `Соединение установлено: ${result.checked_url} (HTTP ${result.status_code})`;
     } catch (error) {
       inlineError = normalizeErrorMessage(error, 'Не удалось проверить соединение с сервером.');
     } finally {
@@ -69,9 +69,9 @@
       const savedBaseUrl = await setServerBaseUrl(normalized);
       draftUrl = savedBaseUrl;
       successMessage = `Сохранено: ${savedBaseUrl}`;
-      uiStore.notifySuccess('URL сервера сохранён.');
+      uiStore.notifySuccess('Адрес сервера сохранён.');
     } catch (error) {
-      inlineError = normalizeErrorMessage(error, 'Не удалось сохранить URL сервера.');
+      inlineError = normalizeErrorMessage(error, 'Не удалось сохранить адрес сервера.');
     } finally {
       isSaving = false;
     }
@@ -105,18 +105,18 @@
       </label>
 
       <p class="current-url">
-        <strong>Текущий URL:</strong> {$serverConfigStore.baseUrl}
+        <strong>Текущий адрес:</strong> {$serverConfigStore.baseUrl}
       </p>
       <p class="settings-note">
-        Источник: {$serverConfigStore.source === 'runtime-config' ? 'runtime-конфиг Tauri' : 'конфиг сборки или dev-среды'}.
+        Источник: {$serverConfigStore.source === 'runtime-config' ? 'настройка приложения Tauri' : 'параметры сборки или dev-среды'}.
       </p>
       <p class="settings-note">
-        Если сохранить недоступный URL, приложение всё равно откроется и позволит исправить настройку здесь.
+        Даже если сохранить недоступный адрес, приложение всё равно откроется и позволит исправить настройку здесь.
       </p>
 
       {#if !$serverConfigStore.runtimeConfigAvailable}
         <p class="warning">
-          Runtime-настройка доступна только в desktop-приложении Tauri. В web/dev используйте `VITE_API_BASE_URL`.
+          Изменение адреса доступно только в настольном приложении Tauri. В web/dev используйте `VITE_API_BASE_URL`.
         </p>
       {/if}
 

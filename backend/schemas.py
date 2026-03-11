@@ -398,6 +398,58 @@ class PourResponse(Pour):
     model_config = ConfigDict(from_attributes=True)
         
 # --- Схемы для Гостей (Guests) ---
+class LivePourFeedGuest(BaseModel):
+    guest_id: uuid.UUID
+    last_name: str
+    first_name: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LivePourFeedItem(BaseModel):
+    item_id: str
+    item_type: Literal["pour", "flow_event"]
+    status: str
+    tap_id: int
+    tap_name: Optional[str] = None
+    timestamp: datetime
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    volume_ml: int = 0
+    amount_charged: Optional[Decimal] = None
+    short_id: Optional[str] = None
+    guest: Optional[LivePourFeedGuest] = None
+    beverage_name: Optional[str] = None
+    card_uid: Optional[str] = None
+    card_present: Optional[bool] = None
+    session_state: Optional[str] = None
+    valve_open: Optional[bool] = None
+    reason: Optional[str] = None
+    event_status: Optional[str] = None
+
+
+class FlowSummaryBreakdownItem(BaseModel):
+    reason_code: str
+    volume_ml: int
+
+
+class TapFlowSummaryItem(BaseModel):
+    tap_id: int
+    tap_name: Optional[str] = None
+    sale_volume_ml: int
+    non_sale_volume_ml: int
+    total_volume_ml: int
+    non_sale_breakdown: list[FlowSummaryBreakdownItem] = []
+
+
+class FlowSummaryResponse(BaseModel):
+    sale_volume_ml: int
+    non_sale_volume_ml: int
+    total_volume_ml: int
+    non_sale_breakdown: list[FlowSummaryBreakdownItem] = []
+    by_tap: list[TapFlowSummaryItem] = []
+
+
 class GuestBase(BaseModel):
     last_name: str = Field(..., json_schema_extra={'example': "Иванов"})
     first_name: str = Field(..., json_schema_extra={'example': "Иван"})
@@ -443,10 +495,14 @@ class PourData(BaseModel):
     start_ts: Optional[datetime] = None
     end_ts: Optional[datetime] = None
     volume_ml: int
+    tail_volume_ml: int = Field(default=0, ge=0)
     price_cents: int
 
     @model_validator(mode="after")
     def validate_duration_or_legacy_range(self):
+        if self.tail_volume_ml > self.volume_ml:
+            raise ValueError("tail_volume_ml must not exceed volume_ml")
+
         if self.duration_ms is not None:
             return self
 
@@ -484,6 +540,32 @@ class Controller(BaseModel):
     created_at: datetime
     last_seen: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class ControllerFlowEventRequest(BaseModel):
+    event_id: str = Field(..., min_length=1, max_length=128, json_schema_extra={"example": "tap-1-flow-1741612045000"})
+    event_status: Literal["started", "updated", "stopped"] = Field(
+        ...,
+        json_schema_extra={"example": "updated"},
+    )
+    tap_id: int = Field(..., ge=1, json_schema_extra={"example": 1})
+    volume_ml: int = Field(..., ge=1, json_schema_extra={"example": 15})
+    duration_ms: int = Field(default=0, ge=0, json_schema_extra={"example": 1800})
+    card_present: bool = Field(default=False)
+    valve_open: bool = Field(default=False)
+    session_state: str = Field(..., min_length=1, max_length=64, json_schema_extra={"example": "no_card_no_session"})
+    card_uid: Optional[str] = Field(default=None, min_length=1, max_length=64, json_schema_extra={"example": "04AB7815CD6B80"})
+    short_id: Optional[str] = Field(default=None, min_length=6, max_length=8, json_schema_extra={"example": "A1B2C3D4"})
+    reason: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        json_schema_extra={"example": "flow_detected_when_valve_closed_without_active_session"},
+    )
+
+
+class ControllerFlowEventResponse(BaseModel):
+    accepted: bool = True
 
 # --- Схемы для Глобального Состояния Системы ---
 class SystemStateItem(BaseModel):

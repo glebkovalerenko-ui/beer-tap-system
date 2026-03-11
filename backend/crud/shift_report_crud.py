@@ -68,13 +68,33 @@ def _resolve_window_end(shift: models.Shift, generated_at: datetime) -> datetime
     return generated_at
 
 
+def _is_sqlite(db: Session) -> bool:
+    bind = db.get_bind()
+    return bind is not None and bind.dialect.name == "sqlite"
+
+
+def _sqlite_timestamp_text(value: datetime) -> str:
+    normalized = value
+    if _is_timezone_aware(normalized):
+        normalized = normalized.astimezone(timezone.utc).replace(tzinfo=None)
+    return normalized.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _between_window_filters(db: Session, column, start: datetime, end: datetime):
+    if _is_sqlite(db):
+        return [
+            func.strftime("%Y-%m-%d %H:%M:%S", column) >= _sqlite_timestamp_text(start),
+            func.strftime("%Y-%m-%d %H:%M:%S", column) <= _sqlite_timestamp_text(end),
+        ]
+    return [column >= start, column <= end]
+
+
 def _get_mismatch_count(db: Session, shift: models.Shift, window_end: datetime) -> int:
     count = (
         db.query(func.count(models.AuditLog.log_id))
         .filter(
             models.AuditLog.action == "late_sync_mismatch",
-            models.AuditLog.timestamp >= shift.opened_at,
-            models.AuditLog.timestamp <= window_end,
+            *_between_window_filters(db, models.AuditLog.timestamp, shift.opened_at, window_end),
         )
         .scalar()
     )
@@ -84,10 +104,7 @@ def _get_mismatch_count(db: Session, shift: models.Shift, window_end: datetime) 
 def _get_new_guests_count(db: Session, shift: models.Shift, window_end: datetime) -> int:
     count = (
         db.query(func.count(models.Guest.guest_id))
-        .filter(
-            models.Guest.created_at >= shift.opened_at,
-            models.Guest.created_at <= window_end,
-        )
+        .filter(*_between_window_filters(db, models.Guest.created_at, shift.opened_at, window_end))
         .scalar()
     )
     return int(count or 0)
@@ -121,10 +138,7 @@ def build_shift_report_payload(
                 0,
             ).label("reconciled_count"),
         )
-        .filter(
-            models.Pour.poured_at >= shift.opened_at,
-            models.Pour.poured_at <= window_end,
-        )
+        .filter(*_between_window_filters(db, models.Pour.poured_at, shift.opened_at, window_end))
         .one()
     )
 
@@ -139,10 +153,7 @@ def build_shift_report_payload(
                 0,
             ).label("pending_sync_count"),
         )
-        .filter(
-            models.Pour.poured_at >= shift.opened_at,
-            models.Pour.poured_at <= window_end,
-        )
+        .filter(*_between_window_filters(db, models.Pour.poured_at, shift.opened_at, window_end))
         .group_by(models.Pour.tap_id)
         .order_by(models.Pour.tap_id.asc())
         .all()
@@ -157,10 +168,7 @@ def build_shift_report_payload(
                 "closed_visits_count"
             ),
         )
-        .filter(
-            models.Visit.opened_at >= shift.opened_at,
-            models.Visit.opened_at <= window_end,
-        )
+        .filter(*_between_window_filters(db, models.Visit.opened_at, shift.opened_at, window_end))
         .one()
     )
 

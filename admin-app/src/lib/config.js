@@ -35,22 +35,22 @@ function resolveBuildTimeBaseUrl() {
 function validateBaseUrl(value) {
   const normalized = normalizeBaseUrl(value);
   if (!normalized) {
-    throw new Error('URL сервера не должен быть пустым.');
+    throw new Error('Адрес сервера не должен быть пустым.');
   }
 
   let parsedUrl;
   try {
     parsedUrl = new URL(normalized);
   } catch {
-    throw new Error('URL сервера должен быть корректным адресом с http:// или https://.');
+    throw new Error('Адрес сервера должен быть корректным URL с http:// или https://.');
   }
 
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    throw new Error('URL сервера должен начинаться с http:// или https://.');
+    throw new Error('Адрес сервера должен начинаться с http:// или https://.');
   }
 
   if (!parsedUrl.host) {
-    throw new Error('URL сервера должен содержать host.');
+    throw new Error('Адрес сервера должен содержать имя узла.');
   }
 
   return normalizeBaseUrl(parsedUrl.toString());
@@ -93,13 +93,13 @@ function logTauriBridgeUnavailable(error) {
       : String(error || '');
 
   if (message) {
-    console.debug(`[config] runtime server url commands unavailable: ${message}`);
+    console.debug(`[config] команды настройки адреса сервера недоступны: ${message}`);
   }
 }
 
 function runtimeConfigUnavailableError() {
   return new Error(
-    'Runtime URL settings are available only in the Tauri desktop app. For web/dev use VITE_API_BASE_URL.'
+    'Изменение адреса сервера доступно только в настольном приложении Tauri. Для web/dev используйте VITE_API_BASE_URL.'
   );
 }
 

@@ -13,6 +13,7 @@
   import NfcReaderStatus from '../components/system/NfcReaderStatus.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
   import PourFeed from '../components/pours/PourFeed.svelte';
+  import FlowSummaryPanel from '../components/pours/FlowSummaryPanel.svelte';
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte';
   import ShiftReportView from '../components/reports/ShiftReportView.svelte';
@@ -286,6 +287,8 @@
   />
 {/if}
 
+<FlowSummaryPanel summary={$pourStore.flowSummary} />
+
 <div class="dashboard-layout">
   <section class="main-section">
     <h2>Статус оборудования</h2>
@@ -304,12 +307,12 @@
 
   <aside class="sidebar-section">
     <h2>Лента наливов</h2>
-    {#if $pourStore.loading && $pourStore.pours.length === 0}
+    {#if $pourStore.loading && $pourStore.feedItems.length === 0}
       <p>Загрузка ленты наливов...</p>
     {:else if $pourStore.error}
       <p class="error">Ошибка загрузки ленты: {$pourStore.error}</p>
     {:else}
-      <PourFeed pours={$pourStore.pours} />
+      <PourFeed items={$pourStore.feedItems} />
     {/if}
   </aside>
 </div>
@@ -338,7 +341,7 @@
       {#if !$systemStore.emergencyStop}
         Это немедленно <b>ЗАБЛОКИРУЕТ</b> все краны и запретит новые наливы.
       {:else}
-        Это <b>РАЗБЛОКИРУЕТ</b> систему и вернет нормальное функционирование.
+        Это <b>РАЗБЛОКИРУЕТ</b> систему и вернёт нормальное функционирование.
       {/if}
     </p>
     <p>Вы уверены, что хотите продолжить?</p>

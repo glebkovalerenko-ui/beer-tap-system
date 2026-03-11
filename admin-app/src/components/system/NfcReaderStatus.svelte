@@ -5,7 +5,7 @@
 
 <div class="status-widget">
   <div class="header">
-    <h4>NFC считыватель</h4>
+    <h4>Считыватель NFC</h4>
   </div>
   <div class="body">
     {#if $nfcReaderStore.status === 'initializing'}
@@ -18,7 +18,7 @@
       </div>
     {:else if $nfcReaderStore.status === 'error'}
       <div class="status-indicator error"></div>
-       <div class="info">
+      <div class="info">
         <span class="status-text error-text">Ошибка</span>
         <span class="detail error-detail">{$nfcReaderStore.error}</span>
       </div>
@@ -75,6 +75,6 @@
     color: #666;
   }
   .error-detail {
-      font-weight: 500;
+    font-weight: 500;
   }
 </style>
