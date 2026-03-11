@@ -138,11 +138,6 @@ function createNfcReaderStore() {
   const handleReaderEvent = (payload) => {
     const next = normalizeReaderPayload(payload);
 
-    if (currentSnapshot.lifecycleState === next.lifecycleState && currentSnapshot.status === next.status) {
-      clearReaderEventDebounce();
-      return;
-    }
-
     if (
       next.status === 'scanning' &&
       (currentSnapshot.status === 'disconnected' || currentSnapshot.status === 'recovering')

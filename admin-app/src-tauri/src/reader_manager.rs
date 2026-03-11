@@ -112,7 +112,7 @@ enum ProbeControl {
 }
 
 struct EmittedReaderState {
-    state: ReaderLifecycleState,
+    payload: ReaderStatePayload,
     emitted_at: Instant,
 }
 
@@ -559,7 +559,7 @@ impl ReaderManager {
                 }
                 let mut last_emitted = self.last_emitted_reader_state.lock().unwrap();
                 *last_emitted = Some(EmittedReaderState {
-                    state: payload.state.clone(),
+                    payload: payload.clone(),
                     emitted_at: now,
                 });
                 *last_payload_json = current_payload_json;
@@ -659,13 +659,13 @@ fn should_emit_reader_state(
         return true;
     };
 
-    if last_emitted.state == payload.state {
+    if last_emitted.payload == *payload {
         return false;
     }
 
     if payload.state == ReaderLifecycleState::Scanning
         && matches!(
-            last_emitted.state,
+            last_emitted.payload.state,
             ReaderLifecycleState::Disconnected | ReaderLifecycleState::Recovering
         )
         && now.duration_since(last_emitted.emitted_at) < MIN_SCANNING_REEMIT_DELAY
@@ -709,7 +709,7 @@ mod tests {
     fn duplicate_reader_state_is_not_emitted() {
         let payload = ReaderStatePayload::disconnected(None, "reader unavailable");
         let last_emitted = EmittedReaderState {
-            state: ReaderLifecycleState::Disconnected,
+            payload: payload.clone(),
             emitted_at: Instant::now(),
         };
 
@@ -724,7 +724,7 @@ mod tests {
     fn scanning_is_debounced_after_disconnect() {
         let payload = ReaderStatePayload::scanning("rescanning");
         let last_emitted = EmittedReaderState {
-            state: ReaderLifecycleState::Disconnected,
+            payload: ReaderStatePayload::disconnected(None, "reader unavailable"),
             emitted_at: Instant::now(),
         };
 
@@ -739,8 +739,24 @@ mod tests {
     fn scanning_is_allowed_after_cooldown() {
         let payload = ReaderStatePayload::scanning("rescanning");
         let last_emitted = EmittedReaderState {
-            state: ReaderLifecycleState::Recovering,
+            payload: ReaderStatePayload::recovering(None, "recovering"),
             emitted_at: Instant::now() - MIN_SCANNING_REEMIT_DELAY - Duration::from_millis(1),
+        };
+
+        assert!(should_emit_reader_state(
+            Some(&last_emitted),
+            &payload,
+            Instant::now()
+        ));
+    }
+
+    #[test]
+    fn same_lifecycle_with_different_payload_is_emitted() {
+        let payload =
+            ReaderStatePayload::disconnected(Some("Reader A".to_string()), "reader unplugged");
+        let last_emitted = EmittedReaderState {
+            payload: ReaderStatePayload::disconnected(None, "reader not found"),
+            emitted_at: Instant::now(),
         };
 
         assert!(should_emit_reader_state(
