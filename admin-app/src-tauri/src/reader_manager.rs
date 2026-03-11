@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::ffi::CString;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 const CARD_STATUS_CHANGED_EVENT: &str = "card-status-changed";
@@ -14,6 +14,7 @@ const READER_STATE_CHANGED_EVENT: &str = "reader-state-changed";
 const STATUS_CHANGE_TIMEOUT: Duration = Duration::from_secs(2);
 const INITIAL_RECOVERY_BACKOFF: Duration = Duration::from_millis(500);
 const MAX_RECOVERY_BACKOFF: Duration = Duration::from_secs(4);
+const MIN_SCANNING_REEMIT_DELAY: Duration = Duration::from_millis(300);
 const READER_UNAVAILABLE_MESSAGE: &str =
     "Считыватель NFC недоступен. Подключите устройство или дождитесь восстановления.";
 const READER_RECOVERING_MESSAGE: &str =
@@ -110,9 +111,15 @@ enum ProbeControl {
     Rescan,
 }
 
+struct EmittedReaderState {
+    state: ReaderLifecycleState,
+    emitted_at: Instant,
+}
+
 pub struct ReaderManager {
     command_context: Mutex<Option<Context>>,
     latest_reader_state: Mutex<ReaderStatePayload>,
+    last_emitted_reader_state: Mutex<Option<EmittedReaderState>>,
 }
 
 impl ReaderManager {
@@ -122,6 +129,7 @@ impl ReaderManager {
             latest_reader_state: Mutex::new(ReaderStatePayload::scanning(
                 "Идет запуск NFC-подсистемы.",
             )),
+            last_emitted_reader_state: Mutex::new(None),
         })
     }
 
@@ -266,12 +274,13 @@ impl ReaderManager {
                     },
                 );
 
-                self.wait_for_topology_change(context)?;
-                self.emit_reader_state(
-                    app_handle,
-                    last_reader_state_json,
-                    ReaderStatePayload::scanning("Идет повторное обнаружение NFC-считывателя."),
-                );
+                if self.wait_for_topology_change(context)? {
+                    self.emit_reader_state(
+                        app_handle,
+                        last_reader_state_json,
+                        ReaderStatePayload::scanning("Идет повторное обнаружение NFC-считывателя."),
+                    );
+                }
                 continue;
             }
 
@@ -468,7 +477,7 @@ impl ReaderManager {
         }
     }
 
-    fn wait_for_topology_change(&self, context: &Context) -> Result<(), Error> {
+    fn wait_for_topology_change(&self, context: &Context) -> Result<bool, Error> {
         let mut states = vec![ReaderState::new(
             pcsc::PNP_NOTIFICATION().to_owned(),
             State::UNAWARE,
@@ -476,7 +485,8 @@ impl ReaderManager {
         prime_reader_states(context, &mut states)?;
 
         match context.get_status_change(Some(STATUS_CHANGE_TIMEOUT), &mut states) {
-            Ok(()) | Err(Error::Timeout) => Ok(()),
+            Ok(()) => Ok(states[0].event_state().contains(State::CHANGED)),
+            Err(Error::Timeout) => Ok(false),
             Err(err) => Err(err),
         }
     }
@@ -534,12 +544,24 @@ impl ReaderManager {
         payload: ReaderStatePayload,
     ) {
         *self.latest_reader_state.lock().unwrap() = payload.clone();
+        let now = Instant::now();
+        {
+            let last_emitted = self.last_emitted_reader_state.lock().unwrap();
+            if !should_emit_reader_state(last_emitted.as_ref(), &payload, now) {
+                return;
+            }
+        }
         match serde_json::to_string(&payload) {
             Ok(current_payload_json) if current_payload_json != *last_payload_json => {
-                if let Err(err) = app_handle.emit(READER_STATE_CHANGED_EVENT, payload) {
+                if let Err(err) = app_handle.emit(READER_STATE_CHANGED_EVENT, payload.clone()) {
                     error!("NFC: не удалось отправить reader-state-changed: {}", err);
                     return;
                 }
+                let mut last_emitted = self.last_emitted_reader_state.lock().unwrap();
+                *last_emitted = Some(EmittedReaderState {
+                    state: payload.state.clone(),
+                    emitted_at: now,
+                });
                 *last_payload_json = current_payload_json;
             }
             Ok(_) => {}
@@ -628,10 +650,39 @@ fn is_recoverable_runtime_error(err: &Error) -> bool {
     )
 }
 
+fn should_emit_reader_state(
+    last_emitted: Option<&EmittedReaderState>,
+    payload: &ReaderStatePayload,
+    now: Instant,
+) -> bool {
+    let Some(last_emitted) = last_emitted else {
+        return true;
+    };
+
+    if last_emitted.state == payload.state {
+        return false;
+    }
+
+    if payload.state == ReaderLifecycleState::Scanning
+        && matches!(
+            last_emitted.state,
+            ReaderLifecycleState::Disconnected | ReaderLifecycleState::Recovering
+        )
+        && now.duration_since(last_emitted.emitted_at) < MIN_SCANNING_REEMIT_DELAY
+    {
+        return false;
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{choose_reader_name, next_backoff, MAX_RECOVERY_BACKOFF};
-    use std::time::Duration;
+    use super::{
+        choose_reader_name, next_backoff, should_emit_reader_state, EmittedReaderState,
+        ReaderLifecycleState, ReaderStatePayload, MAX_RECOVERY_BACKOFF, MIN_SCANNING_REEMIT_DELAY,
+    };
+    use std::time::{Duration, Instant};
 
     #[test]
     fn choose_reader_keeps_preferred_reader_when_it_still_exists() {
@@ -652,5 +703,50 @@ mod tests {
             Duration::from_secs(1)
         );
         assert_eq!(next_backoff(MAX_RECOVERY_BACKOFF), MAX_RECOVERY_BACKOFF);
+    }
+
+    #[test]
+    fn duplicate_reader_state_is_not_emitted() {
+        let payload = ReaderStatePayload::disconnected(None, "reader unavailable");
+        let last_emitted = EmittedReaderState {
+            state: ReaderLifecycleState::Disconnected,
+            emitted_at: Instant::now(),
+        };
+
+        assert!(!should_emit_reader_state(
+            Some(&last_emitted),
+            &payload,
+            Instant::now()
+        ));
+    }
+
+    #[test]
+    fn scanning_is_debounced_after_disconnect() {
+        let payload = ReaderStatePayload::scanning("rescanning");
+        let last_emitted = EmittedReaderState {
+            state: ReaderLifecycleState::Disconnected,
+            emitted_at: Instant::now(),
+        };
+
+        assert!(!should_emit_reader_state(
+            Some(&last_emitted),
+            &payload,
+            Instant::now()
+        ));
+    }
+
+    #[test]
+    fn scanning_is_allowed_after_cooldown() {
+        let payload = ReaderStatePayload::scanning("rescanning");
+        let last_emitted = EmittedReaderState {
+            state: ReaderLifecycleState::Recovering,
+            emitted_at: Instant::now() - MIN_SCANNING_REEMIT_DELAY - Duration::from_millis(1),
+        };
+
+        assert!(should_emit_reader_state(
+            Some(&last_emitted),
+            &payload,
+            Instant::now()
+        ));
     }
 }
