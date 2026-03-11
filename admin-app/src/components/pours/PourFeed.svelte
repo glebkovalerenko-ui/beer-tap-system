@@ -22,12 +22,12 @@
     }
 
     if (item.session_state === 'authorized_session') {
-      return `${tapLabel(item)} • активный налив`;
+      return `${tapLabel(item)} | активный налив`;
     }
     if (item.card_present) {
-      return `${tapLabel(item)} • flow при закрытом клапане`;
+      return `${tapLabel(item)} | пролив при закрытом клапане`;
     }
-    return `${tapLabel(item)} • flow без карты`;
+    return `${tapLabel(item)} | пролив без карты`;
   }
 
   function statusFor(item) {
@@ -43,7 +43,7 @@
   function detailsFor(item) {
     if (item.item_type === 'pour') {
       const beverage = item.beverage_name || 'напиток';
-      return `налил ${formatVolumeRu(item.volume_ml)} ${beverage}${item.duration_ms != null ? `, длительность ${formatDurationRu(item.duration_ms)}` : ''}`;
+      return `налито ${formatVolumeRu(item.volume_ml)} ${beverage}${item.duration_ms != null ? `, длительность ${formatDurationRu(item.duration_ms)}` : ''}`;
     }
 
     const parts = [`${statusFor(item)} ${formatVolumeRu(item.volume_ml)}`];
@@ -53,7 +53,7 @@
     if (item.reason === 'flow_detected_when_valve_closed_without_active_session') {
       parts.push('клапан закрыт, активной сессии нет');
     } else if (item.reason === 'authorized_pour_in_progress') {
-      parts.push('данные идут с контроллера');
+      parts.push('данные поступают с контроллера');
     }
     return parts.join(', ');
   }
@@ -61,7 +61,7 @@
 
 <div class="pour-feed">
   <div class="header">
-    <h4>Живая лента</h4>
+    <h4>Живая лента наливов</h4>
   </div>
   <div class="feed-body">
     {#if items.length > 0}

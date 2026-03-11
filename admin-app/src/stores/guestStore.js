@@ -23,7 +23,7 @@ function createGuestStore() {
       const token = get(sessionStore).token;
       if (!token) {
         set({ guests: [], loading: false, error: null });
-        console.warn('fetchGuests called without a token. Aborting.');
+        console.warn('Загрузка гостей отменена: отсутствует токен авторизации.');
         return;
       }
 
@@ -39,7 +39,7 @@ function createGuestStore() {
 
     createGuest: async (guestData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -58,7 +58,7 @@ function createGuestStore() {
 
     updateGuest: async (guestId, guestData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -76,7 +76,7 @@ function createGuestStore() {
 
     bindCardToGuest: async (guestId, cardUid) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, error: null }));
       try {
@@ -94,7 +94,7 @@ function createGuestStore() {
 
     topUpBalance: async (guestId, topUpData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {

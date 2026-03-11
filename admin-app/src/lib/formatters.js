@@ -107,17 +107,17 @@ export function formatVolumeRangeRu(currentMl, totalMl) {
 
 export function formatDateRu(value) {
   const date = asDate(value);
-  return date ? DATE_FORMATTER.format(date) : '—';
+  return date ? DATE_FORMATTER.format(date) : '-';
 }
 
 export function formatTimeRu(value) {
   const date = asDate(value);
-  return date ? TIME_FORMATTER.format(date) : '—';
+  return date ? TIME_FORMATTER.format(date) : '-';
 }
 
 export function formatDateTimeRu(value) {
   const date = asDate(value);
-  return date ? DATE_TIME_FORMATTER.format(date) : '—';
+  return date ? DATE_TIME_FORMATTER.format(date) : '-';
 }
 
 export function formatDurationRu(durationMs) {
@@ -132,21 +132,21 @@ export function formatDurationRu(durationMs) {
 }
 
 export function formatTapStatus(status) {
-  return TAP_STATUS_LABELS[status] || status || '—';
+  return TAP_STATUS_LABELS[status] || status || '-';
 }
 
 export function formatVisitStatus(status) {
-  return VISIT_STATUS_LABELS[status] || status || '—';
+  return VISIT_STATUS_LABELS[status] || status || '-';
 }
 
 export function formatCardStatus(status) {
-  return CARD_STATUS_LABELS[status] || status || '—';
+  return CARD_STATUS_LABELS[status] || status || '-';
 }
 
 export function formatKegStatus(status) {
-  return KEG_STATUS_LABELS[status] || status || '—';
+  return KEG_STATUS_LABELS[status] || status || '-';
 }
 
 export function formatShiftReportMetricLabel(metric) {
-  return SHIFT_REPORT_STATUS_LABELS[metric] || metric || '—';
+  return SHIFT_REPORT_STATUS_LABELS[metric] || metric || '-';
 }

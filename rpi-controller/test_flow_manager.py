@@ -310,7 +310,7 @@ def test_controller_does_not_open_valve_on_insufficient_funds():
     sync_manager = FakeSyncManager(
         {
             "allowed": False,
-            "reason": "Insufficient funds: top up guest balance before pouring.",
+            "reason": "Недостаточно средств: пополните баланс гостя перед наливом.",
             "reason_code": "insufficient_funds",
             "status_code": 403,
         }

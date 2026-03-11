@@ -10,7 +10,7 @@
   {#each $uiStore.toasts as toast (toast.id)}
     <div class="toast {toast.type}">
       <span>{toast.message}</span>
-      <button class="close" on:click={() => closeToast(toast.id)} aria-label="Закрыть уведомление">×</button>
+      <button class="close" on:click={() => closeToast(toast.id)} aria-label="Закрыть уведомление">x</button>
     </div>
   {/each}
 </div>

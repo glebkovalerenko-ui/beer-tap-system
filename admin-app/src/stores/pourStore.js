@@ -26,7 +26,7 @@ function createPourStore() {
   async function fetchPours() {
     const token = get(sessionStore).token;
     if (!token) {
-      console.warn('fetchPours called without a token. Polling will not start.');
+      console.warn('Опрос наливов не запущен: отсутствует токен авторизации.');
       return;
     }
 
@@ -53,14 +53,14 @@ function createPourStore() {
 
   function startPolling() {
     if (pollInterval) return;
-    console.log('Starting pours polling...');
+    console.log('Запуск опроса наливов.');
     fetchPours();
     pollInterval = setInterval(fetchPours, POLL_INTERVAL_MS);
   }
 
   function stopPolling() {
     if (pollInterval) {
-      console.log('Stopping pours polling.');
+      console.log('Остановка опроса наливов.');
       clearInterval(pollInterval);
       pollInterval = null;
     }

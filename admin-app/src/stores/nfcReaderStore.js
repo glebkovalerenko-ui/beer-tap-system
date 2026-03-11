@@ -30,11 +30,11 @@ function createNfcReaderStore() {
 
   async function setupListener() {
     if (unlisten) {
-      console.warn('NFC listener already running.');
+      console.warn('Прослушивание событий NFC уже запущено.');
       return;
     }
 
-    console.log('Setting up NFC reader status listener...');
+    console.log('Запуск отслеживания состояния NFC-считывателя.');
     try {
       unlisten = await listen('card-status-changed', (event) => {
         handleEvent(event.payload);

@@ -28,7 +28,7 @@ function createLostCardStore() {
 
   const withAuth = () => {
     const token = get(sessionStore).token;
-    if (!token) throw new Error('Not authenticated');
+    if (!token) throw new Error('Требуется повторный вход в систему');
     return token;
   };
 

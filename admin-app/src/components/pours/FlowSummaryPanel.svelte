@@ -4,10 +4,10 @@
   export let summary = null;
 
   const reasonLabels = {
-    closed_valve_no_card: 'Закрытый клапан без карты',
-    closed_valve_no_session: 'Закрытый клапан без валидной сессии',
-    closed_valve_no_valid_session: 'Закрытый клапан вне валидной сессии',
-    controller_flow_anomaly: 'Прочая flow-анomaly',
+    closed_valve_no_card: 'Пролив при закрытом клапане без карты',
+    closed_valve_no_session: 'Пролив при закрытом клапане без активной сессии',
+    closed_valve_no_valid_session: 'Пролив вне подтверждённой сессии',
+    controller_flow_anomaly: 'Прочее отклонение пролива',
   };
 
   function labelForReason(reasonCode) {
@@ -18,15 +18,15 @@
 <section class="flow-summary ui-card">
   <div class="header">
     <div>
-      <h2>Сводка flow</h2>
-      <p>Продажа и flow вне продажи считаются отдельно, но сходятся в общий физический пролив.</p>
+      <h2>Сводка пролива</h2>
+      <p>Проданный объём и внеучётный пролив считаются раздельно, но сходятся в общий физический объём.</p>
     </div>
   </div>
 
   {#if summary}
     <div class="totals-grid">
       <article>
-        <span>По продаже</span>
+        <span>Продано</span>
         <strong>{formatVolumeRu(summary.sale_volume_ml)}</strong>
       </article>
       <article>
@@ -52,7 +52,7 @@
                 </div>
                 <dl>
                   <div>
-                    <dt>Продажа</dt>
+                    <dt>Продано</dt>
                     <dd>{formatVolumeRu(tap.sale_volume_ml)}</dd>
                   </div>
                   <div>
@@ -80,12 +80,12 @@
             {/each}
           </ul>
         {:else}
-          <p class="muted">Сейчас non-sale flow не зафиксирован.</p>
+          <p class="muted">Сейчас внеучётный пролив не зафиксирован.</p>
         {/if}
       </section>
     </div>
   {:else}
-    <p class="muted">Сводка flow загружается.</p>
+    <p class="muted">Сводка пролива загружается.</p>
   {/if}
 </section>
 

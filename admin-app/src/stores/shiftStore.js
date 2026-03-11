@@ -29,7 +29,7 @@ function createShiftStore() {
 
   const withAuth = () => {
     const token = get(sessionStore).token;
-    if (!token) throw new Error('Не выполнен вход в систему');
+    if (!token) throw new Error('Требуется повторный вход в систему');
     return token;
   };
 

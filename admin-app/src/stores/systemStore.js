@@ -22,7 +22,7 @@ const createSystemStore = () => {
   const fetchSystemStatus = async () => {
     const token = get(sessionStore).token;
     if (!token) {
-      console.warn('[SystemStore] No token found, skipping fetch.');
+      console.warn('[SystemStore] Пропуск загрузки статуса: отсутствует токен авторизации.');
       return;
     }
 
@@ -40,7 +40,7 @@ const createSystemStore = () => {
   const setEmergencyStop = async (enabled) => {
     const token = get(sessionStore).token;
     if (!token) {
-      const error = 'Authentication token not found.';
+      const error = 'Требуется повторный вход в систему';
       update((store) => ({ ...store, error }));
       throw new Error(error);
     }
@@ -66,14 +66,14 @@ const createSystemStore = () => {
 
   const startPolling = () => {
     if (pollingInterval) return;
-    console.log('[SystemStore] Starting status polling.');
+    console.log('[SystemStore] Запуск опроса состояния системы.');
     fetchSystemStatus();
     pollingInterval = setInterval(fetchSystemStatus, POLLING_RATE_MS);
   };
 
   const stopPolling = () => {
     if (!pollingInterval) return;
-    console.log('[SystemStore] Stopping status polling.');
+    console.log('[SystemStore] Остановка опроса состояния системы.');
     clearInterval(pollingInterval);
     pollingInterval = null;
   };

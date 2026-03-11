@@ -209,7 +209,7 @@ class FlowManager:
             total_volume_ml = self._liters_to_ml(self._unexpected_flow_volume_liters)
             self._log_throttled(
                 "unexpected_closed_valve_flow",
-                "Обнаружен flow при закрытом клапане вне активной pour-сессии. volume=%s card_present=%s session_state=%s"
+                "Обнаружен пролив при закрытом клапане вне активной сессии. объем=%s карта_вставлена=%s состояние_сессии=%s"
                 % (format_volume(total_volume_ml), card_present, session_state),
                 level=logging.WARNING,
                 interval_seconds=2.0,
@@ -275,7 +275,7 @@ class FlowManager:
                     valve_open=False,
                 )
                 logging.info(
-                    "Flow при закрытом клапане прекратился. total_volume=%s duration_ms=%s",
+                    "Пролив при закрытом клапане прекратился. общий_объем=%s длительность_мс=%s",
                     format_volume(self._liters_to_ml(self._unexpected_flow_volume_liters)),
                     duration_ms,
                 )
@@ -402,7 +402,7 @@ class FlowManager:
             reason_code = auth_result.get("reason_code") or "authorize_denied"
             self._log_throttled(
                 f"authorize_denied:{reason_code}",
-                "Старт налива отклонён для карты %s. status_code=%s reason=%s"
+                "Старт налива отклонён для карты %s. код_ответа=%s причина=%s"
                 % (card_uid, auth_result.get("status_code"), auth_result.get("reason")),
                 level=logging.WARNING,
                 interval_seconds=2.0,
@@ -442,7 +442,7 @@ class FlowManager:
         if max_volume_ml <= 0:
             self._log_throttled(
                 "authorize_invalid_contract",
-                "Авторизация вернула некорректные лимиты. max_volume_ml=%s price_per_ml_cents=%s"
+                "Авторизация вернула некорректные лимиты. максимальный_объем_мл=%s цена_за_мл_в_коп=%s"
                 % (max_volume_ml, price_per_ml_cents),
                 level=logging.ERROR,
                 interval_seconds=2.0,
@@ -491,7 +491,7 @@ class FlowManager:
                         if overflow_ml > 0:
                             tail_volume_liters += overflow_ml / 1000.0
                         logging.info(
-                            "Клапан закрыт по лимиту авторизации. limit=%s actual_before_close=%s",
+                            "Клапан закрыт по лимиту авторизации. лимит=%s фактический_объем_до_закрытия=%s",
                             format_volume(max_volume_ml),
                             format_volume(total_volume_ml),
                         )
@@ -529,7 +529,7 @@ class FlowManager:
                         else self._legacy_price_cents(total_volume_ml)
                     )
                     logging.info(
-                        "Детали таймаута: short_id=%s, volume=%s, amount=%s",
+                        "Детали таймаута: короткий_номер=%s, объем=%s, сумма=%s",
                         short_id,
                         format_volume(total_volume_ml),
                         format_money_minor_units(timeout_price_cents),

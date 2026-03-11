@@ -44,7 +44,7 @@ function createKegStore() {
 
     getSuggestion: async (beerTypeId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       try {
         /** @type {KegSuggestionResponse} */
@@ -57,7 +57,7 @@ function createKegStore() {
 
     createKeg: async (kegData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -76,7 +76,7 @@ function createKegStore() {
 
     updateKeg: async (kegId, kegData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -94,7 +94,7 @@ function createKegStore() {
 
     deleteKeg: async (kegId) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Not authenticated');
+      if (!token) throw new Error('Требуется повторный вход в систему');
 
       update((s) => ({ ...s, loading: true, error: null }));
       try {
