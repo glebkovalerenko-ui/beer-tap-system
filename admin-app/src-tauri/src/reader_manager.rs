@@ -680,7 +680,7 @@ fn should_emit_reader_state(
 mod tests {
     use super::{
         choose_reader_name, next_backoff, should_emit_reader_state, EmittedReaderState,
-        ReaderLifecycleState, ReaderStatePayload, MAX_RECOVERY_BACKOFF, MIN_SCANNING_REEMIT_DELAY,
+        ReaderStatePayload, MAX_RECOVERY_BACKOFF, MIN_SCANNING_REEMIT_DELAY,
     };
     use std::time::{Duration, Instant};
 

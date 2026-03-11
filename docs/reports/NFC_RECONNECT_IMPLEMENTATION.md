@@ -180,3 +180,26 @@ Backoff:
    - Открыть `NFCModal`.
    - Во время открытого modal сделать unplug/replug.
    - Убедиться, что modal показывает понятное состояние `reader unavailable / recovering`, а после восстановления снова возвращается к ожиданию карты и принимает UID без закрытия приложения.
+
+## 10. Final verification outcome
+
+Manual Windows hardware verification is complete and the NFC reconnect task is considered technically finished.
+
+Confirmed outcome:
+
+- With the reader connected, `Admin App` works normally.
+- Physical reader unplug does not freeze the app, and the UI shows that the reader is disconnected.
+- Attempting to read a card while the reader is disconnected produces the correct disconnected-reader message in UI.
+- Physical reader replug restores reader operation without restarting `Admin App`.
+- After reconnect, card UID is read correctly again.
+- The previously observed disconnected/scanning flicker is no longer present during the disconnected state.
+
+Operational conclusion:
+
+- NFC reconnect / hot-plug recovery behavior is accepted as correct for current production use.
+- The task is ready for merge closure once branch validation passes.
+
+Remaining non-blocking limitations:
+
+- A one-shot command issued exactly during a physical reconnect window can still fail and require a retry.
+- This does not block normal operation because background reader recovery completes automatically and UID reading resumes after reconnect.
