@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
 
+  import MediaAssetPicker from '../display/MediaAssetPicker.svelte';
   import { normalizeError } from '../../lib/errorUtils.js';
   import { formatTapStatus } from '../../lib/formatters.js';
   import { tapStore } from '../../stores/tapStore.js';
@@ -27,6 +28,11 @@
     ? formData.override_accent_color
     : beverage?.accent_color || DEFAULT_ACCENT_COLOR;
   $: effectivePriceMode = formData.show_price_mode || beverage?.price_display_mode_default || 'per_100ml';
+  $: effectiveBackgroundSource = formData.override_background_asset_id
+    ? 'Переопределен на уровне крана'
+    : beverage?.background_asset_id
+      ? 'Наследуется от напитка'
+      : 'Фон не задан';
 
   onMount(() => {
     loadConfig();
@@ -40,6 +46,7 @@
       maintenance_title: '',
       maintenance_subtitle: '',
       override_accent_color: '',
+      override_background_asset_id: null,
       show_price_mode: '',
     };
   }
@@ -77,6 +84,7 @@
       maintenance_title: config?.maintenance_title || '',
       maintenance_subtitle: config?.maintenance_subtitle || '',
       override_accent_color: config?.override_accent_color || '',
+      override_background_asset_id: config?.override_background_asset_id || null,
       show_price_mode: config?.show_price_mode || '',
     };
   }
@@ -89,6 +97,7 @@
       maintenance_title: normalizeOptionalString(formData.maintenance_title),
       maintenance_subtitle: normalizeOptionalString(formData.maintenance_subtitle),
       override_accent_color: normalizeOptionalString(formData.override_accent_color),
+      override_background_asset_id: formData.override_background_asset_id || null,
       show_price_mode: normalizeOptionalString(formData.show_price_mode),
     };
   }
@@ -275,9 +284,21 @@
           </select>
         </label>
 
-        <div class="wide pending-media">
-          <strong>Фон Tap Display</strong>
-          <p>Переопределение фонового изображения подключается следующим шагом через общий media picker.</p>
+        <div class="wide">
+          <MediaAssetPicker
+            kind="background"
+            title="Фон Tap Display"
+            description="Можно задать отдельный фон только для этого крана. Если оставить пустым, будет использоваться фон напитка."
+            selectedAssetId={formData.override_background_asset_id}
+            disabled={saving}
+            emptyLabel="Фон крана не переопределен"
+            on:change={(event) => {
+              formData = {
+                ...formData,
+                override_background_asset_id: event.detail.assetId,
+              };
+            }}
+          />
         </div>
       </div>
     </fieldset>
@@ -292,6 +313,9 @@
       </p>
       <p>
         <strong>Обслуживание:</strong> {formData.maintenance_title || DEFAULT_MAINTENANCE_TITLE}
+      </p>
+      <p>
+        <strong>Фон:</strong> {effectiveBackgroundSource}
       </p>
     </div>
 
@@ -405,8 +429,7 @@
   }
 
   .toggle-row small,
-  label small,
-  .pending-media p {
+  label small {
     color: var(--text-secondary);
     line-height: 1.4;
   }
@@ -453,18 +476,6 @@
   .clear-action {
     background: #f3f4f6;
     color: #49566d;
-  }
-
-  .pending-media {
-    padding: 0.9rem 1rem;
-    border: 1px dashed #c9d6ea;
-    border-radius: var(--radius-sm);
-    background: #f7faff;
-  }
-
-  .pending-media strong {
-    display: block;
-    margin-bottom: 0.35rem;
   }
 
   .wide {

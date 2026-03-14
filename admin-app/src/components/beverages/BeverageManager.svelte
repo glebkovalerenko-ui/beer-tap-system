@@ -1,4 +1,5 @@
 <script>
+  import MediaAssetPicker from "../display/MediaAssetPicker.svelte";
   import { beverageStore } from "../../stores/beverageStore.js";
   import { uiStore } from "../../stores/uiStore.js";
   import { normalizeError } from "../../lib/errorUtils.js";
@@ -16,6 +17,8 @@
     accent_color: DEFAULT_ACCENT_COLOR,
     text_theme: "",
     price_display_mode_default: "per_100ml",
+    background_asset_id: null,
+    logo_asset_id: null,
   });
 
   let selectedBeverageId = null;
@@ -64,6 +67,8 @@
       accent_color: beverage.accent_color || DEFAULT_ACCENT_COLOR,
       text_theme: beverage.text_theme || "",
       price_display_mode_default: beverage.price_display_mode_default || "per_100ml",
+      background_asset_id: beverage.background_asset_id || null,
+      logo_asset_id: beverage.logo_asset_id || null,
     };
   }
 
@@ -93,6 +98,8 @@
       accent_color: normalizeOptionalString(formData.accent_color),
       text_theme: normalizeOptionalString(formData.text_theme),
       price_display_mode_default: normalizeOptionalString(formData.price_display_mode_default),
+      background_asset_id: formData.background_asset_id || null,
+      logo_asset_id: formData.logo_asset_id || null,
     };
   }
 
@@ -159,7 +166,7 @@
               <div class="beverage-copy">
                 <span class="name">{beverage.name}</span>
                 <span class="subtitle">
-                  {[beverage.display_brand_name || beverage.brewery, beverage.style].filter(Boolean).join(" • ") || "Без display-подписи"}
+                  {[beverage.display_brand_name || beverage.brewery, beverage.style].filter(Boolean).join(" • ") || "Без подписи для экрана"}
                 </span>
               </div>
               <div class="beverage-meta">
@@ -179,9 +186,9 @@
         <h4>{formTitle}</h4>
         <p>
           {#if selectedBeverage}
-            Оператор редактирует reusable-контент напитка, который затем наследуют краны.
+            Здесь редактируется общая карточка напитка, которую затем используют назначенные краны.
           {:else}
-            Создайте карточку напитка и сразу заполните guest-facing поля для Tap Display.
+            Создайте карточку напитка и сразу заполните поля, которые увидит гость на Tap Display.
           {/if}
         </p>
       </div>
@@ -274,7 +281,7 @@
       <div class="form-grid">
         <label class="wide">
           <span>Короткое описание</span>
-          <small>Короткий guest-facing текст для idle-экрана. Лучше без технологического жаргона.</small>
+          <small>Короткий текст для гостя на основном экране. Лучше без технологического жаргона.</small>
           <textarea
             rows="3"
             maxlength="160"
@@ -286,7 +293,7 @@
 
         <label>
           <span>Акцентный цвет</span>
-          <small>Используется в графических акцентах display-шаблона.</small>
+          <small>Используется в цветовых акцентах экрана.</small>
           <div class="color-row">
             <input
               class="color-picker"
@@ -319,7 +326,7 @@
 
         <label>
           <span>Как показывать цену</span>
-          <small>Это default для напитка; кран при необходимости может переопределить режим.</small>
+          <small>Это режим по умолчанию для напитка; при необходимости его можно переопределить на уровне крана.</small>
           <select bind:value={formData.price_display_mode_default} disabled={$beverageStore.loading}>
             <option value="per_100ml">₽ / 100 мл</option>
             <option value="per_liter">₽ / л</option>
@@ -327,12 +334,36 @@
           </select>
         </label>
 
-        <div class="wide pending-media">
-          <strong>Изображения для Tap Display</strong>
-          <p>
-            Фон и логотип подключаются ниже отдельным media picker. На этом шаге сохраняются текст, цвет
-            и ценовой режим.
-          </p>
+        <div class="wide media-grid">
+          <MediaAssetPicker
+            kind="background"
+            title="Фон Tap Display"
+            description="Большое фоновое изображение для основного экрана напитка."
+            selectedAssetId={formData.background_asset_id}
+            disabled={$beverageStore.loading}
+            emptyLabel="Фон не выбран"
+            on:change={(event) => {
+              formData = {
+                ...formData,
+                background_asset_id: event.detail.assetId,
+              };
+            }}
+          />
+
+          <MediaAssetPicker
+            kind="logo"
+            title="Логотип напитка"
+            description="Небольшой логотип или знак бренда поверх основного фона."
+            selectedAssetId={formData.logo_asset_id}
+            disabled={$beverageStore.loading}
+            emptyLabel="Логотип не выбран"
+            on:change={(event) => {
+              formData = {
+                ...formData,
+                logo_asset_id: event.detail.assetId,
+              };
+            }}
+          />
         </div>
       </div>
     </fieldset>
@@ -539,23 +570,10 @@
     color: #49566d;
   }
 
-  .pending-media {
-    padding: 0.9rem 1rem;
-    border: 1px dashed #c9d6ea;
-    border-radius: var(--radius-sm);
-    background: #f7faff;
-  }
-
-  .pending-media strong {
-    display: block;
-    margin-bottom: 0.35rem;
-  }
-
-  .pending-media p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    line-height: 1.4;
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
 
   .error {
@@ -572,6 +590,10 @@
     }
 
     .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .media-grid {
       grid-template-columns: 1fr;
     }
 

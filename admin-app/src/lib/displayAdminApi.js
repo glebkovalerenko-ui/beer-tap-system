@@ -32,7 +32,9 @@ function resolveRequestUrl(pathOrUrl) {
 }
 
 async function readErrorMessage(response) {
-  const payload = await response.json().catch(() => null);
+  const jsonResponse = response.clone();
+  const textResponse = response.clone();
+  const payload = await jsonResponse.json().catch(() => null);
 
   if (typeof payload?.detail === 'string' && payload.detail.trim()) {
     return payload.detail.trim();
@@ -46,7 +48,7 @@ async function readErrorMessage(response) {
     return JSON.stringify(payload.detail);
   }
 
-  const text = await response.text().catch(() => '');
+  const text = await textResponse.text().catch(() => '');
   if (text && text.trim()) {
     return text.trim();
   }
@@ -100,4 +102,29 @@ export function displayAdminPutJson(pathOrUrl, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+export function displayAdminPostMultipart(pathOrUrl, body) {
+  return request(pathOrUrl, {
+    method: 'POST',
+    body,
+  });
+}
+
+export function displayAdminFetchBlob(pathOrUrl) {
+  return request(pathOrUrl, {
+    responseType: 'blob',
+  });
+}
+
+export function listDisplayMediaAssets(kind) {
+  const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  return displayAdminGetJson(`/api/media-assets${query}`);
+}
+
+export function uploadDisplayMediaAsset(kind, file) {
+  const body = new FormData();
+  body.set('kind', kind);
+  body.set('file', file);
+  return displayAdminPostMultipart('/api/media-assets', body);
 }

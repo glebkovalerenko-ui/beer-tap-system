@@ -179,7 +179,7 @@
       <div class="section-header">
         <div>
           <h2>Справочник напитков</h2>
-          <p class="section-hint">Здесь оператор настраивает reusable guest-facing контент для Tap Display.</p>
+          <p class="section-hint">Здесь оператор настраивает общий контент напитка для экрана гостя.</p>
         </div>
       </div>
       <BeverageManager />
