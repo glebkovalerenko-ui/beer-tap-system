@@ -1,82 +1,172 @@
 <script>
   import { beverageStore } from "../../stores/beverageStore.js";
+  import { uiStore } from "../../stores/uiStore.js";
+  import { normalizeError } from "../../lib/errorUtils.js";
 
-  let formData = {
+  const DEFAULT_ACCENT_COLOR = "#C79A3B";
+
+  const createEmptyForm = () => ({
     name: "",
-    style: "IPA",
     brewery: "",
-    abv: "5.0",
+    style: "",
+    abv: "",
     sell_price_per_liter: "450.00",
     display_brand_name: "",
     description_short: "",
-    accent_color: "#C79A3B",
-    text_theme: "dark",
+    accent_color: DEFAULT_ACCENT_COLOR,
+    text_theme: "",
     price_display_mode_default: "per_100ml",
-  };
+  });
 
+  let selectedBeverageId = null;
+  let formData = createEmptyForm();
   let formError = "";
 
+  $: beverages = $beverageStore.beverages;
+  $: selectedBeverage = beverages.find((item) => item.beverage_id === selectedBeverageId) || null;
+  $: submitLabel = selectedBeverage ? "Сохранить изменения" : "+ Добавить напиток";
+  $: formTitle = selectedBeverage ? "Редактирование напитка" : "Новый напиток";
+
+  function normalizeOptionalString(value) {
+    const normalized = String(value ?? "").trim();
+    return normalized || null;
+  }
+
+  function isHexColor(value) {
+    return /^#[0-9a-fA-F]{6}$/.test(String(value || "").trim());
+  }
+
+  function getAccentPreviewColor() {
+    return isHexColor(formData.accent_color) ? formData.accent_color : DEFAULT_ACCENT_COLOR;
+  }
+
   function resetForm() {
+    formData = createEmptyForm();
+  }
+
+  function startCreateMode() {
+    selectedBeverageId = null;
+    formError = "";
+    resetForm();
+  }
+
+  function selectBeverage(beverage) {
+    selectedBeverageId = beverage.beverage_id;
+    formError = "";
     formData = {
-      name: "",
-      style: "IPA",
-      brewery: "",
-      abv: "5.0",
-      sell_price_per_liter: "450.00",
-      display_brand_name: "",
-      description_short: "",
-      accent_color: "#C79A3B",
-      text_theme: "dark",
-      price_display_mode_default: "per_100ml",
+      name: beverage.name || "",
+      brewery: beverage.brewery || "",
+      style: beverage.style || "",
+      abv: beverage.abv || "",
+      sell_price_per_liter: beverage.sell_price_per_liter || "",
+      display_brand_name: beverage.display_brand_name || "",
+      description_short: beverage.description_short || "",
+      accent_color: beverage.accent_color || DEFAULT_ACCENT_COLOR,
+      text_theme: beverage.text_theme || "",
+      price_display_mode_default: beverage.price_display_mode_default || "per_100ml",
+    };
+  }
+
+  function updateAccentColor(value) {
+    formData = {
+      ...formData,
+      accent_color: value,
+    };
+  }
+
+  function clearAccentColor() {
+    formData = {
+      ...formData,
+      accent_color: "",
+    };
+  }
+
+  function buildPayload() {
+    return {
+      name: String(formData.name || "").trim(),
+      brewery: normalizeOptionalString(formData.brewery),
+      style: normalizeOptionalString(formData.style),
+      abv: normalizeOptionalString(formData.abv),
+      sell_price_per_liter: String(formData.sell_price_per_liter || "").trim(),
+      display_brand_name: normalizeOptionalString(formData.display_brand_name),
+      description_short: normalizeOptionalString(formData.description_short),
+      accent_color: normalizeOptionalString(formData.accent_color),
+      text_theme: normalizeOptionalString(formData.text_theme),
+      price_display_mode_default: normalizeOptionalString(formData.price_display_mode_default),
     };
   }
 
   async function handleSubmit() {
+    const payload = buildPayload();
     formError = "";
-    try {
-      const payload = {
-        ...formData,
-        abv: formData.abv ? String(formData.abv) : null,
-        display_brand_name: formData.display_brand_name || null,
-        description_short: formData.description_short || null,
-        accent_color: formData.accent_color || null,
-        text_theme: formData.text_theme || null,
-        price_display_mode_default: formData.price_display_mode_default || null,
-      };
 
-      await beverageStore.createBeverage(payload);
-      resetForm();
+    if (!payload.name) {
+      formError = "Укажите название напитка.";
+      return;
+    }
+
+    if (!payload.sell_price_per_liter) {
+      formError = "Укажите цену за литр.";
+      return;
+    }
+
+    try {
+      if (selectedBeverageId) {
+        const updated = await beverageStore.updateBeverage(selectedBeverageId, payload);
+        selectBeverage(updated);
+        uiStore.notifySuccess(`Tap Display для напитка «${updated.name}» обновлен.`);
+      } else {
+        const created = await beverageStore.createBeverage(payload);
+        if (created) {
+          selectBeverage(created);
+          uiStore.notifySuccess(`Напиток «${created.name}» добавлен в справочник.`);
+        } else {
+          startCreateMode();
+          uiStore.notifySuccess("Напиток добавлен в справочник.");
+        }
+      }
     } catch (error) {
-      formError =
-        typeof error === "string"
-          ? error
-          : error instanceof Error
-            ? error.message
-            : "Неизвестная ошибка";
+      formError = normalizeError(error);
     }
   }
 </script>
 
 <div class="beverage-manager">
+  <div class="manager-toolbar">
+    <div>
+      <h3>Справочник напитков</h3>
+      <p>Выберите напиток, чтобы настроить его карточку для Tap Display.</p>
+    </div>
+    <button type="button" class="secondary-action" on:click={startCreateMode}>
+      Новый напиток
+    </button>
+  </div>
+
   <div class="beverage-list">
-    {#if $beverageStore.loading && $beverageStore.beverages.length === 0}
+    {#if $beverageStore.loading && beverages.length === 0}
       <p class="placeholder-text">Загрузка напитков...</p>
-    {:else if $beverageStore.beverages.length === 0}
-      <p class="placeholder-text">Напитки не найдены. Добавьте один ниже.</p>
+    {:else if beverages.length === 0}
+      <p class="placeholder-text">Напитки еще не добавлены. Создайте первый напиток ниже.</p>
     {:else}
       <ul>
-        {#each $beverageStore.beverages as beverage (beverage.beverage_id)}
+        {#each beverages as beverage (beverage.beverage_id)}
           <li>
-            <div class="beverage-copy">
-              <span class="name">{beverage.name}</span>
-              <span class="subtitle">
-                {[beverage.display_brand_name || beverage.brewery, beverage.style].filter(Boolean).join(" · ")}
-              </span>
-            </div>
-            <div class="beverage-meta">
-              <span class="type">{beverage.price_display_mode_default || "per_100ml"}</span>
-              <span class="price">{beverage.sell_price_per_liter} ₽/л</span>
-            </div>
+            <button
+              type="button"
+              class:selected={beverage.beverage_id === selectedBeverageId}
+              on:click={() => selectBeverage(beverage)}
+            >
+              <div class="beverage-copy">
+                <span class="name">{beverage.name}</span>
+                <span class="subtitle">
+                  {[beverage.display_brand_name || beverage.brewery, beverage.style].filter(Boolean).join(" • ") || "Без display-подписи"}
+                </span>
+              </div>
+              <div class="beverage-meta">
+                <span class="type">{beverage.price_display_mode_default || "per_100ml"}</span>
+                <span class="price">{beverage.sell_price_per_liter} ₽/л</span>
+              </div>
+            </button>
           </li>
         {/each}
       </ul>
@@ -84,139 +174,261 @@
   </div>
 
   <form class="beverage-form" on:submit|preventDefault={handleSubmit}>
-    <h4>Добавить напиток</h4>
-
-    <div class="form-grid">
-      <label>
-        <span>Название</span>
-        <input type="text" placeholder="Название напитка" bind:value={formData.name} required disabled={$beverageStore.loading} />
-      </label>
-
-      <label>
-        <span>Бренд на экране</span>
-        <input type="text" placeholder="Бренд / производитель" bind:value={formData.display_brand_name} disabled={$beverageStore.loading} />
-      </label>
-
-      <label>
-        <span>Пивоварня</span>
-        <input type="text" placeholder="Пивоварня" bind:value={formData.brewery} required disabled={$beverageStore.loading} />
-      </label>
-
-      <label>
-        <span>Стиль</span>
-        <select bind:value={formData.style} disabled={$beverageStore.loading}>
-          <option value="IPA">IPA</option>
-          <option value="Stout">Стаут</option>
-          <option value="Lager">Лагер</option>
-          <option value="Cider">Сидр</option>
-          <option value="Other">Другое</option>
-        </select>
-      </label>
-
-      <label>
-        <span>Крепость ABV</span>
-        <input
-          type="text"
-          placeholder="5.0"
-          bind:value={formData.abv}
-          pattern="^\d*\.?\d*$"
-          title="Например 5.0 или 4.5"
-          disabled={$beverageStore.loading}
-        />
-      </label>
-
-      <label>
-        <span>Цена за литр</span>
-        <input
-          type="text"
-          placeholder="450.00"
-          bind:value={formData.sell_price_per_liter}
-          required
-          pattern="^\d*\.?\d*$"
-          title="Например 450.00 или 500"
-          disabled={$beverageStore.loading}
-        />
-      </label>
-
-      <label>
-        <span>Акцентный цвет</span>
-        <div class="color-row">
-          <input class="color-picker" type="color" bind:value={formData.accent_color} disabled={$beverageStore.loading} />
-          <input type="text" placeholder="#C79A3B" bind:value={formData.accent_color} disabled={$beverageStore.loading} />
-        </div>
-      </label>
-
-      <label>
-        <span>Цена на экране</span>
-        <select bind:value={formData.price_display_mode_default} disabled={$beverageStore.loading}>
-          <option value="per_100ml">₽ / 100 мл</option>
-          <option value="per_liter">₽ / л</option>
-          <option value="auto">Авто</option>
-        </select>
-      </label>
-
-      <label>
-        <span>Тема текста</span>
-        <select bind:value={formData.text_theme} disabled={$beverageStore.loading}>
-          <option value="dark">Dark overlay</option>
-          <option value="light">Light overlay</option>
-          <option value="auto">Auto</option>
-        </select>
-      </label>
-
-      <label class="wide">
-        <span>Короткое описание для idle screen</span>
-        <textarea
-          rows="3"
-          maxlength="160"
-          placeholder="Короткое описание напитка для экрана у крана"
-          bind:value={formData.description_short}
-          disabled={$beverageStore.loading}
-        ></textarea>
-      </label>
+    <div class="form-header">
+      <div>
+        <h4>{formTitle}</h4>
+        <p>
+          {#if selectedBeverage}
+            Оператор редактирует reusable-контент напитка, который затем наследуют краны.
+          {:else}
+            Создайте карточку напитка и сразу заполните guest-facing поля для Tap Display.
+          {/if}
+        </p>
+      </div>
+      {#if selectedBeverage}
+        <button type="button" class="secondary-action" on:click={startCreateMode}>
+          Новый напиток
+        </button>
+      {/if}
     </div>
 
+    <fieldset>
+      <legend>Карточка напитка</legend>
+      <div class="form-grid">
+        <label>
+          <span>Название для гостя</span>
+          <small>В MVP это же название используется и в общем справочнике напитков.</small>
+          <input
+            type="text"
+            placeholder="Например, Heineken"
+            bind:value={formData.name}
+            required
+            disabled={$beverageStore.loading}
+          />
+        </label>
+
+        <label>
+          <span>Бренд на экране</span>
+          <small>Показывается как отдельная подпись над стилем или вместо пивоварни.</small>
+          <input
+            type="text"
+            placeholder="Например, BrewDog"
+            bind:value={formData.display_brand_name}
+            disabled={$beverageStore.loading}
+          />
+        </label>
+
+        <label>
+          <span>Пивоварня</span>
+          <small>Служебная информация для оператора и fallback-подпись на экране.</small>
+          <input
+            type="text"
+            placeholder="Например, Балтика"
+            bind:value={formData.brewery}
+            disabled={$beverageStore.loading}
+          />
+        </label>
+
+        <label>
+          <span>Стиль</span>
+          <small>Свободный текст: IPA, Lager, Stout и т.д.</small>
+          <input
+            type="text"
+            placeholder="Например, IPA"
+            bind:value={formData.style}
+            disabled={$beverageStore.loading}
+          />
+        </label>
+
+        <label>
+          <span>Крепость ABV</span>
+          <small>Можно оставить пустым, если на экране крепость не нужна.</small>
+          <input
+            type="text"
+            placeholder="Например, 5.0"
+            bind:value={formData.abv}
+            pattern="^\d*\.?\d*$"
+            title="Например, 5.0 или 4.5"
+            disabled={$beverageStore.loading}
+          />
+        </label>
+
+        <label>
+          <span>Цена за литр</span>
+          <small>Основа для расчета гостевой цены на Tap Display.</small>
+          <input
+            type="text"
+            placeholder="Например, 450.00"
+            bind:value={formData.sell_price_per_liter}
+            required
+            pattern="^\d*\.?\d*$"
+            title="Например, 450.00 или 500"
+            disabled={$beverageStore.loading}
+          />
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Контент Tap Display</legend>
+      <div class="form-grid">
+        <label class="wide">
+          <span>Короткое описание</span>
+          <small>Короткий guest-facing текст для idle-экрана. Лучше без технологического жаргона.</small>
+          <textarea
+            rows="3"
+            maxlength="160"
+            placeholder="Например, Легкий лагер с мягкой хмелевой горчинкой."
+            bind:value={formData.description_short}
+            disabled={$beverageStore.loading}
+          ></textarea>
+        </label>
+
+        <label>
+          <span>Акцентный цвет</span>
+          <small>Используется в графических акцентах display-шаблона.</small>
+          <div class="color-row">
+            <input
+              class="color-picker"
+              type="color"
+              value={getAccentPreviewColor()}
+              on:input={(event) => updateAccentColor(event.currentTarget.value)}
+              disabled={$beverageStore.loading}
+            />
+            <input
+              type="text"
+              placeholder="#C79A3B"
+              bind:value={formData.accent_color}
+              disabled={$beverageStore.loading}
+            />
+            <button type="button" class="clear-action" on:click={clearAccentColor} disabled={$beverageStore.loading}>
+              Сбросить
+            </button>
+          </div>
+        </label>
+
+        <label>
+          <span>Тема текста</span>
+          <small>Если не уверены, оставьте «По умолчанию».</small>
+          <select bind:value={formData.text_theme} disabled={$beverageStore.loading}>
+            <option value="">По умолчанию</option>
+            <option value="dark">Темная</option>
+            <option value="light">Светлая</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Как показывать цену</span>
+          <small>Это default для напитка; кран при необходимости может переопределить режим.</small>
+          <select bind:value={formData.price_display_mode_default} disabled={$beverageStore.loading}>
+            <option value="per_100ml">₽ / 100 мл</option>
+            <option value="per_liter">₽ / л</option>
+            <option value="auto">Авто</option>
+          </select>
+        </label>
+
+        <div class="wide pending-media">
+          <strong>Изображения для Tap Display</strong>
+          <p>
+            Фон и логотип подключаются ниже отдельным media picker. На этом шаге сохраняются текст, цвет
+            и ценовой режим.
+          </p>
+        </div>
+      </div>
+    </fieldset>
+
     <button type="submit" disabled={$beverageStore.loading}>
-      {$beverageStore.loading ? "Добавление..." : "+ Добавить напиток"}
+      {$beverageStore.loading ? "Сохранение..." : submitLabel}
     </button>
 
-    {#if formError}<p class="error">{formError}</p>{/if}
+    {#if formError}
+      <p class="error">{formError}</p>
+    {/if}
   </form>
 </div>
 
 <style>
   .beverage-manager {
-    border: 1px solid #eee;
-    border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     height: 100%;
   }
 
-  .beverage-list {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 0.5rem;
+  .manager-toolbar,
+  .form-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
   }
 
-  .beverage-list ul {
-    list-style-type: none;
-    padding: 0;
+  .manager-toolbar {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-soft);
+    background: linear-gradient(180deg, #f9fbff 0%, #ffffff 100%);
+  }
+
+  .manager-toolbar h3,
+  .form-header h4 {
     margin: 0;
   }
 
-  .beverage-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem;
-    border-bottom: 1px solid #f0f0f0;
+  .manager-toolbar p,
+  .form-header p {
+    margin: 0.25rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
   }
 
-  .beverage-list li:last-child {
-    border-bottom: none;
+  .secondary-action {
+    width: auto;
+    margin: 0;
+    background: #edf2fb;
+    color: #23416b;
+  }
+
+  .beverage-list {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-soft);
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fbfcfe;
+  }
+
+  .beverage-list ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .beverage-list li {
+    margin: 0;
+  }
+
+  .beverage-list button {
+    width: 100%;
+    margin: 0;
+    padding: 0.85rem 0.9rem;
+    background: #fff;
+    color: inherit;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    text-align: left;
+    box-shadow: none;
+  }
+
+  .beverage-list button.selected {
+    border-color: #8bb0f1;
+    background: #eef5ff;
   }
 
   .beverage-copy,
@@ -228,101 +440,147 @@
 
   .beverage-meta {
     align-items: flex-end;
+    justify-content: center;
+    text-align: right;
   }
 
   .name {
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .subtitle,
   .type {
-    font-size: 0.85rem;
-    color: #666;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
   }
 
   .price {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #1c4d88;
   }
 
   .placeholder-text {
-    padding: 1rem;
+    margin: 0;
+    padding: 0.5rem;
     text-align: center;
-    color: #888;
+    color: var(--text-secondary);
   }
 
   .beverage-form {
     padding: 1rem;
-    background-color: #f9f9f9;
-    border-top: 1px solid #eee;
+    display: grid;
+    gap: 1rem;
   }
 
-  .beverage-form h4 {
-    margin: 0 0 1rem 0;
+  fieldset {
+    margin: 0;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  legend {
+    padding: 0 0.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75rem;
+    gap: 0.85rem;
   }
 
   label {
     display: grid;
     gap: 0.35rem;
-    font-size: 0.85rem;
-    color: #444;
+    font-size: 0.9rem;
+    color: var(--text-primary);
   }
 
   label span {
-    font-weight: 600;
+    font-weight: 700;
+  }
+
+  label small {
+    color: var(--text-secondary);
+    line-height: 1.35;
   }
 
   .wide {
     grid-column: 1 / -1;
   }
 
-  input,
-  select,
   textarea {
-    width: 100%;
-    padding: 0.55rem 0.65rem;
-    box-sizing: border-box;
-    border: 1px solid #d8d8d8;
-    border-radius: 6px;
-    font: inherit;
-  }
-
-  textarea {
+    min-height: 96px;
     resize: vertical;
   }
 
   .color-row {
     display: grid;
-    grid-template-columns: 52px 1fr;
+    grid-template-columns: 56px 1fr auto;
     gap: 0.5rem;
+    align-items: center;
   }
 
   .color-picker {
     padding: 0.2rem;
+    min-height: 42px;
   }
 
-  button {
-    width: 100%;
-    padding: 0.65rem;
-    margin-top: 1rem;
+  .clear-action {
+    width: auto;
+    margin: 0;
+    background: #f3f4f6;
+    color: #49566d;
+  }
+
+  .pending-media {
+    padding: 0.9rem 1rem;
+    border: 1px dashed #c9d6ea;
+    border-radius: var(--radius-sm);
+    background: #f7faff;
+  }
+
+  .pending-media strong {
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  .pending-media p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.4;
   }
 
   .error {
-    color: red;
-    font-size: 0.8rem;
-    margin-top: 0.5rem;
-    text-align: center;
+    margin: 0;
+    color: #c61f35;
+    font-size: 0.88rem;
   }
 
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
+    .manager-toolbar,
+    .form-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
     .form-grid {
       grid-template-columns: 1fr;
+    }
+
+    .color-row {
+      grid-template-columns: 56px 1fr;
+    }
+
+    .clear-action {
+      grid-column: 1 / -1;
     }
   }
 </style>

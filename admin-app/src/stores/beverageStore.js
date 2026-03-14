@@ -1,8 +1,10 @@
 // src/stores/beverageStore.js
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { sessionStore } from './sessionStore';
-import { logError, normalizeError } from '../lib/errorUtils';
+
+import { displayAdminPutJson } from '../lib/displayAdminApi.js';
+import { logError, normalizeError } from '../lib/errorUtils.js';
+import { sessionStore } from './sessionStore.js';
 
 /**
  * @typedef {import('../../../src-tauri/src/api_client').Beverage} Beverage
@@ -29,7 +31,7 @@ function createBeverageStore() {
       const token = get(sessionStore).token;
       if (!token) return;
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      update((state) => ({ ...state, loading: true, error: null }));
       try {
         /** @type {Beverage[]} */
         const beverages = await invoke('get_beverages', { token });
@@ -42,19 +44,48 @@ function createBeverageStore() {
 
     createBeverage: async (beverageData) => {
       const token = get(sessionStore).token;
-      if (!token) throw new Error('Требуется повторный вход в систему');
+      if (!token) {
+        throw new Error('Требуется повторный вход в систему');
+      }
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      update((state) => ({ ...state, loading: true, error: null }));
       try {
         const newBeverage = await invoke('create_beverage', { token, beverageData });
-        update((s) => ({
-          ...s,
-          beverages: [...s.beverages, newBeverage].sort((a, b) => a.name.localeCompare(b.name)),
+        update((state) => ({
+          ...state,
+          beverages: [...state.beverages, newBeverage].sort((left, right) => left.name.localeCompare(right.name)),
           loading: false,
+          error: null,
         }));
+        return newBeverage;
       } catch (error) {
         const errorMessage = toErrorMessage('beverageStore.createBeverage', error);
-        update((s) => ({ ...s, loading: false, error: errorMessage }));
+        update((state) => ({ ...state, loading: false, error: errorMessage }));
+        throw new Error(errorMessage);
+      }
+    },
+
+    updateBeverage: async (beverageId, beverageData) => {
+      const token = get(sessionStore).token;
+      if (!token) {
+        throw new Error('Требуется повторный вход в систему');
+      }
+
+      update((state) => ({ ...state, loading: true, error: null }));
+      try {
+        const updatedBeverage = await displayAdminPutJson(`/api/beverages/${beverageId}`, beverageData);
+        update((state) => ({
+          ...state,
+          beverages: state.beverages
+            .map((item) => (item.beverage_id === beverageId ? updatedBeverage : item))
+            .sort((left, right) => left.name.localeCompare(right.name)),
+          loading: false,
+          error: null,
+        }));
+        return updatedBeverage;
+      } catch (error) {
+        const errorMessage = toErrorMessage('beverageStore.updateBeverage', error);
+        update((state) => ({ ...state, loading: false, error: errorMessage }));
         throw new Error(errorMessage);
       }
     },
