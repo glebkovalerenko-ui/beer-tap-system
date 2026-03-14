@@ -509,6 +509,14 @@ pub struct Beverage {
     pub abv: Option<String>, // Decimal преобразуется в String
     // ВАЖНО: имя поля sell_price_per_liter точно соответствует Pydantic схеме
     pub sell_price_per_liter: String,
+    pub description_short: Option<String>,
+    pub ibu: Option<String>,
+    pub display_brand_name: Option<String>,
+    pub accent_color: Option<String>,
+    pub background_asset_id: Option<String>,
+    pub logo_asset_id: Option<String>,
+    pub text_theme: Option<String>,
+    pub price_display_mode_default: Option<String>,
 }
 
 // --- ИЗМЕНЕНИЕ: Структура BeveragePayload приведена в полное соответствие с BeverageCreate ---
@@ -522,6 +530,22 @@ pub struct BeveragePayload {
     pub abv: Option<String>,
     // ВАЖНО: имя поля sell_price_per_liter точно соответствует Pydantic схеме
     pub sell_price_per_liter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_short: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ibu: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_brand_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_theme: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price_display_mode_default: Option<String>,
     // Поле description убрано, так как его нет в Pydantic схеме BeverageCreate
 }
 
