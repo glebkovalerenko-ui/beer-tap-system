@@ -108,7 +108,7 @@ The display client now resolves state in this order:
 ### Asset metadata policy
 
 - `width` and `height` are now populated for supported PNG/JPEG uploads.
-- The existing columns remain useful and are no longer “modeled but empty” for newly uploaded display assets.
+- The existing columns remain useful and are no longer "modeled but empty" for newly uploaded display assets.
 
 ### Error and lifecycle handling
 
@@ -160,18 +160,55 @@ Covered scenarios:
 
 Verification note:
 
-- `encoding_guard.py --all` still fails because the repository already contains pre-existing mojibake/encoding debt in previously landed files, including `backend/api/beverages.py`, `backend/api/taps.py`, and broader portions of `tap-display-client/src/App.svelte`. This correction package did not attempt a repo-wide encoding cleanup.
+- `encoding_guard.py --all` now passes cleanly after targeted UTF-8 remediation of the branch-owned regressions in `backend/api/beverages.py`, `backend/api/taps.py`, and `tap-display-client/src/App.svelte`.
 
-## 7. Remaining non-blocking debt
+## 7. Encoding and repository health closure
+
+### Audit result
+
+The initial `python scripts/encoding_guard.py --all` audit failed on exactly 3 files:
+
+- `backend/api/beverages.py`
+- `backend/api/taps.py`
+- `tap-display-client/src/App.svelte`
+
+All 3 files overlap with the `master...foundation/tap-display-corrections` diff, so the failures were branch-local regressions inside the correction package rather than unrelated old repository debt.
+
+### Attribution
+
+- `backend/api/beverages.py` and `backend/api/taps.py` were part of the branch diff and were degraded while the Tap Display backend corrections were being landed; the earlier audit and blame pass tied that degradation to the branch-local work around commit `5ff4561`.
+- `tap-display-client/src/App.svelte` was added by the branch itself and entered the branch in a mojibake state from commit `2b4785b`.
+
+### What was fixed
+
+- Restored the damaged Russian route summaries, docstrings, and comments in `backend/api/beverages.py` and `backend/api/taps.py` to valid UTF-8 without changing business logic.
+- Normalized `tap-display-client/src/App.svelte` with a targeted `ftfy`-based repair and a follow-up sanity pass over user-facing strings.
+- Fixed the remaining visible artifacts that required manual follow-up after `ftfy`:
+  - ruble symbol formatting;
+  - `мл` volume unit;
+  - `Сумма` labels;
+  - the corrupted idle separator;
+  - remaining escaped display-copy literals so the final file contains normal UTF-8 text.
+
+### Final health status
+
+- `python scripts/encoding_guard.py --all` is green.
+- No encoding issues remain in the current branch diff.
+- No independent repository-wide encoding cleanup is required to merge this correction package.
+
+### Merge impact
+
+Encoding and repository health no longer block the branch. The correction package now closes its own obvious encoding regressions instead of carrying them forward as documented debt.
+
+## 8. Remaining non-blocking debt
 
 - `sync_pours` auth contract was intentionally left untouched to avoid widening scope beyond Tap Display corrections.
 - Display auth is environment-key scoped, not yet device-registry scoped.
 - DB-level enum/check constraints for display fields are still deferred.
 - Full asset orphan cleanup/reference tracking is still deferred.
 - Kiosk supervision is improved but still pilot-grade.
-- Pre-existing encoding/mojibake debt remains in previously landed files.
 
-## 8. Final verdict
+## 9. Final verdict
 
 Yes.
 
@@ -180,6 +217,7 @@ The Tap Display foundation is now materially safer to continue building on:
 - display-agent uses a narrower read-only auth path;
 - stale/runtime/service precedence is explicit and test-backed;
 - media upload/content handling is hardened to an MVP-safe state;
-- kiosk startup is more resilient for pilot use.
+- kiosk startup is more resilient for pilot use;
+- branch-owned encoding regressions are closed and `encoding_guard` is green.
 
 Tap Display feature development can continue on top of this corrected foundation, with the remaining items above treated as non-blocking follow-up debt rather than release-blocking foundation flaws.
