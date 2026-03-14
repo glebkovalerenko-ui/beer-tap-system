@@ -43,6 +43,10 @@ export function isFastRuntimePhase(phase) {
   return FAST_POLL_PHASES.has(phase);
 }
 
+export function getSnapshotCopy(snapshot) {
+  return snapshot?.copy ?? snapshot?.copy_block ?? {};
+}
+
 function resolveBlockedServiceCode(reasonCode) {
   return BLOCKED_SERVICE_CODES.has(reasonCode) ? reasonCode : "maintenance";
 }

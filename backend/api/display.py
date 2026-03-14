@@ -42,7 +42,7 @@ def get_display_tap_snapshot(tap_id: int, request: Request, db: Session = Depend
         return Response(status_code=304, headers={"ETag": etag})
 
     return Response(
-        content=snapshot.model_dump_json(),
+        content=snapshot.model_dump_json(by_alias=True),
         media_type="application/json",
         headers={"ETag": etag},
     )

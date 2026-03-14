@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { isFastRuntimePhase, resolveDisplayState } from "./display-state.js";
+  import { getSnapshotCopy, isFastRuntimePhase, resolveDisplayState } from "./display-state.js";
 
   const FAST_RUNTIME_POLL_MS = 250;
   const SLOW_RUNTIME_POLL_MS = 1000;
@@ -209,7 +209,7 @@
     const state = resolveDisplayState({ bootstrap, runtimePayload, bootstrapError, runtimeError });
     const snapshot = state.snapshot;
     const runtime = state.runtime;
-    const copy = snapshot?.copy ?? {};
+    const copy = getSnapshotCopy(snapshot);
     const presentation = snapshot?.presentation ?? {};
     const pricing = snapshot?.pricing ?? {};
     const theme = snapshot?.theme ?? {};
@@ -318,7 +318,7 @@
     const controllerRuntimeStale = Boolean(health.controller_runtime_stale || runtimeError);
     const runtimePhase = runtime.phase ?? "idle";
     const activeRuntime = ["authorized", "pouring", "finished"].includes(runtimePhase);
-    const copy = snapshot?.copy ?? {};
+    const copy = getSnapshotCopy(snapshot);
     const presentation = snapshot?.presentation ?? {};
     const pricing = snapshot?.pricing ?? {};
     const theme = snapshot?.theme ?? {};
@@ -467,8 +467,8 @@
       return {
         kind: "service",
         tone: message.tone,
-        headline: snapshot.copy?.maintenance_title || message.headline,
-        secondary: snapshot.copy?.maintenance_subtitle || message.nextStep,
+        headline: copy.maintenance_title || message.headline,
+        secondary: copy.maintenance_subtitle || message.nextStep,
         tertiary: null,
         code: message.code,
         accentColor: "#2563EB",

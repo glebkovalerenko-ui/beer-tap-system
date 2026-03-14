@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { DISPLAY_STATE_PRECEDENCE, resolveDisplayState } from "../src/display-state.js";
+import { DISPLAY_STATE_PRECEDENCE, getSnapshotCopy, resolveDisplayState } from "../src/display-state.js";
 
 function makeSnapshot(overrides = {}) {
   const {
@@ -140,4 +140,17 @@ test("missing snapshot plus backend loss becomes no_connection service state", (
 
   assert.equal(state.kind, "service");
   assert.equal(state.code, "no_connection");
+});
+
+test("snapshot copy falls back to legacy copy_block during rollout", () => {
+  assert.deepEqual(
+    getSnapshotCopy({
+      copy_block: {
+        fallback_title: "Legacy fallback",
+      },
+    }),
+    {
+      fallback_title: "Legacy fallback",
+    },
+  );
 });

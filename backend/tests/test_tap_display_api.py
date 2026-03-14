@@ -99,6 +99,8 @@ def test_display_snapshot_returns_effective_payload_and_etag(client, db_session,
     assert payload["tap"]["tap_id"] == tap.tap_id
     assert payload["tap"]["enabled"] is True
     assert payload["assignment"]["has_assignment"] is True
+    assert "copy" in payload
+    assert "copy_block" not in payload
     assert payload["presentation"]["name"] == "Display Lager"
     assert payload["presentation"]["brand_name"] == "Display Brand"
     assert payload["pricing"]["display_mode"] == "per_100ml"
@@ -389,7 +391,9 @@ def test_admin_content_workflow_updates_snapshot_with_media_and_tap_overrides(cl
     assert snapshot["theme"]["text_theme"] == "light"
     assert snapshot["theme"]["background_asset"]["asset_id"] == tap_background["asset_id"]
     assert snapshot["theme"]["logo_asset"]["asset_id"] == beverage_logo["asset_id"]
-    assert snapshot["copy_block"]["fallback_title"] == "Кран пока пуст"
-    assert snapshot["copy_block"]["fallback_subtitle"] == "Скоро подключим новый сорт"
-    assert snapshot["copy_block"]["maintenance_title"] == "Идет обслуживание"
-    assert snapshot["copy_block"]["maintenance_subtitle"] == "Пожалуйста, подождите"
+    assert "copy" in snapshot
+    assert "copy_block" not in snapshot
+    assert snapshot["copy"]["fallback_title"] == "Кран пока пуст"
+    assert snapshot["copy"]["fallback_subtitle"] == "Скоро подключим новый сорт"
+    assert snapshot["copy"]["maintenance_title"] == "Идет обслуживание"
+    assert snapshot["copy"]["maintenance_subtitle"] == "Пожалуйста, подождите"

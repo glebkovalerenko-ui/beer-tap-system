@@ -312,7 +312,7 @@ def build_display_snapshot(
             "background_asset": _snapshot_asset(theme_background_asset, content_url_builder=content_url_builder),
             "logo_asset": _snapshot_asset(logo_asset, content_url_builder=content_url_builder),
         },
-        "copy_block": {
+        "copy": {
             "idle_instruction": config.idle_instruction if config and config.idle_instruction else DEFAULT_IDLE_INSTRUCTION,
             "fallback_title": config.fallback_title if config and config.fallback_title else DEFAULT_FALLBACK_TITLE,
             "fallback_subtitle": (
