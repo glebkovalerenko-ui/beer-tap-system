@@ -1,10 +1,59 @@
 # backend/schemas.py
+import re
 import uuid
 # --- ИЗМЕНЕНИЕ: Добавлен импорт ConfigDict для современного синтаксиса Pydantic v2 ---
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Literal
+
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
+DISPLAY_TEXT_THEMES = {"light", "dark"}
+DISPLAY_PRICE_MODES = {"per_100ml", "per_liter", "auto"}
+DISPLAY_MEDIA_KINDS = {"background", "logo"}
+
+
+def _normalize_optional_string(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _validate_accent_color(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_optional_string(value)
+    if normalized is None:
+        return None
+    if not HEX_COLOR_PATTERN.fullmatch(normalized):
+        raise ValueError("accent_color must be a hex color like #AABBCC")
+    return normalized.upper()
+
+
+def _validate_display_text_theme(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_optional_string(value)
+    if normalized is None:
+        return None
+    normalized = normalized.lower()
+    if normalized not in DISPLAY_TEXT_THEMES:
+        raise ValueError("text_theme must be one of: light, dark")
+    return normalized
+
+
+def _validate_display_price_mode(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_optional_string(value)
+    if normalized is None:
+        return None
+    normalized = normalized.lower()
+    if normalized not in DISPLAY_PRICE_MODES:
+        raise ValueError("price mode must be one of: per_100ml, per_liter, auto")
+    return normalized
+
+
+def _validate_media_kind(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized not in DISPLAY_MEDIA_KINDS:
+        raise ValueError("kind must be one of: background, logo")
+    return normalized
 
 # =============================================================================
 # СХЕМЫ ДЛЯ БИЗНЕС-ЛОГИКИ
@@ -18,13 +67,114 @@ class BeverageBase(BaseModel):
     style: Optional[str] = Field(default=None, json_schema_extra={'example': "Stout"})
     abv: Optional[Decimal] = Field(default=None, json_schema_extra={'example': 4.2})
     sell_price_per_liter: Decimal = Field(..., json_schema_extra={'example': 700.00})
+    description_short: Optional[str] = Field(default=None, max_length=160)
+    ibu: Optional[Decimal] = Field(default=None)
+    display_brand_name: Optional[str] = Field(default=None)
+    accent_color: Optional[str] = Field(default=None)
+    background_asset_id: Optional[uuid.UUID] = None
+    logo_asset_id: Optional[uuid.UUID] = None
+    text_theme: Optional[str] = None
+    price_display_mode_default: Optional[str] = None
+
+    @field_validator("accent_color")
+    @classmethod
+    def validate_accent_color(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_accent_color(value)
+
+    @field_validator("text_theme")
+    @classmethod
+    def validate_text_theme(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_display_text_theme(value)
+
+    @field_validator("price_display_mode_default")
+    @classmethod
+    def validate_price_display_mode_default(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_display_price_mode(value)
 
 class BeverageCreate(BeverageBase):
     pass
 
+
+class BeverageUpdate(BaseModel):
+    name: Optional[str] = None
+    brewery: Optional[str] = None
+    style: Optional[str] = None
+    abv: Optional[Decimal] = None
+    sell_price_per_liter: Optional[Decimal] = None
+    description_short: Optional[str] = Field(default=None, max_length=160)
+    ibu: Optional[Decimal] = None
+    display_brand_name: Optional[str] = None
+    accent_color: Optional[str] = None
+    background_asset_id: Optional[uuid.UUID] = None
+    logo_asset_id: Optional[uuid.UUID] = None
+    text_theme: Optional[str] = None
+    price_display_mode_default: Optional[str] = None
+
+    @field_validator("accent_color")
+    @classmethod
+    def validate_accent_color(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_accent_color(value)
+
+    @field_validator("text_theme")
+    @classmethod
+    def validate_text_theme(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_display_text_theme(value)
+
+    @field_validator("price_display_mode_default")
+    @classmethod
+    def validate_price_display_mode_default(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_display_price_mode(value)
+
+    @model_validator(mode="after")
+    def validate_has_changes(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one field must be provided")
+        return self
+
 class Beverage(BeverageBase):
     beverage_id: uuid.UUID
     # --- ИЗМЕНЕНИЕ: 'class Config' заменен на 'model_config' ---
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MediaAssetCreateResponse(BaseModel):
+    asset_id: uuid.UUID
+    kind: str
+    storage_key: str
+    original_filename: str
+    mime_type: str
+    byte_size: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    checksum_sha256: str
+    content_url: str
+    created_at: datetime
+
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        return _validate_media_kind(value)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MediaAssetListItem(BaseModel):
+    asset_id: uuid.UUID
+    kind: str
+    original_filename: str
+    mime_type: str
+    byte_size: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    checksum_sha256: str
+    content_url: str
+    created_at: datetime
+
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        return _validate_media_kind(value)
+
     model_config = ConfigDict(from_attributes=True)
 
 # --- Схемы для Кег (Keg) ---
@@ -70,12 +220,120 @@ class TapUpdate(BaseModel):
 class TapAssignKeg(BaseModel):
     keg_id: uuid.UUID
 
+
+class TapDisplayConfigBase(BaseModel):
+    enabled: bool = True
+    idle_instruction: Optional[str] = None
+    fallback_title: Optional[str] = None
+    fallback_subtitle: Optional[str] = None
+    maintenance_title: Optional[str] = None
+    maintenance_subtitle: Optional[str] = None
+    override_accent_color: Optional[str] = None
+    override_background_asset_id: Optional[uuid.UUID] = None
+    show_price_mode: Optional[str] = None
+
+    @field_validator("override_accent_color")
+    @classmethod
+    def validate_override_accent_color(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_accent_color(value)
+
+    @field_validator("show_price_mode")
+    @classmethod
+    def validate_show_price_mode(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_display_price_mode(value)
+
+
+class TapDisplayConfigUpsert(TapDisplayConfigBase):
+    pass
+
+
+class TapDisplayConfig(TapDisplayConfigBase):
+    tap_id: int
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Tap(TapBase):
     tap_id: int
     status: str
     keg_id: Optional[uuid.UUID] = None
     keg: Optional[Keg] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class DisplaySnapshotAsset(BaseModel):
+    asset_id: uuid.UUID
+    kind: str
+    checksum_sha256: str
+    content_url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, value: str) -> str:
+        return _validate_media_kind(value)
+
+
+class DisplaySnapshotTap(BaseModel):
+    tap_id: int
+    display_name: str
+    status: str
+    enabled: bool
+
+
+class DisplaySnapshotServiceFlags(BaseModel):
+    emergency_stop: bool
+
+
+class DisplaySnapshotAssignment(BaseModel):
+    keg_id: Optional[uuid.UUID] = None
+    beverage_id: Optional[uuid.UUID] = None
+    has_assignment: bool
+
+
+class DisplaySnapshotPresentation(BaseModel):
+    name: Optional[str] = None
+    brand_name: Optional[str] = None
+    brewery: Optional[str] = None
+    style: Optional[str] = None
+    abv: Optional[Decimal] = None
+    description_short: Optional[str] = None
+
+
+class DisplaySnapshotPricing(BaseModel):
+    sell_price_per_liter: Optional[Decimal] = None
+    price_per_100ml_cents: Optional[int] = None
+    display_mode: str
+    display_text: Optional[str] = None
+
+
+class DisplaySnapshotTheme(BaseModel):
+    accent_color: Optional[str] = None
+    text_theme: Optional[str] = None
+    background_asset: Optional[DisplaySnapshotAsset] = None
+    logo_asset: Optional[DisplaySnapshotAsset] = None
+
+
+class DisplaySnapshotCopy(BaseModel):
+    idle_instruction: Optional[str] = None
+    fallback_title: Optional[str] = None
+    fallback_subtitle: Optional[str] = None
+    maintenance_title: Optional[str] = None
+    maintenance_subtitle: Optional[str] = None
+
+
+class DisplayTapSnapshot(BaseModel):
+    tap: DisplaySnapshotTap
+    service_flags: DisplaySnapshotServiceFlags
+    assignment: DisplaySnapshotAssignment
+    presentation: DisplaySnapshotPresentation
+    pricing: DisplaySnapshotPricing
+    theme: DisplaySnapshotTheme
+    copy_block: DisplaySnapshotCopy = Field(alias="copy", serialization_alias="copy")
+    content_version: str
+    generated_at: datetime
+    model_config = ConfigDict(populate_by_name=True)
 
 # --- Схемы для Карт (Card) ---
 class CardCreate(BaseModel):
@@ -230,6 +488,7 @@ class VisitPourAuthorizeResponse(BaseModel):
     allowed: bool
     visit: Optional[Visit] = None
     reason: Optional[str] = None
+    guest_first_name: Optional[str] = None
     min_start_ml: int = 20
     max_volume_ml: int = 0
     price_per_ml_cents: int = 0

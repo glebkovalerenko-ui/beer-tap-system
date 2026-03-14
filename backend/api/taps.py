@@ -1,10 +1,9 @@
-# backend/api/taps.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
 import schemas, security
-from crud import tap_crud
+from crud import display_crud, tap_crud
 from database import get_db
 
 router = APIRouter(
@@ -81,3 +80,18 @@ def unassign_keg(tap_id: int, db: Session = Depends(get_db)):
     - Статус кеги -> 'full' (если она не была пустой).
     """
     return tap_crud.unassign_keg_from_tap(db=db, tap_id=tap_id)
+
+
+@router.get("/{tap_id}/display-config", response_model=schemas.TapDisplayConfig, summary="Get tap display config")
+def read_tap_display_config(tap_id: int, db: Session = Depends(get_db)):
+    return display_crud.get_tap_display_config(db=db, tap_id=tap_id)
+
+
+@router.put("/{tap_id}/display-config", response_model=schemas.TapDisplayConfig, summary="Update tap display config")
+def update_tap_display_config(
+    tap_id: int,
+    tap_display_config: schemas.TapDisplayConfigUpsert,
+    db: Session = Depends(get_db),
+):
+    config = display_crud.upsert_tap_display_config(db=db, tap_id=tap_id, payload=tap_display_config)
+    return schemas.TapDisplayConfig.model_validate(config)

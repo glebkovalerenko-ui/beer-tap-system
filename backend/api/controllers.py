@@ -38,7 +38,7 @@ def read_controllers(
 )
 def report_flow_event(
     payload: schemas.ControllerFlowEventRequest,
-    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+    current_user: Annotated[dict, Depends(security.get_internal_service_user)] = None,
     db: Session = Depends(get_db),
 ):
     controller_crud.record_flow_event(

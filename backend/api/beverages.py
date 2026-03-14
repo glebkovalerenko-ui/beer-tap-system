@@ -1,4 +1,3 @@
-# backend/api/beverages.py
 from typing import List, Annotated
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +15,7 @@ router = APIRouter(
 
 @router.post("/", response_model=schemas.Beverage, status_code=201, summary="Создать новый напиток")
 def create_beverage(
-    beverage: schemas.BeverageCreate, 
+    beverage: schemas.BeverageCreate,
     db: Session = Depends(get_db)
 ):
     """
@@ -29,8 +28,8 @@ def create_beverage(
 
 @router.get("/", response_model=List[schemas.Beverage], summary="Получить список напитков")
 def read_beverages(
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = 100,
     db: Session = Depends(get_db)
 ):
     """
@@ -50,3 +49,11 @@ def read_beverage(
     db_beverage = beverage_crud.get_beverage(db, beverage_id=beverage_id)
     # Обработка ошибки 404 Not Found встроена в crud-функцию
     return db_beverage
+
+@router.put("/{beverage_id}", response_model=schemas.Beverage, summary="Update beverage")
+def update_beverage(
+    beverage_id: uuid.UUID,
+    beverage_update: schemas.BeverageUpdate,
+    db: Session = Depends(get_db)
+):
+    return beverage_crud.update_beverage(db=db, beverage_id=beverage_id, beverage_update=beverage_update)

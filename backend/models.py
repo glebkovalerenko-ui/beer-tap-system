@@ -32,7 +32,19 @@ class Beverage(Base):
     sell_price_per_liter = Column(Numeric(10, 2), nullable=False, comment="Розничная цена за литр")
 
     # Связь "один ко многим": один напиток может быть во многих кегах
+    description_short = Column(Text, nullable=True)
+    ibu = Column(Numeric(5, 2), nullable=True)
+    display_brand_name = Column(String(100), nullable=True)
+    accent_color = Column(String(32), nullable=True)
+    background_asset_id = Column(UUID(as_uuid=True), ForeignKey("media_assets.asset_id"), nullable=True)
+    logo_asset_id = Column(UUID(as_uuid=True), ForeignKey("media_assets.asset_id"), nullable=True)
+    text_theme = Column(String(16), nullable=True)
+    price_display_mode_default = Column(String(16), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
     kegs = relationship("Keg", back_populates="beverage")
+    background_asset = relationship("MediaAsset", foreign_keys=[background_asset_id])
+    logo_asset = relationship("MediaAsset", foreign_keys=[logo_asset_id])
 
 
 # --- ОСНОВНЫЕ ОПЕРАЦИОННЫЕ МОДЕЛИ ---
@@ -89,6 +101,41 @@ class Tap(Base):
     # Связь "один ко многим": с одного крана может быть много наливов
     pours = relationship("Pour", back_populates="tap")
     non_sale_flows = relationship("NonSaleFlow", back_populates="tap")
+    display_config = relationship("TapDisplayConfig", back_populates="tap", uselist=False, cascade="all, delete-orphan")
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    asset_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind = Column(String(32), nullable=False, index=True)
+    storage_key = Column(String(255), nullable=False, unique=True)
+    original_filename = Column(String(255), nullable=False)
+    mime_type = Column(String(100), nullable=False)
+    byte_size = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    checksum_sha256 = Column(String(64), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TapDisplayConfig(Base):
+    __tablename__ = "tap_display_configs"
+
+    tap_id = Column(Integer, ForeignKey("taps.tap_id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    idle_instruction = Column(Text, nullable=True)
+    fallback_title = Column(String(120), nullable=True)
+    fallback_subtitle = Column(Text, nullable=True)
+    maintenance_title = Column(String(120), nullable=True)
+    maintenance_subtitle = Column(Text, nullable=True)
+    override_accent_color = Column(String(32), nullable=True)
+    override_background_asset_id = Column(UUID(as_uuid=True), ForeignKey("media_assets.asset_id"), nullable=True)
+    show_price_mode = Column(String(16), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    tap = relationship("Tap", back_populates="display_config")
+    override_background_asset = relationship("MediaAsset", foreign_keys=[override_background_asset_id])
 
 
 class Guest(Base):

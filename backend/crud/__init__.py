@@ -1,5 +1,6 @@
 from . import beverage_crud
 from . import card_crud
+from . import display_crud
 from . import guest_crud
 from . import keg_crud
 from . import pour_crud
