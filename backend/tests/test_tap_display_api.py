@@ -22,6 +22,17 @@ def _display_headers(monkeypatch, token="display-secret"):
     return {"X-Display-Token": token}
 
 
+def _upload_media_asset(client, headers, kind, filename):
+    response = client.post(
+        "/api/media-assets",
+        headers=headers,
+        files={"file": (filename, ONE_PIXEL_PNG, "image/png")},
+        data={"kind": kind},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_display_snapshot_returns_effective_payload_and_etag(client, db_session, monkeypatch, tmp_path):
     headers = _display_headers(monkeypatch)
     monkeypatch.setenv("MEDIA_STORAGE_ROOT", str(tmp_path))
@@ -279,3 +290,106 @@ def test_beverage_update_and_tap_display_config_endpoints(client):
     config_get = client.get(f"/api/taps/{tap_id}/display-config", headers=headers)
     assert config_get.status_code == 200
     assert config_get.json()["fallback_title"] == "Пусто"
+
+
+def test_admin_content_workflow_updates_snapshot_with_media_and_tap_overrides(client, monkeypatch, tmp_path):
+    headers = _auth_headers(client)
+    display_headers = _display_headers(monkeypatch)
+    monkeypatch.setenv("MEDIA_STORAGE_ROOT", str(tmp_path))
+
+    beverage_background = _upload_media_asset(client, headers, "background", "beverage-bg.png")
+    beverage_logo = _upload_media_asset(client, headers, "logo", "beverage-logo.png")
+    tap_background = _upload_media_asset(client, headers, "background", "tap-bg.png")
+
+    beverage_response = client.post(
+        "/api/beverages/",
+        headers=headers,
+        json={
+            "name": "MVP Lager",
+            "brewery": "North Brewery",
+            "style": "Lager",
+            "abv": "4.7",
+            "sell_price_per_liter": "650.00",
+        },
+    )
+    assert beverage_response.status_code == 201
+    beverage_id = beverage_response.json()["beverage_id"]
+
+    beverage_update = client.put(
+        f"/api/beverages/{beverage_id}",
+        headers=headers,
+        json={
+            "display_brand_name": "Guest Brand",
+            "description_short": "Свежий лагер с мягкой горчинкой",
+            "accent_color": "#123456",
+            "text_theme": "light",
+            "price_display_mode_default": "per_liter",
+            "background_asset_id": beverage_background["asset_id"],
+            "logo_asset_id": beverage_logo["asset_id"],
+        },
+    )
+    assert beverage_update.status_code == 200
+    beverage_payload = beverage_update.json()
+    assert beverage_payload["background_asset_id"] == beverage_background["asset_id"]
+    assert beverage_payload["logo_asset_id"] == beverage_logo["asset_id"]
+    assert beverage_payload["text_theme"] == "light"
+
+    keg_response = client.post(
+        "/api/kegs/",
+        headers=headers,
+        json={
+            "beverage_id": beverage_id,
+            "initial_volume_ml": 30000,
+            "purchase_price": "12000.00",
+        },
+    )
+    assert keg_response.status_code == 201
+    keg_id = keg_response.json()["keg_id"]
+
+    tap_response = client.post("/api/taps/", headers=headers, json={"display_name": "Tap MVP"})
+    assert tap_response.status_code == 201
+    tap_id = tap_response.json()["tap_id"]
+
+    assign_response = client.put(
+        f"/api/taps/{tap_id}/keg",
+        headers=headers,
+        json={"keg_id": keg_id},
+    )
+    assert assign_response.status_code == 200
+    assert assign_response.json()["keg"]["beverage"]["beverage_id"] == beverage_id
+
+    config_response = client.put(
+        f"/api/taps/{tap_id}/display-config",
+        headers=headers,
+        json={
+            "enabled": True,
+            "fallback_title": "Кран пока пуст",
+            "fallback_subtitle": "Скоро подключим новый сорт",
+            "maintenance_title": "Идет обслуживание",
+            "maintenance_subtitle": "Пожалуйста, подождите",
+            "override_accent_color": "#654321",
+            "override_background_asset_id": tap_background["asset_id"],
+            "show_price_mode": "per_100ml",
+        },
+    )
+    assert config_response.status_code == 200
+    config_payload = config_response.json()
+    assert config_payload["override_background_asset_id"] == tap_background["asset_id"]
+    assert config_payload["show_price_mode"] == "per_100ml"
+
+    snapshot_response = client.get(f"/api/display/taps/{tap_id}/snapshot", headers=display_headers)
+    assert snapshot_response.status_code == 200
+
+    snapshot = snapshot_response.json()
+    assert snapshot["presentation"]["name"] == "MVP Lager"
+    assert snapshot["presentation"]["brand_name"] == "Guest Brand"
+    assert snapshot["presentation"]["description_short"] == "Свежий лагер с мягкой горчинкой"
+    assert snapshot["pricing"]["display_mode"] == "per_100ml"
+    assert snapshot["theme"]["accent_color"] == "#654321"
+    assert snapshot["theme"]["text_theme"] == "light"
+    assert snapshot["theme"]["background_asset"]["asset_id"] == tap_background["asset_id"]
+    assert snapshot["theme"]["logo_asset"]["asset_id"] == beverage_logo["asset_id"]
+    assert snapshot["copy_block"]["fallback_title"] == "Кран пока пуст"
+    assert snapshot["copy_block"]["fallback_subtitle"] == "Скоро подключим новый сорт"
+    assert snapshot["copy_block"]["maintenance_title"] == "Идет обслуживание"
+    assert snapshot["copy_block"]["maintenance_subtitle"] == "Пожалуйста, подождите"
