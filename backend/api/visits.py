@@ -48,7 +48,7 @@ def authorize_pour(
     payload: schemas.VisitPourAuthorizeRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+    current_user: Annotated[dict, Depends(security.get_internal_service_user)] = None,
 ):
     request_id = get_request_id(request)
     db_identity = get_db_identity(db)
@@ -131,6 +131,7 @@ def authorize_pour(
         allowed=True,
         visit=visit,
         reason=None,
+        guest_first_name=visit.guest.first_name if visit.guest else None,
         min_start_ml=authorize_context["min_start_ml"],
         max_volume_ml=authorize_context["max_volume_ml"],
         price_per_ml_cents=authorize_context["price_per_ml_cents"],
