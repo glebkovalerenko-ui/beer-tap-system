@@ -107,6 +107,7 @@ class SyncManager:
                     "reason": "authorized",
                     "reason_code": "authorized",
                     "status_code": response.status_code,
+                    "guest_first_name": body.get("guest_first_name"),
                     "min_start_ml": int(body.get("min_start_ml") or 0),
                     "max_volume_ml": int(body.get("max_volume_ml") or 0),
                     "price_per_ml_cents": int(body.get("price_per_ml_cents") or 0),

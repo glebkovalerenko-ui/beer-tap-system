@@ -5,6 +5,7 @@ import time
 
 from config import SYNC_INTERVAL_SECONDS
 from database import DatabaseHandler
+from display_runtime import DisplayRuntimePublisher
 from flow_manager import FlowManager
 from hardware import HardwareHandler
 from sync_manager import SyncManager
@@ -27,9 +28,10 @@ def main():
     db_handler = DatabaseHandler()
     hardware = HardwareHandler()
     sync_manager = SyncManager()
+    runtime_publisher = DisplayRuntimePublisher()
     sync_manager.log_startup_config()
     sync_manager.probe_backend()
-    flow_manager = FlowManager(hardware, db_handler, sync_manager)
+    flow_manager = FlowManager(hardware, db_handler, sync_manager, runtime_publisher=runtime_publisher)
 
     threading.Thread(target=start_sync_worker, args=(db_handler, sync_manager), daemon=True).start()
 

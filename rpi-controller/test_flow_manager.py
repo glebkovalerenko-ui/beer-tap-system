@@ -97,6 +97,15 @@ class FakeSyncManager:
         return True
 
 
+class FakeRuntimePublisher:
+    def __init__(self):
+        self.snapshots = []
+
+    def publish(self, **payload):
+        self.snapshots.append(dict(payload))
+        return payload
+
+
 def test_flow_manager_throttles_processing_sync_logs(caplog):
     clock = FakeClock()
     hardware = FakeHardware(card_present_responses=[False, False, False])
@@ -327,3 +336,85 @@ def test_controller_does_not_open_valve_on_insufficient_funds():
     assert hardware.valve_close_calls >= 1
     assert manager.card_must_be_removed is True
     assert db_handler.pours == []
+
+
+def test_flow_manager_publishes_idle_runtime_snapshot():
+    clock = FakeClock()
+    runtime_publisher = FakeRuntimePublisher()
+    manager = FlowManager(
+        FakeHardware(card_present_responses=[False]),
+        FakeDbHandler(),
+        FakeSyncManager({"allowed": False}),
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        runtime_publisher=runtime_publisher,
+    )
+
+    manager.process()
+
+    assert runtime_publisher.snapshots[-1]["phase"] == "idle"
+    assert runtime_publisher.snapshots[-1]["card_present"] is False
+
+
+def test_flow_manager_publishes_denied_runtime_snapshot():
+    clock = FakeClock()
+    runtime_publisher = FakeRuntimePublisher()
+    manager = FlowManager(
+        FakeHardware(card_present_responses=[True]),
+        FakeDbHandler(),
+        FakeSyncManager(
+            {
+                "allowed": False,
+                "reason_code": "insufficient_funds",
+                "reason": "insufficient_funds",
+                "status_code": 403,
+            }
+        ),
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        runtime_publisher=runtime_publisher,
+    )
+
+    manager.process()
+
+    assert runtime_publisher.snapshots[-1]["phase"] == "denied"
+    assert runtime_publisher.snapshots[-1]["reason_code"] == "insufficient_funds"
+
+
+def test_flow_manager_publishes_finished_runtime_snapshot():
+    clock = FakeClock()
+    runtime_publisher = FakeRuntimePublisher()
+    manager = FlowManager(
+        FakeHardware(
+            card_present_responses=[True, True, False],
+            volume_deltas_liters=[0.02],
+        ),
+        FakeDbHandler(),
+        FakeSyncManager(
+            {
+                "allowed": True,
+                "guest_first_name": "Иван",
+                "max_volume_ml": 100,
+                "price_per_ml_cents": 2,
+                "balance_cents": 1000,
+            }
+        ),
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+        runtime_publisher=runtime_publisher,
+    )
+
+    manager.process()
+
+    phases = [snapshot["phase"] for snapshot in runtime_publisher.snapshots]
+    assert "authorized" in phases
+    assert "pouring" in phases
+    assert runtime_publisher.snapshots[-1]["phase"] == "finished"
+    assert runtime_publisher.snapshots[-1]["guest_first_name"] == "Иван"
+    assert runtime_publisher.snapshots[-1]["current_volume_ml"] == 20

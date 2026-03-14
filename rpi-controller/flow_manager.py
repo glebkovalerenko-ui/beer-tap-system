@@ -32,6 +32,7 @@ class FlowManager:
         progress_factory=None,
         time_source=None,
         sleep_fn=None,
+        runtime_publisher=None,
     ):
         self.hardware = hardware
         self.db_handler = db_handler
@@ -43,12 +44,14 @@ class FlowManager:
         self._sleep = sleep_fn or time.sleep
         self._log_throttle = log_throttle or LogThrottle(time_source=self._time_source)
         self._progress_factory = progress_factory or (lambda: TerminalProgressDisplay(time_source=self._time_source))
+        self._runtime_publisher = runtime_publisher
         self._unexpected_flow_started_at = None
         self._unexpected_flow_last_seen_at = None
         self._unexpected_flow_volume_liters = 0.0
         self._unexpected_flow_reported = False
         self._unexpected_flow_event_id = None
         self._unexpected_flow_last_report_at = None
+        self._last_session_summary = None
 
     @staticmethod
     def _legacy_price_cents(volume_ml):
@@ -57,6 +60,40 @@ class FlowManager:
     @staticmethod
     def _liters_to_ml(volume_liters: float) -> int:
         return int(max(float(volume_liters or 0.0), 0.0) * 1000)
+
+    @staticmethod
+    def _projected_remaining_balance(balance_cents_at_authorize, current_cost_cents):
+        if balance_cents_at_authorize is None:
+            return None
+        return int(balance_cents_at_authorize) - int(current_cost_cents or 0)
+
+    def _publish_runtime(self, **payload):
+        if self._runtime_publisher is None:
+            return None
+        return self._runtime_publisher.publish(**payload)
+
+    def _publish_card_removal_state(self, *, card_present: bool):
+        reason = self._card_must_be_removed_reason or "card_must_be_removed"
+        if reason == "session_completed" and self._last_session_summary:
+            summary = dict(self._last_session_summary)
+            summary["card_present"] = card_present
+            self._publish_runtime(**summary)
+            return
+
+        denied_reasons = {
+            "lost_card",
+            "insufficient_funds",
+            "no_active_visit",
+            "card_in_use_on_other_tap",
+            "authorize_rejected",
+            "backend_unreachable",
+        }
+        phase = "denied" if reason in denied_reasons else "blocked"
+        self._publish_runtime(
+            phase=phase,
+            reason_code=reason,
+            card_present=card_present,
+        )
 
     def _log_throttled(
         self,
@@ -356,6 +393,7 @@ class FlowManager:
         released_reason = self._card_must_be_removed_reason
         self._card_must_be_removed_reason = None
         self._log_throttle.reset("card_must_be_removed_wait")
+        self._last_session_summary = None
         logging.info(
             "Режим ожидания снятия карты завершён: считыватель свободен, задержка выдержана. предыдущая_причина=%s",
             released_reason,
@@ -368,6 +406,7 @@ class FlowManager:
                 card_present=card_present,
                 session_state="card_present_no_session" if card_present else "no_card_no_session",
             )
+            self._publish_card_removal_state(card_present=card_present)
             self._handle_card_must_be_removed(card_present=card_present)
             return
 
@@ -378,6 +417,11 @@ class FlowManager:
         )
 
         if self.db_handler.has_unsynced_for_tap(TAP_ID):
+            self._publish_runtime(
+                phase="blocked",
+                reason_code="processing_sync",
+                card_present=card_present,
+            )
             self._log_throttled(
                 "processing_sync_block",
                 "Кран занят синхронизацией: есть несинхронизированный налив, новый запуск заблокирован.",
@@ -390,16 +434,21 @@ class FlowManager:
         self._log_throttle.reset("processing_sync_block")
 
         if not card_present:
+            self._publish_runtime(phase="idle", card_present=False)
             return
 
         card_uid = self.hardware.get_card_uid()
         if not card_uid:
+            self._publish_runtime(phase="idle", card_present=card_present)
             return
 
         card_uid = card_uid.replace(" ", "").lower()
+        self._publish_runtime(phase="authorizing", card_present=True)
         auth_result = self.sync_manager.authorize_pour(card_uid=card_uid, tap_id=TAP_ID)
         if not auth_result.get("allowed"):
             reason_code = auth_result.get("reason_code") or "authorize_denied"
+            if reason_code == "request_failed" or auth_result.get("status_code") is None:
+                reason_code = "backend_unreachable"
             self._log_throttled(
                 f"authorize_denied:{reason_code}",
                 "Старт налива отклонён для карты %s. код_ответа=%s причина=%s"
@@ -407,6 +456,11 @@ class FlowManager:
                 level=logging.WARNING,
                 interval_seconds=2.0,
                 state=reason_code,
+            )
+            self._publish_runtime(
+                phase="denied",
+                reason_code=reason_code,
+                card_present=True,
             )
             if reason_code == "lost_card":
                 self._log_throttled(
@@ -416,7 +470,7 @@ class FlowManager:
                     interval_seconds=2.0,
                     state=reason_code,
                 )
-                self._enter_card_must_be_removed("lost_card")
+                self._enter_card_must_be_removed(reason_code)
             elif reason_code == "insufficient_funds":
                 self._log_throttled(
                     "authorize_denied_insufficient_funds",
@@ -425,9 +479,9 @@ class FlowManager:
                     interval_seconds=2.0,
                     state=reason_code,
                 )
-                self._enter_card_must_be_removed("insufficient_funds")
+                self._enter_card_must_be_removed(reason_code)
             else:
-                self._enter_card_must_be_removed("authorize_rejected")
+                self._enter_card_must_be_removed(reason_code)
             return
 
         self._log_throttle.reset("authorize_denied:authorize_denied")
@@ -439,6 +493,8 @@ class FlowManager:
         max_volume_ml = int(auth_result.get("max_volume_ml") or 0)
         price_per_ml_cents = int(auth_result.get("price_per_ml_cents") or 0)
         has_authorized_price = price_per_ml_cents > 0
+        balance_cents_at_authorize = int(auth_result.get("balance_cents") or 0)
+        guest_first_name = auth_result.get("guest_first_name")
         if max_volume_ml <= 0:
             self._log_throttled(
                 "authorize_invalid_contract",
@@ -446,6 +502,11 @@ class FlowManager:
                 % (max_volume_ml, price_per_ml_cents),
                 level=logging.ERROR,
                 interval_seconds=2.0,
+            )
+            self._publish_runtime(
+                phase="blocked",
+                reason_code="authorize_invalid_contract",
+                card_present=True,
             )
             self._enter_card_must_be_removed("authorize_invalid_contract")
             return
@@ -466,6 +527,18 @@ class FlowManager:
         next_emergency_check_at = started_monotonic + self.EMERGENCY_CHECK_INTERVAL_SECONDS
         client_tx_id = str(uuid.uuid4())
         short_id = client_tx_id.replace("-", "")[:8].upper()
+        self._publish_runtime(
+            phase="authorized",
+            card_present=True,
+            guest_first_name=guest_first_name,
+            balance_cents_at_authorize=balance_cents_at_authorize,
+            price_per_ml_cents=price_per_ml_cents,
+            max_volume_ml=max_volume_ml,
+            current_volume_ml=0,
+            current_cost_cents=0,
+            projected_remaining_balance_cents=balance_cents_at_authorize,
+            session_short_id=short_id,
+        )
         card_removed_by_timeout = False
         stop_reason = "card_removed"
         progress_display = self._progress_factory()
@@ -518,6 +591,26 @@ class FlowManager:
                         else self._legacy_price_cents(total_volume_ml)
                     ),
                 )
+                current_cost_cents = (
+                    calculate_price_cents(total_volume_ml, price_per_ml_cents)
+                    if has_authorized_price
+                    else self._legacy_price_cents(total_volume_ml)
+                )
+                self._publish_runtime(
+                    phase="pouring" if total_volume_ml > 0 else "authorized",
+                    card_present=True,
+                    guest_first_name=guest_first_name,
+                    balance_cents_at_authorize=balance_cents_at_authorize,
+                    price_per_ml_cents=price_per_ml_cents,
+                    max_volume_ml=max_volume_ml,
+                    current_volume_ml=total_volume_ml,
+                    current_cost_cents=current_cost_cents,
+                    projected_remaining_balance_cents=self._projected_remaining_balance(
+                        balance_cents_at_authorize,
+                        current_cost_cents,
+                    ),
+                    session_short_id=short_id,
+                )
 
                 if now - last_flow_at >= self.FLOW_TIMEOUT_SECONDS:
                     logging.info("Клапан закрыт по таймауту")
@@ -569,6 +662,24 @@ class FlowManager:
                 if has_authorized_price
                 else self._legacy_price_cents(total_volume_ml)
             )
+            finished_summary = {
+                "phase": "finished",
+                "reason_code": None,
+                "card_present": final_card_present,
+                "guest_first_name": guest_first_name,
+                "balance_cents_at_authorize": balance_cents_at_authorize,
+                "price_per_ml_cents": price_per_ml_cents,
+                "max_volume_ml": max_volume_ml,
+                "current_volume_ml": total_volume_ml,
+                "current_cost_cents": price_cents,
+                "projected_remaining_balance_cents": self._projected_remaining_balance(
+                    balance_cents_at_authorize,
+                    price_cents,
+                ),
+                "session_short_id": short_id,
+            }
+            self._last_session_summary = finished_summary
+            self._publish_runtime(**finished_summary)
             pour_data = {
                 "client_tx_id": client_tx_id,
                 "short_id": short_id,
@@ -585,5 +696,12 @@ class FlowManager:
             self.db_handler.add_pour(pour_data)
             logging.info("Запись о наливе сохранена в локальную БД")
 
+        elif stop_reason == "emergency_stop":
+            self._publish_runtime(
+                phase="blocked",
+                reason_code="emergency_stop",
+                card_present=final_card_present,
+            )
+
         if final_card_present:
-            self._enter_card_must_be_removed("session_completed")
+            self._enter_card_must_be_removed("session_completed" if total_volume_ml > 1 else stop_reason)
