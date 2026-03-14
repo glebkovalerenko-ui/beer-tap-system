@@ -1,17 +1,15 @@
 <!-- src/components/taps/TapGrid.svelte -->
 <script>
-  import { createEventDispatcher } from 'svelte';
   import TapCard from './TapCard.svelte';
-  
+
   export let taps = [];
-  const dispatch = createEventDispatcher();
 </script>
 
 {#if taps.length > 0}
   <div class="tap-grid">
     {#each taps as tap (tap.tap_id)}
       <div class="grid-item">
-        <TapCard {tap} on:assign />
+        <TapCard {tap} on:assign on:display-settings />
       </div>
     {/each}
   </div>
@@ -24,13 +22,11 @@
 <style>
   .tap-grid {
     display: grid;
-    /* Адаптивная сетка: карточки не уже 280px, растягиваются */
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.5rem; /* Отступы между карточками */
+    gap: 1.5rem;
     padding: 0.5rem;
   }
 
-  /* Обертка нужна, чтобы TapCard (height: 100%) растянулся на всю высоту ячейки грида */
   .grid-item {
     display: flex;
     flex-direction: column;

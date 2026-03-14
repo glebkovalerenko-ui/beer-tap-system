@@ -1,10 +1,11 @@
 <!-- src/components/taps/TapCard.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { tapStore } from '../../stores/tapStore.js';
-  import { kegStore } from '../../stores/kegStore.js';
-  import { uiStore } from '../../stores/uiStore.js';
+
   import { formatTapStatus, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
+  import { kegStore } from '../../stores/kegStore.js';
+  import { tapStore } from '../../stores/tapStore.js';
+  import { uiStore } from '../../stores/uiStore.js';
 
   export let tap;
 
@@ -12,53 +13,62 @@
 
   $: keg = tap.keg;
   $: kegPercentage = keg ? (keg.current_volume_ml / keg.initial_volume_ml) * 100 : 0;
-  // Логика: если нет кеги и кран закрыт или пуст - можно назначить
   $: isAssignable = !tap.keg_id && (tap.status === 'locked' || tap.status === 'empty');
-  
+
   let isLoading = false;
 
   async function handleUnassign() {
     if (!keg) return;
+
     const approved = await uiStore.confirm({
       title: 'Подтвердите действие',
       message: `Отключить кегу "${keg.beverage.name}" с ${tap.display_name}?`,
       confirmText: 'Да, снять',
       cancelText: 'Отмена',
-      danger: true
+      danger: true,
     });
 
-    if (approved) {
-      isLoading = true;
-      try {
-        await tapStore.unassignKegFromTap(tap.tap_id);
-        kegStore.markKegAsAvailable(keg.keg_id);
-      } catch (error) {
-        uiStore.notifyError(`Ошибка: ${error}`);
-      } finally {
-        isLoading = false;
-      }
+    if (!approved) {
+      return;
+    }
+
+    isLoading = true;
+    try {
+      await tapStore.unassignKegFromTap(tap.tap_id);
+      kegStore.markKegAsAvailable(keg.keg_id);
+    } catch (error) {
+      uiStore.notifyError(`Ошибка: ${error}`);
+    } finally {
+      isLoading = false;
     }
   }
 
   async function handleStatusChange(newStatus) {
-    // Перевод статусов для confirm
-    const statusMap = { locked: 'Заблокирован', active: 'Активен', cleaning: 'На промывке', empty: 'Пуст' };
+    const statusMap = {
+      locked: 'Заблокирован',
+      active: 'Активен',
+      cleaning: 'На промывке',
+      empty: 'Пуст',
+    };
+
     const approved = await uiStore.confirm({
       title: 'Изменение статуса крана',
       message: `Изменить статус ${tap.display_name} на "${statusMap[newStatus] || newStatus}"?`,
       confirmText: 'Подтвердить',
-      cancelText: 'Отмена'
+      cancelText: 'Отмена',
     });
 
-    if (approved) {
-      isLoading = true;
-      try {
-        await tapStore.updateTapStatus(tap.tap_id, newStatus);
-      } catch (error) {
-        uiStore.notifyError(`Ошибка: ${error}`);
-      } finally {
-        isLoading = false;
-      }
+    if (!approved) {
+      return;
+    }
+
+    isLoading = true;
+    try {
+      await tapStore.updateTapStatus(tap.tap_id, newStatus);
+    } catch (error) {
+      uiStore.notifyError(`Ошибка: ${error}`);
+    } finally {
+      isLoading = false;
     }
   }
 </script>
@@ -72,7 +82,6 @@
 
   <div class="card-header">
     <span class="tap-name">{tap.display_name}</span>
-    <!-- Статус с цветовым кодированием -->
     <span class="status-badge {tap.status}">
       {formatTapStatus(tap.status)}
     </span>
@@ -84,7 +93,7 @@
         <h3 class="beverage-name">{keg.beverage.name}</h3>
         <p class="beverage-style">{keg.beverage.style || 'Стиль не указан'}</p>
       </div>
-      
+
       <div class="progress-container" title={formatVolumeRangeRu(keg.current_volume_ml, keg.initial_volume_ml)}>
         <div class="progress-bar" style="width: {kegPercentage}%" class:low={kegPercentage < 15}></div>
       </div>
@@ -94,28 +103,36 @@
       </div>
     {:else}
       <div class="empty-state">
-        <span class="empty-icon">🍺</span>
-        <p>Кега не назначена</p>
+        <span class="empty-icon">Кега не назначена</span>
+        <p>Экран можно настроить заранее, даже пока напиток не подключен.</p>
       </div>
     {/if}
   </div>
 
   <div class="card-footer">
-    {#if tap.keg_id}
-      <button class="btn-action" on:click={() => handleStatusChange(tap.status === 'active' ? 'locked' : 'active')}>
-        {tap.status === 'active' ? '🔒 Блок' : '🔓 Открыть'}
-      </button>
-      <button class="btn-action danger" on:click={handleUnassign}>⏏️ Снять</button>
-    {:else}
-      {#if tap.status === 'cleaning'}
-        <button class="btn-action primary" on:click={() => handleStatusChange('locked')}>✅ Чисто</button>
-      {:else}
-        <button class="btn-action" on:click={() => handleStatusChange('cleaning')}>🧹 Чистка</button>
-        <button class="btn-action primary" on:click={() => dispatch('assign', { tap })} disabled={!isAssignable}>
-          📥 Назначить
+    <div class="primary-actions">
+      {#if tap.keg_id}
+        <button class="btn-action" on:click={() => handleStatusChange(tap.status === 'active' ? 'locked' : 'active')}>
+          {tap.status === 'active' ? 'Блокировать' : 'Открыть'}
         </button>
+        <button class="btn-action danger" on:click={handleUnassign}>Снять кегу</button>
+      {:else}
+        {#if tap.status === 'cleaning'}
+          <button class="btn-action primary wide-action" on:click={() => handleStatusChange('locked')}>
+            Чисто
+          </button>
+        {:else}
+          <button class="btn-action" on:click={() => handleStatusChange('cleaning')}>Чистка</button>
+          <button class="btn-action primary" on:click={() => dispatch('assign', { tap })} disabled={!isAssignable}>
+            Назначить
+          </button>
+        {/if}
       {/if}
-    {/if}
+    </div>
+
+    <button class="btn-screen" on:click={() => dispatch('display-settings', { tap })}>
+      Экран
+    </button>
   </div>
 </div>
 
@@ -123,10 +140,10 @@
   .tap-card {
     background: white;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     display: flex;
     flex-direction: column;
-    height: 100%; /* Растягиваем на всю высоту грида */
+    height: 100%;
     transition: transform 0.2s, box-shadow 0.2s;
     position: relative;
     overflow: hidden;
@@ -135,10 +152,9 @@
 
   .tap-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 
-  /* Header */
   .card-header {
     padding: 1rem;
     display: flex;
@@ -167,17 +183,25 @@
   .status-badge.cleaning { background-color: #e8f0fe; color: #1967d2; }
   .status-badge.empty { background-color: #f1f3f4; color: #5f6368; }
 
-  /* Body */
   .card-body {
     padding: 1rem;
-    flex-grow: 1; /* Толкает футер вниз */
+    flex-grow: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
   }
 
-  .beverage-name { margin: 0 0 0.25rem 0; font-size: 1.2rem; color: #202124; }
-  .beverage-style { margin: 0 0 1rem 0; font-size: 0.9rem; color: #5f6368; }
+  .beverage-name {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.2rem;
+    color: #202124;
+  }
+
+  .beverage-style {
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+    color: #5f6368;
+  }
 
   .progress-container {
     height: 8px;
@@ -192,7 +216,10 @@
     background-color: #34a853;
     transition: width 0.5s ease;
   }
-  .progress-bar.low { background-color: #fbbc04; }
+
+  .progress-bar.low {
+    background-color: #fbbc04;
+  }
 
   .volume-labels {
     display: flex;
@@ -200,59 +227,121 @@
     font-size: 0.85rem;
     font-weight: 500;
   }
-  .text-muted { color: #80868b; font-weight: 400; }
+
+  .text-muted {
+    color: #80868b;
+    font-weight: 400;
+  }
 
   .empty-state {
-    text-align: center;
-    color: #9aa0a6;
-    padding: 1rem 0;
+    display: grid;
+    gap: 0.45rem;
+    color: #64748b;
   }
-  .empty-icon { font-size: 2rem; display: block; margin-bottom: 0.5rem; opacity: 0.5; }
 
-  /* Footer */
+  .empty-state p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .empty-icon {
+    font-weight: 700;
+    color: #334155;
+  }
+
   .card-footer {
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 1rem 1rem;
     border-top: 1px solid #f5f5f5;
     background-color: #fff;
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .primary-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
   }
 
-  .btn-action {
-    background: transparent;
-    border: 1px solid #dadce0;
+  .wide-action {
+    grid-column: 1 / -1;
+  }
+
+  .btn-action,
+  .btn-screen {
     border-radius: 6px;
-    padding: 0.5rem;
+    padding: 0.55rem 0.65rem;
     font-size: 0.85rem;
     font-weight: 600;
-    color: #3c4043;
     cursor: pointer;
     transition: all 0.2s;
   }
 
-  .btn-action:hover { background-color: #f8f9fa; border-color: #bdc1c6; }
-  
+  .btn-action {
+    background: transparent;
+    border: 1px solid #dadce0;
+    color: #3c4043;
+  }
+
+  .btn-screen {
+    background: #edf2fb;
+    border: 1px solid #d2dff5;
+    color: #23416b;
+  }
+
+  .btn-action:hover,
+  .btn-screen:hover {
+    background-color: #f8f9fa;
+    border-color: #bdc1c6;
+  }
+
   .btn-action.primary {
     background-color: #1a73e8;
     color: white;
     border: none;
   }
-  .btn-action.primary:hover { background-color: #1557b0; }
-  .btn-action.primary:disabled { background-color: #e8f0fe; color: #aecbfa; cursor: not-allowed; }
 
-  .btn-action.danger { color: #d93025; border-color: #f28b82; }
-  .btn-action.danger:hover { background-color: #fce8e6; }
-
-  /* Loading */
-  .overlay {
-    position: absolute; inset: 0; background: rgba(255,255,255,0.8);
-    display: flex; justify-content: center; align-items: center; z-index: 10;
+  .btn-action.primary:hover {
+    background-color: #1557b0;
   }
+
+  .btn-action.primary:disabled {
+    background-color: #e8f0fe;
+    color: #aecbfa;
+    cursor: not-allowed;
+  }
+
+  .btn-action.danger {
+    color: #d93025;
+    border-color: #f28b82;
+  }
+
+  .btn-action.danger:hover {
+    background-color: #fce8e6;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+  }
+
   .spinner {
-    width: 24px; height: 24px; border: 3px solid #e8f0fe;
-    border-top-color: #1a73e8; border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e8f0fe;
+    border-top-color: #1a73e8;
+    border-radius: 50%;
     animation: spin 1s linear infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 </style>
