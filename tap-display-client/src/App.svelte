@@ -8,77 +8,77 @@
 
   const deniedCopy = {
     lost_card: {
-      headline: "РљР°СЂС‚Р° СѓС‚РµСЂСЏРЅР°",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Карта утеряна",
+      nextStep: "Обратитесь к оператору",
     },
     insufficient_funds: {
-      headline: "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СЃСЂРµРґСЃС‚РІ",
-      nextStep: "РџРѕРїРѕР»РЅРёС‚Рµ Р±Р°Р»Р°РЅСЃ",
+      headline: "Недостаточно средств",
+      nextStep: "Пополните баланс",
     },
     no_active_visit: {
-      headline: "РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ РІРёР·РёС‚Р°",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Нет активного визита",
+      nextStep: "Обратитесь к оператору",
     },
     card_in_use_on_other_tap: {
-      headline: "РљР°СЂС‚Р° Р·Р°РЅСЏС‚Р°",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Карта занята",
+      nextStep: "Обратитесь к оператору",
     },
     backend_unreachable: {
-      headline: "РќРµС‚ СЃРІСЏР·Рё СЃ СЃРёСЃС‚РµРјРѕР№",
-      nextStep: "РљСЂР°РЅ РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
+      headline: "Нет связи с системой",
+      nextStep: "Кран временно недоступен",
     },
     authorize_rejected: {
-      headline: "РќР°Р»РёРІ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
-      nextStep: "Р—Р°Р±РµСЂРёС‚Рµ РєР°СЂС‚Сѓ",
+      headline: "Налив недоступен",
+      nextStep: "Заберите карту",
     },
   };
 
   const serviceCopy = {
     no_connection: {
-      headline: "РќРµС‚ СЃРІСЏР·Рё СЃ СЃРёСЃС‚РµРјРѕР№",
-      nextStep: "РљСЂР°РЅ РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
+      headline: "Нет связи с системой",
+      nextStep: "Кран временно недоступен",
       code: "backend_unreachable",
       tone: "warning",
     },
     maintenance: {
-      headline: "РљСЂР°РЅ РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Кран временно недоступен",
+      nextStep: "Обратитесь к оператору",
       code: "maintenance",
       tone: "info",
     },
     no_keg: {
-      headline: "РќР°РїРёС‚РѕРє РЅРµ РЅР°Р·РЅР°С‡РµРЅ",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Напиток не назначен",
+      nextStep: "Обратитесь к оператору",
       code: "no_keg",
       tone: "neutral",
     },
     processing_sync: {
-      headline: "РџРѕРґРѕР¶РґРёС‚Рµ",
-      nextStep: "РљСЂР°РЅ Р·Р°РІРµСЂС€Р°РµС‚ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ",
+      headline: "Подождите",
+      nextStep: "Кран завершает синхронизацию",
       code: "processing_sync",
       tone: "info",
     },
     emergency_stop: {
-      headline: "РљСЂР°РЅ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Кран недоступен",
+      nextStep: "Обратитесь к оператору",
       code: "emergency_stop",
       tone: "danger",
     },
     authorize_invalid_contract: {
-      headline: "РљСЂР°РЅ РЅРµРґРѕСЃС‚СѓРїРµРЅ",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Кран недоступен",
+      nextStep: "Обратитесь к оператору",
       code: "authorize_invalid_contract",
       tone: "danger",
     },
     controller_runtime_stale: {
-      headline: "РќРµС‚ СЃРІСЏР·Рё СЃ РєРѕРЅС‚СЂРѕР»Р»РµСЂРѕРј",
-      nextStep: "РћР±СЂР°С‚РёС‚РµСЃСЊ Рє РѕРїРµСЂР°С‚РѕСЂСѓ",
+      headline: "Нет связи с контроллером",
+      nextStep: "Обратитесь к оператору",
       code: "controller_runtime_stale",
       tone: "warning",
     },
     flow_timeout: {
-      headline: "РќР°Р»РёРІ РѕСЃС‚Р°РЅРѕРІР»РµРЅ",
-      nextStep: "Р—Р°Р±РµСЂРёС‚Рµ РєР°СЂС‚Сѓ",
+      headline: "Налив остановлен",
+      nextStep: "Заберите карту",
       code: "flow_timeout",
       tone: "warning",
     },
@@ -92,15 +92,15 @@
   let bootstrapTimer;
 
   function formatMoneyFromCents(value) {
-    if (value === null || value === undefined) return "вЂ”";
+    if (value === null || value === undefined) return "—";
     return `${(Number(value) / 100).toLocaleString("ru-RU", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
-    })} в‚Ѕ`;
+    })} ₽`;
   }
 
   function formatMl(value) {
-    return `${Math.max(Number(value) || 0, 0).toLocaleString("ru-RU")} РјР»`;
+    return `${Math.max(Number(value) || 0, 0).toLocaleString("ru-RU")} мл`;
   }
 
   function formatAbv(value) {
@@ -140,8 +140,8 @@
       return {
         kind: "service",
         tone: "neutral",
-        headline: "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u044d\u043a\u0440\u0430\u043d\u0430",
-        secondary: "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435",
+        headline: "Загрузка экрана",
+        secondary: "Подождите",
         tertiary: null,
         code: "booting",
         accentColor: "#475569",
@@ -213,7 +213,7 @@
     const presentation = snapshot?.presentation ?? {};
     const pricing = snapshot?.pricing ?? {};
     const theme = snapshot?.theme ?? {};
-    const warning = state.warning ? "\u041d\u0435\u0442 \u0441\u0432\u044f\u0437\u0438 \u0441 \u0441\u0438\u0441\u0442\u0435\u043c\u043e\u0439" : null;
+    const warning = state.warning ? "Нет связи с системой" : null;
 
     if (state.kind === "denied") {
       const message = deniedCopy[runtime.reason_code] ?? deniedCopy.authorize_rejected;
@@ -222,7 +222,7 @@
         tone: "warning",
         headline: message.headline,
         secondary: message.nextStep,
-        tertiary: "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u043a\u0430\u0440\u0442\u0443",
+        tertiary: "Заберите карту",
         code: runtime.reason_code,
         accentColor: "#D97706",
       };
@@ -236,8 +236,8 @@
       return {
         kind: "authorized",
         tone: "brand",
-        headline: "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435",
-        secondary: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u043c \u043a\u0430\u0440\u0442\u0443",
+        headline: "Подождите",
+        secondary: "Проверяем карту",
         tertiary: null,
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
@@ -248,10 +248,10 @@
       return {
         kind: "authorized",
         tone: "brand",
-        headline: "\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043a\u0440\u0430\u043d",
+        headline: "Откройте кран",
         secondary: runtime.guest_first_name
-          ? `${runtime.guest_first_name}, \u043c\u043e\u0436\u043d\u043e \u043d\u0430\u043b\u0438\u0432\u0430\u0442\u044c`
-          : "\u041c\u043e\u0436\u043d\u043e \u043d\u0430\u043b\u0438\u0432\u0430\u0442\u044c",
+          ? `${runtime.guest_first_name}, можно наливать`
+          : "Можно наливать",
         tertiary: formatMoneyFromCents(runtime.balance_cents_at_authorize),
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
@@ -286,7 +286,7 @@
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
         logoUrl: theme.logo_asset?.content_url ?? null,
-        warning: state.warning ? "\u041e\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044f \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f" : null,
+        warning: state.warning ? "Ожидается синхронизация" : null,
       };
     }
 
@@ -298,7 +298,7 @@
       tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" / "),
       description: presentation.description_short,
       brand: presentation.brand_name || presentation.brewery,
-      instruction: copy.idle_instruction || "\u041f\u0440\u0438\u043b\u043e\u0436\u0438\u0442\u0435 \u043a\u0430\u0440\u0442\u0443",
+      instruction: copy.idle_instruction || "Приложите карту",
       accentColor: theme.accent_color ?? "#C79A3B",
       backgroundUrl: theme.background_asset?.content_url ?? null,
       logoUrl: theme.logo_asset?.content_url ?? null,
@@ -323,7 +323,7 @@
     const pricing = snapshot?.pricing ?? {};
     const theme = snapshot?.theme ?? {};
     const progress = runtime.max_volume_ml ? Math.min(runtime.current_volume_ml / runtime.max_volume_ml, 1) : 0;
-    const warning = backendLinkLost && activeRuntime ? "РќРµС‚ СЃРІСЏР·Рё СЃ СЃРёСЃС‚РµРјРѕР№" : null;
+    const warning = backendLinkLost && activeRuntime ? "Нет связи с системой" : null;
 
     if (runtimePhase === "denied") {
       const message = deniedCopy[runtime.reason_code] ?? deniedCopy.authorize_rejected;
@@ -332,7 +332,7 @@
         tone: "warning",
         headline: message.headline,
         secondary: message.nextStep,
-        tertiary: "Р—Р°Р±РµСЂРёС‚Рµ РєР°СЂС‚Сѓ",
+        tertiary: "Заберите карту",
         code: runtime.reason_code,
         accentColor: "#D97706",
       };
@@ -342,8 +342,8 @@
       return {
         kind: "authorized",
         tone: "brand",
-        headline: "РџРѕРґРѕР¶РґРёС‚Рµ",
-        secondary: "РџСЂРѕРІРµСЂСЏРµРј РєР°СЂС‚Сѓ",
+        headline: "Подождите",
+        secondary: "Проверяем карту",
         tertiary: null,
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
@@ -354,10 +354,10 @@
       return {
         kind: "authorized",
         tone: "brand",
-        headline: "РћС‚РєСЂРѕР№С‚Рµ РєСЂР°РЅ",
+        headline: "Откройте кран",
         secondary: runtime.guest_first_name
-          ? `${runtime.guest_first_name}, РјРѕР¶РЅРѕ РЅР°Р»РёРІР°С‚СЊ`
-          : "РњРѕР¶РЅРѕ РЅР°Р»РёРІР°С‚СЊ",
+          ? `${runtime.guest_first_name}, можно наливать`
+          : "Можно наливать",
         tertiary: formatMoneyFromCents(runtime.balance_cents_at_authorize),
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
@@ -392,7 +392,7 @@
         accentColor: theme.accent_color ?? "#C79A3B",
         backgroundUrl: theme.background_asset?.content_url ?? null,
         logoUrl: theme.logo_asset?.content_url ?? null,
-        warning: backendLinkLost ? "РћР¶РёРґР°РµС‚СЃСЏ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ" : null,
+        warning: backendLinkLost ? "Ожидается синхронизация" : null,
       };
     }
 
@@ -440,8 +440,8 @@
       return {
         kind: "service",
         tone: "neutral",
-        headline: "Р—Р°РіСЂСѓР·РєР° СЌРєСЂР°РЅР°",
-        secondary: "РџРѕРґРѕР¶РґРёС‚Рµ",
+        headline: "Загрузка экрана",
+        secondary: "Подождите",
         tertiary: null,
         code: "booting",
         accentColor: "#475569",
@@ -506,10 +506,10 @@
       tone: "brand",
       headline: presentation.name,
       secondary: pricing.display_text,
-      tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" В· "),
+      tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" / "),
       description: presentation.description_short,
       brand: presentation.brand_name || presentation.brewery,
-      instruction: copy.idle_instruction || "РџСЂРёР»РѕР¶РёС‚Рµ РєР°СЂС‚Сѓ",
+      instruction: copy.idle_instruction || "Приложите карту",
       accentColor: theme.accent_color ?? "#C79A3B",
       backgroundUrl: theme.background_asset?.content_url ?? null,
       logoUrl: theme.logo_asset?.content_url ?? null,
@@ -558,17 +558,17 @@
       {#if ui.description}<p class="description">{ui.description}</p>{/if}
       <div class="instruction">{ui.instruction}</div>
     {:else if ui?.kind === "authorized"}
-      <div class="status-label">Р“РѕС‚РѕРІРѕ Рє РЅР°Р»РёРІСѓ</div>
+      <div class="status-label">Готово к наливу</div>
       <h1>{ui.headline}</h1>
       <p class="lead">{ui.secondary}</p>
       <div class="stats-grid">
         <div>
-          <span class="stat-label">Р‘Р°Р»Р°РЅСЃ</span>
+          <span class="stat-label">Баланс</span>
           <strong>{ui.tertiary}</strong>
         </div>
         {#if ui.priceChip}
           <div>
-            <span class="stat-label">Р¦РµРЅР°</span>
+            <span class="stat-label">Цена</span>
             <strong>{ui.priceChip}</strong>
           </div>
         {/if}
@@ -594,37 +594,37 @@
         </div>
         <div class="stats-grid">
           <div>
-            <span class="stat-label">РЎСѓРјРјР°</span>
+            <span class="stat-label">Сумма</span>
             <strong>{ui.secondary}</strong>
           </div>
           <div>
-            <span class="stat-label">РћСЃС‚Р°С‚РѕРє РїРѕСЃР»Рµ СЃРїРёСЃР°РЅРёСЏ</span>
+            <span class="stat-label">Остаток после списания</span>
             <strong>{ui.tertiary}</strong>
           </div>
         </div>
       </div>
     {:else if ui?.kind === "finished"}
-      <div class="status-label">РќР°Р»РёРІ Р·Р°РІРµСЂС€С‘РЅ</div>
+      <div class="status-label">Налив завершён</div>
       <h1>{ui.headline}</h1>
       <div class="stats-grid">
         <div>
-          <span class="stat-label">РЎСѓРјРјР°</span>
+          <span class="stat-label">Сумма</span>
           <strong>{ui.secondary}</strong>
         </div>
         <div>
-          <span class="stat-label">РћСЃС‚Р°С‚РѕРє РїРѕСЃР»Рµ СЃРїРёСЃР°РЅРёСЏ</span>
+          <span class="stat-label">Остаток после списания</span>
           <strong>{ui.tertiary}</strong>
         </div>
       </div>
-      <div class="instruction">Р—Р°Р±РµСЂРёС‚Рµ РєР°СЂС‚Сѓ</div>
+      <div class="instruction">Заберите карту</div>
     {:else if ui?.kind === "denied"}
-      <div class="status-label">РќР°Р»РёРІ РЅРµРґРѕСЃС‚СѓРїРµРЅ</div>
+      <div class="status-label">Налив недоступен</div>
       <h1>{ui.headline}</h1>
       <p class="lead">{ui.secondary}</p>
       <div class="instruction">{ui.tertiary}</div>
       {#if ui.code}<div class="operator-code">{ui.code}</div>{/if}
     {:else}
-      <div class="status-label">РЎРµСЂРІРёСЃРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ</div>
+      <div class="status-label">Сервисное состояние</div>
       <h1>{ui?.headline}</h1>
       <p class="lead">{ui?.secondary}</p>
       {#if ui?.tertiary}<div class="instruction">{ui.tertiary}</div>{/if}

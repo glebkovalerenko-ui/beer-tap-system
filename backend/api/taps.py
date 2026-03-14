@@ -1,4 +1,3 @@
-# backend/api/taps.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -13,72 +12,72 @@ router = APIRouter(
     dependencies=[Depends(security.get_current_user)]
 )
 
-@router.post("/", response_model=schemas.Tap, status_code=status.HTTP_201_CREATED, summary="Р”РѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Р№ РєСЂР°РЅ")
+@router.post("/", response_model=schemas.Tap, status_code=status.HTTP_201_CREATED, summary="Добавить новый кран")
 def create_tap(tap: schemas.TapCreate, db: Session = Depends(get_db)):
     """
-    Р”РѕР±Р°РІР»СЏРµС‚ РЅРѕРІС‹Р№ С„РёР·РёС‡РµСЃРєРёР№ РєСЂР°РЅ РІ СЃРёСЃС‚РµРјСѓ.
-    РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ СЃРѕР·РґР°РµС‚СЃСЏ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј 'locked' (Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ).
+    Добавляет новый физический кран в систему.
+    По умолчанию создается со статусом 'locked' (заблокирован).
     """
     return tap_crud.create_tap(db=db, tap=tap)
 
-@router.get("/", response_model=List[schemas.Tap], summary="РџРѕР»СѓС‡РёС‚СЊ СЃРїРёСЃРѕРє РІСЃРµС… РєСЂР°РЅРѕРІ")
+@router.get("/", response_model=List[schemas.Tap], summary="Получить список всех кранов")
 def read_taps(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ СЃРїРёСЃРѕРє РІСЃРµС… РєСЂР°РЅРѕРІ.
-    РћС‚РІРµС‚ РІРєР»СЋС‡Р°РµС‚ РїРѕР»РЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїРѕРґРєР»СЋС‡РµРЅРЅС‹С… РєРµРіР°С… Рё РёС… РЅР°РїРёС‚РєР°С…
-    Р±Р»Р°РіРѕРґР°СЂСЏ "Р¶Р°РґРЅРѕР№ Р·Р°РіСЂСѓР·РєРµ" (eager loading).
+    Возвращает список всех кранов.
+    Ответ включает полную информацию о подключенных кегах и их напитках
+    благодаря "жадной загрузке" (eager loading).
     """
     return tap_crud.get_taps(db, skip=skip, limit=limit)
 
-@router.get("/{tap_id}", response_model=schemas.Tap, summary="РџРѕР»СѓС‡РёС‚СЊ РєСЂР°РЅ РїРѕ ID")
+@router.get("/{tap_id}", response_model=schemas.Tap, summary="Получить кран по ID")
 def read_tap(tap_id: int, db: Session = Depends(get_db)):
     """
-    РџРѕР»СѓС‡Р°РµС‚ РґРµС‚Р°Р»СЊРЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РєРѕРЅРєСЂРµС‚РЅРѕРј РєСЂР°РЅРµ РїРѕ РµРіРѕ ID.
+    Получает детальную информацию о конкретном кране по его ID.
     """
     return tap_crud.get_tap(db, tap_id=tap_id)
 
-@router.put("/{tap_id}", response_model=schemas.Tap, summary="РћР±РЅРѕРІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РєСЂР°РЅРµ")
+@router.put("/{tap_id}", response_model=schemas.Tap, summary="Обновить информацию о кране")
 def update_tap(tap_id: int, tap_update: schemas.TapUpdate, db: Session = Depends(get_db)):
     """
-    РћР±РЅРѕРІР»СЏРµС‚ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РєСЂР°РЅРµ (РЅР°РїСЂРёРјРµСЂ, РµРіРѕ РѕС‚РѕР±СЂР°Р¶Р°РµРјРѕРµ РёРјСЏ РёР»Рё СЃС‚Р°С‚СѓСЃ).
+    Обновляет информацию о кране (например, его отображаемое имя или статус).
     """
     return tap_crud.update_tap(db=db, tap_id=tap_id, tap_update=tap_update)
 
-@router.delete("/{tap_id}", status_code=status.HTTP_204_NO_CONTENT, summary="РЈРґР°Р»РёС‚СЊ РєСЂР°РЅ")
+@router.delete("/{tap_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить кран")
 def delete_tap(tap_id: int, db: Session = Depends(get_db)):
     """
-    РЈРґР°Р»СЏРµС‚ РєСЂР°РЅ РёР· СЃРёСЃС‚РµРјС‹.
+    Удаляет кран из системы.
 
-    **Р‘РёР·РЅРµСЃ-РїСЂР°РІРёР»Рѕ:** Р—Р°РїСЂРµС‰РµРЅРѕ СѓРґР°Р»СЏС‚СЊ РєСЂР°РЅ, Рє РєРѕС‚РѕСЂРѕРјСѓ РІ РґР°РЅРЅС‹Р№ РјРѕРјРµРЅС‚
-    РїРѕРґРєР»СЋС‡РµРЅР° РєРµРіР°.
+    **Бизнес-правило:** Запрещено удалять кран, к которому в данный момент
+    подключена кега.
     """
     tap_crud.delete_tap(db=db, tap_id=tap_id)
-    return # Р’РѕР·РІСЂР°С‰Р°РµРј 204 No Content
+    return # Возвращаем 204 No Content
 
-@router.put("/{tap_id}/keg", response_model=schemas.Tap, summary="РќР°Р·РЅР°С‡РёС‚СЊ РєРµРіСѓ РЅР° РєСЂР°РЅ")
+@router.put("/{tap_id}/keg", response_model=schemas.Tap, summary="Назначить кегу на кран")
 def assign_keg(tap_id: int, assignment: schemas.TapAssignKeg, db: Session = Depends(get_db)):
     """
-    РџСЂРёРІСЏР·С‹РІР°РµС‚ СѓРєР°Р·Р°РЅРЅСѓСЋ РєРµРіСѓ Рє РєСЂР°РЅСѓ.
+    Привязывает указанную кегу к крану.
 
-    **Р‘РёР·РЅРµСЃ-Р»РѕРіРёРєР°:**
-    - РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РєСЂР°РЅ СЃРІРѕР±РѕРґРµРЅ (СЃС‚Р°С‚СѓСЃ 'locked').
-    - РџСЂРѕРІРµСЂСЏРµС‚, С‡С‚Рѕ РєРµРіР° РіРѕС‚РѕРІР° Рє РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЋ (СЃС‚Р°С‚СѓСЃ 'full').
-    - Р­РЅРґРїРѕРёРЅС‚ РёРґРµРјРїРѕС‚РµРЅС‚РµРЅ.
+    **Бизнес-логика:**
+    - Проверяет, что кран свободен (статус 'locked').
+    - Проверяет, что кега готова к использованию (статус 'full').
+    - Эндпоинт идемпотентен.
 
-    **РџРѕР±РѕС‡РЅС‹Рµ СЌС„С„РµРєС‚С‹:**
-    - РЎС‚Р°С‚СѓСЃ РєСЂР°РЅР° -> 'active'.
-    - РЎС‚Р°С‚СѓСЃ РєРµРіРё -> 'in_use'.
+    **Побочные эффекты:**
+    - Статус крана -> 'active'.
+    - Статус кеги -> 'in_use'.
     """
     return tap_crud.assign_keg_to_tap(db=db, tap_id=tap_id, keg_id=assignment.keg_id)
 
-@router.delete("/{tap_id}/keg", response_model=schemas.Tap, summary="РЎРЅСЏС‚СЊ РєРµРіСѓ СЃ РєСЂР°РЅР°")
+@router.delete("/{tap_id}/keg", response_model=schemas.Tap, summary="Снять кегу с крана")
 def unassign_keg(tap_id: int, db: Session = Depends(get_db)):
     """
-    РЎРЅРёРјР°РµС‚ С‚РµРєСѓС‰СѓСЋ РєРµРіСѓ СЃ РєСЂР°РЅР°.
+    Снимает текущую кегу с крана.
 
-    **РџРѕР±РѕС‡РЅС‹Рµ СЌС„С„РµРєС‚С‹:**
-    - РЎС‚Р°С‚СѓСЃ РєСЂР°РЅР° -> 'locked'.
-    - РЎС‚Р°С‚СѓСЃ РєРµРіРё -> 'full' (РµСЃР»Рё РѕРЅР° РЅРµ Р±С‹Р»Р° РїСѓСЃС‚РѕР№).
+    **Побочные эффекты:**
+    - Статус крана -> 'locked'.
+    - Статус кеги -> 'full' (если она не была пустой).
     """
     return tap_crud.unassign_keg_from_tap(db=db, tap_id=tap_id)
 
