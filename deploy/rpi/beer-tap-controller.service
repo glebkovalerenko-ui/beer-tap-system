@@ -5,11 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/beer-tap-system/rpi-controller
+WorkingDirectory=/home/cybeer/beer-tap-system/rpi-controller
 Environment=PYTHONUNBUFFERED=1
 Environment=DEVICE_ENV_PATH=/etc/beer-tap/device.env
 ExecStartPre=/bin/mkdir -p /run/beer-tap
-ExecStart=%h/beer-tap-system/.venv-controller/bin/python main.py
+ExecStart=/home/cybeer/beer-tap-system/.venv-controller/bin/python main.py
 Restart=always
 RestartSec=3
 User=cybeer
