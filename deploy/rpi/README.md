@@ -81,8 +81,10 @@ Hardening notes in this MVP package:
 
 - `tap-display-agent` now requires `DISPLAY_API_KEY` and uses `X-Display-Token` instead of the broad internal-token path.
 - The kiosk launcher waits for the local agent health endpoint before opening Chromium.
-- The kiosk launcher prefers `chromium`, falls back to `chromium-browser`, and enables Wayland mode when the session provides `WAYLAND_DISPLAY`.
+- The kiosk launcher prefers `chromium`, falls back to `chromium-browser`, and forces a predictable Wayland session env (`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`) for the pilot Pi.
 - The kiosk launcher reapplies portrait rotation through `wlr-randr` before opening Chromium.
+- The kiosk launcher writes a startup banner and relaunch events into `~/.local/state/tap-display-kiosk.log` so reboot failures can be diagnosed from one file.
+- Chromium is launched with `--disable-gpu` on the pilot Pi because the live device showed Wayland/EGL context failures after reboot and the display UI does not need GPU acceleration.
 - Chromium is relaunched by the launcher script if it exits.
 - The pilot Pi uses `labwc` session autostart rather than relying on `~/.config/autostart/*.desktop`, because the explicit `labwc` hook was the reliable path during real-device bring-up.
 - This is still pilot-grade deployment: there is no fleet management, remote watchdog, or screenshot telemetry in this package.

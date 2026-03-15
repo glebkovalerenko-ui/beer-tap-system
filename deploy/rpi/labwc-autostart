@@ -1,3 +1,6 @@
 #!/bin/sh
+set -eu
+
 mkdir -p "$HOME/.local/state"
+printf '[%s] labwc autostart invoking tap-display-kiosk.sh\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >>"$HOME/.local/state/tap-display-kiosk.log"
 "$HOME/beer-tap-system/deploy/rpi/tap-display-kiosk.sh" >>"$HOME/.local/state/tap-display-kiosk.log" 2>&1 &
