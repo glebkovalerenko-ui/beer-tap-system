@@ -44,7 +44,11 @@ Install flow:
 5. Reload and enable services:
    - `sudo systemctl daemon-reload`
     - `sudo systemctl enable --now beer-tap-controller.service tap-display-agent.service`
-6. Enable graphical autologin for `cybeer` and place `tap-display-kiosk.desktop` into `/home/cybeer/.config/autostart/`.
+6. Enable graphical autologin for `cybeer` with `labwc` and install the session autostart hook:
+   - `mkdir -p /home/cybeer/.config/labwc`
+   - copy `deploy/rpi/labwc-autostart` to `/home/cybeer/.config/labwc/autostart`
+   - `chmod 755 /home/cybeer/.config/labwc/autostart`
+   - `tap-display-kiosk.desktop` can stay as an optional fallback for desktop environments that honor XDG autostart, but the pilot Pi should use `labwc` autostart because it survived repeated `lightdm` restarts on-device
 7. Portrait is handled at the compositor/output layer, not in Chromium or CSS:
    - install `wlr-randr`
    - the kiosk launcher applies `HDMI-A-1 -> transform 90` before opening Chromium
@@ -80,4 +84,5 @@ Hardening notes in this MVP package:
 - The kiosk launcher prefers `chromium`, falls back to `chromium-browser`, and enables Wayland mode when the session provides `WAYLAND_DISPLAY`.
 - The kiosk launcher reapplies portrait rotation through `wlr-randr` before opening Chromium.
 - Chromium is relaunched by the launcher script if it exits.
+- The pilot Pi uses `labwc` session autostart rather than relying on `~/.config/autostart/*.desktop`, because the explicit `labwc` hook was the reliable path during real-device bring-up.
 - This is still pilot-grade deployment: there is no fleet management, remote watchdog, or screenshot telemetry in this package.

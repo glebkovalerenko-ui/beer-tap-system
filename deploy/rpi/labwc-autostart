@@ -1,0 +1,3 @@
+#!/bin/sh
+mkdir -p "$HOME/.local/state"
+"$HOME/beer-tap-system/deploy/rpi/tap-display-kiosk.sh" >>"$HOME/.local/state/tap-display-kiosk.log" 2>&1 &

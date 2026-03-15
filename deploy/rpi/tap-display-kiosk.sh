@@ -2,6 +2,8 @@
 set -eu
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
 DISPLAY_URL="${DISPLAY_URL:-http://127.0.0.1:18181/display/}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:18181/health}"
 KIOSK_OUTPUT_NAME="${KIOSK_OUTPUT_NAME:-HDMI-A-1}"
@@ -55,10 +57,7 @@ PY
 }
 
 CHROMIUM_BIN="$(resolve_browser)"
-WAYLAND_FLAGS=""
-if [ -n "${WAYLAND_DISPLAY:-}" ]; then
-  WAYLAND_FLAGS="--enable-features=UseOzonePlatform --ozone-platform=wayland"
-fi
+WAYLAND_FLAGS="--enable-features=UseOzonePlatform --ozone-platform=wayland"
 
 configure_output
 wait_for_agent

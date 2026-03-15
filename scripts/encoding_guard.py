@@ -104,7 +104,7 @@ def run_git(root: Path, *args: str) -> tuple[int, str, str]:
 
 
 def is_excluded(path: Path) -> bool:
-    return any(part in EXCLUDED_DIRS for part in path.parts)
+    return any(part in EXCLUDED_DIRS or part.startswith(".venv") for part in path.parts)
 
 
 def is_candidate_text_file(path: Path) -> bool:
@@ -252,6 +252,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
 
 

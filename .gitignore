@@ -27,3 +27,4 @@ build/
 # Игнорировать специфичные для ОС файлы
 .DS_Store
 Thumbs.db
+rpi-controller/local_journal.db
