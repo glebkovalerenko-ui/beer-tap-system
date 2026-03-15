@@ -5,15 +5,15 @@ Wants=network-online.target beer-tap-controller.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/beer-tap-system/tap-display-agent
+WorkingDirectory=%h/beer-tap-system/tap-display-agent
 Environment=PYTHONUNBUFFERED=1
 Environment=DEVICE_ENV_PATH=/etc/beer-tap/device.env
 ExecStartPre=/bin/mkdir -p /run/beer-tap
-ExecStart=/opt/beer-tap-system/.venv-display-agent/bin/uvicorn main:app --host 127.0.0.1 --port 18181
+ExecStart=%h/beer-tap-system/.venv-display-agent/bin/uvicorn main:app --host 127.0.0.1 --port 18181
 Restart=always
 RestartSec=3
-User=pi
-Group=pi
+User=cybeer
+Group=cybeer
 
 [Install]
 WantedBy=multi-user.target

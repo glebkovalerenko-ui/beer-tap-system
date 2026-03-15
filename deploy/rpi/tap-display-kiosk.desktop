@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=Tap Display Kiosk
-Exec=/opt/beer-tap-system/deploy/rpi/tap-display-kiosk.sh
+Exec=/home/cybeer/beer-tap-system/deploy/rpi/tap-display-kiosk.sh
 X-GNOME-Autostart-enabled=true
 NoDisplay=false
