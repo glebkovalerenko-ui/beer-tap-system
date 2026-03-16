@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 import uuid
 
@@ -260,6 +261,97 @@ def test_zero_volume_release_clears_lock_without_creating_pending(client, db_ses
         .count()
     )
     assert pending_after_release == 0
+
+
+def test_one_ml_release_keeps_no_durable_pending_for_timeout_path(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92009", card_uid="CARD-M4-009")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-009", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+    assert auth.json()["visit"]["active_tap_id"] == tap_id
+
+    release = _release_pour_lock(
+        client,
+        card_uid="CARD-M4-009",
+        tap_id=tap_id,
+        reason="flow_timeout",
+        volume_ml=1,
+    )
+    assert release.json()["accepted"] is True
+    assert release.json()["outcome"] == "released"
+
+    db_session.expire_all()
+    visit = db_session.query(models.Visit).filter(models.Visit.visit_id == uuid.UUID(visit_id)).one()
+    assert visit.active_tap_id is None
+    assert visit.lock_set_at is None
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "active"
+
+    pending_after_release = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_after_release == 0
+
+    audit = (
+        db_session.query(models.AuditLog)
+        .filter(
+            models.AuditLog.action == "authorize_no_pour_release",
+            models.AuditLog.target_id == visit_id,
+        )
+        .order_by(models.AuditLog.log_id.desc())
+        .first()
+    )
+    assert audit is not None
+    details = json.loads(audit.details)
+    assert details["reason"] == "flow_timeout"
+    assert details["volume_ml"] == 1
+
+
+def test_two_ml_register_pending_starts_durable_sync_boundary(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92010", card_uid="CARD-M4-010")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-010", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+    assert auth.json()["visit"]["active_tap_id"] == tap_id
+
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M4-010",
+        tap_id=tap_id,
+        client_tx_id="m4-sync-010",
+        short_id="J92010",
+        duration_ms=1200,
+        volume_ml=2,
+    )
+
+    db_session.expire_all()
+    pending = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .one()
+    )
+    assert pending.volume_ml == 2
+    assert pending.short_id == "J92010"
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "processing_sync"
 
 
 def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_session):

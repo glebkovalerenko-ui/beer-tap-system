@@ -655,6 +655,8 @@ class FlowManager:
                 logging.info("Клапан закрыт: причина=%s", stop_reason)
             progress_display.finish(total_volume_ml)
 
+        # `> 1 ml` is the controller's durable-artifact threshold after post-close
+        # tail collection. Sessions at `<= 1 ml` stay on the no-pour release path.
         if total_volume_ml > 1:
             duration_ms = int((self._time_source() - started_monotonic) * 1000)
             price_cents = (

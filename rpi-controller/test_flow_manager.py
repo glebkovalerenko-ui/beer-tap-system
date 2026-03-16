@@ -270,6 +270,59 @@ def test_flow_manager_zero_volume_card_removed_releases_backend_lock():
     ]
 
 
+def test_flow_manager_card_removed_with_one_ml_total_stays_on_release_path():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True, False],
+        post_close_volume_deltas_liters=[0.001],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours == []
+    assert sync_manager.registered_pending_pours == []
+    assert sync_manager.released_locks == [
+        {
+            "card_uid": "aabbccdd",
+            "tap_id": 1,
+            "reason": "card_removed",
+            "volume_ml": 1,
+        }
+    ]
+
+
+def test_flow_manager_card_removed_with_two_ml_total_registers_pending():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True, False],
+        post_close_volume_deltas_liters=[0.002],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours[0]["volume_ml"] == 2
+    assert sync_manager.registered_pending_pours[0]["volume_ml"] == 2
+    assert sync_manager.released_locks == []
+
+
 def test_flow_manager_flow_timeout_with_volume_registers_pending_and_does_not_release_lock():
     clock = FakeClock()
     hardware = FakeHardware(
@@ -324,6 +377,59 @@ def test_flow_manager_flow_timeout_without_volume_releases_lock_and_skips_pendin
             "volume_ml": 0,
         }
     ]
+
+
+def test_flow_manager_flow_timeout_with_one_ml_total_stays_on_release_path():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True] * 220,
+        post_close_volume_deltas_liters=[0.001],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours == []
+    assert sync_manager.registered_pending_pours == []
+    assert sync_manager.released_locks == [
+        {
+            "card_uid": "aabbccdd",
+            "tap_id": 1,
+            "reason": "flow_timeout",
+            "volume_ml": 1,
+        }
+    ]
+
+
+def test_flow_manager_flow_timeout_with_two_ml_total_registers_pending():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True] * 220,
+        post_close_volume_deltas_liters=[0.002],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours[0]["volume_ml"] == 2
+    assert sync_manager.registered_pending_pours[0]["volume_ml"] == 2
+    assert sync_manager.released_locks == []
 
 
 def test_flow_manager_reports_closed_valve_flow_without_session():
