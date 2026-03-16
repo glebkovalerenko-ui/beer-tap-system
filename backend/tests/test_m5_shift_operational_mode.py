@@ -74,6 +74,25 @@ def _create_tap_with_keg(client, headers, suffix: str):
     return tap_id
 
 
+def _register_pending_pour(client, *, card_uid: str, tap_id: int, short_id: str):
+    response = client.post(
+        "/api/visits/register-pending-pour",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "client_tx_id": f"m5-pending-{short_id}",
+            "short_id": short_id,
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "duration_ms": 3000,
+            "volume_ml": 30,
+            "price_per_ml_at_pour": "0.5000",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    return response
+
+
 def test_cannot_open_visit_without_open_shift(client):
     headers = _login(client)
     guest_id = _create_guest(client, headers, suffix="93001")
@@ -141,6 +160,7 @@ def test_cannot_close_shift_with_pending_sync(client, db_session):
         json={"card_uid": card_uid, "tap_id": tap_id},
     )
     assert authorize.status_code == 200
+    _register_pending_pour(client, card_uid=card_uid, tap_id=tap_id, short_id="M593004")
 
     close_visit = client.post(
         f"/api/visits/{visit_id}/close",

@@ -141,7 +141,7 @@ def test_authorize_denies_when_balance_zero(client, db_session):
     assert pending_sync == 0
 
 
-def test_sync_without_authorize_returns_audit_only_not_accepted(client, db_session):
+def test_sync_with_active_lock_and_no_pending_backfills_and_accepts(client, db_session):
     headers = _login(client)
     guest_id, visit_id, card_uid, tap_id = _prepare_visit(
         client,
@@ -179,22 +179,23 @@ def test_sync_without_authorize_returns_audit_only_not_accepted(client, db_sessi
 
     assert sync_resp.status_code == 200
     result = sync_resp.json()["results"][0]
-    assert result["status"] == "audit_only"
-    assert result["outcome"] == "audit_missing_pending"
-    assert result["reason"] == "missing_pending_authorize"
+    assert result["status"] == "accepted"
+    assert result["outcome"] == "pending_updated_to_synced"
+    assert result["reason"] == "Pour processed successfully."
 
     db_session.expire_all()
-    pours = (
+    pour = (
         db_session.query(models.Pour)
         .filter(models.Pour.visit_id == visit_uuid, models.Pour.short_id == "NP94002")
-        .count()
+        .one()
     )
-    assert pours == 0
+    assert pour.sync_status == "synced"
+    assert pour.client_tx_id == "incident-sync-no-pending-001"
 
     audit = (
         db_session.query(models.AuditLog)
         .filter(
-            models.AuditLog.action == "sync_missing_pending",
+            models.AuditLog.action == "sync_pending_backfilled",
             models.AuditLog.target_id == visit_id,
         )
         .one()

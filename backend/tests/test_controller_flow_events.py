@@ -169,6 +169,25 @@ def _create_active_visit_with_tap(
     }
 
 
+def _register_pending_pour(client, *, card_uid: str, tap_id: int, client_tx_id: str, short_id: str, volume_ml: int, duration_ms: int, price_per_ml_at_pour: str):
+    response = client.post(
+        "/api/visits/register-pending-pour",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "client_tx_id": client_tx_id,
+            "short_id": short_id,
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "duration_ms": duration_ms,
+            "volume_ml": volume_ml,
+            "price_per_ml_at_pour": price_per_ml_at_pour,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    return response
+
+
 def test_controller_flow_event_is_written_to_audit_log(client, db_session):
     _create_tap_with_keg(db_session, tap_id=7)
 
@@ -307,6 +326,16 @@ def test_authorized_sale_flow_creates_pour_and_skips_non_sale_accounting(client,
         assert response.status_code == 202
 
     assert db_session.query(models.NonSaleFlow).count() == 0
+    _register_pending_pour(
+        client,
+        card_uid=setup["card_uid"],
+        tap_id=setup["tap_id"],
+        client_tx_id="sale-flow-sync-97021",
+        short_id="SALE7021",
+        volume_ml=280,
+        duration_ms=3100,
+        price_per_ml_at_pour="0.3500",
+    )
 
     sync_response = client.post(
         "/api/sync/pours",
@@ -379,6 +408,16 @@ def test_authorized_tail_flow_stays_on_same_pour_and_does_not_create_non_sale_fl
         assert response.status_code == 202
 
     assert db_session.query(models.NonSaleFlow).count() == 0
+    _register_pending_pour(
+        client,
+        card_uid=setup["card_uid"],
+        tap_id=setup["tap_id"],
+        client_tx_id="sale-tail-sync-97022",
+        short_id="TAIL7022",
+        volume_ml=315,
+        duration_ms=3400,
+        price_per_ml_at_pour="0.3500",
+    )
 
     sync_response = client.post(
         "/api/sync/pours",

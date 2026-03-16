@@ -81,12 +81,29 @@ class FakeSyncManager:
         self.auth_result = auth_result
         self.reported_anomalies = []
         self.reported_flow_events = []
+        self.registered_pending_pours = []
+        self.released_locks = []
 
     def authorize_pour(self, card_uid, tap_id):
         return dict(self.auth_result)
 
     def check_emergency_stop(self):
         return False
+
+    def register_pending_pour(self, pour_data):
+        self.registered_pending_pours.append(dict(pour_data))
+        return {"accepted": True, "outcome": "pending_recorded"}
+
+    def release_pour_lock(self, *, card_uid, tap_id, reason, volume_ml=0):
+        self.released_locks.append(
+            {
+                "card_uid": card_uid,
+                "tap_id": tap_id,
+                "reason": reason,
+                "volume_ml": volume_ml,
+            }
+        )
+        return {"accepted": True, "outcome": "released"}
 
     def report_flow_anomaly(self, **payload):
         self.reported_anomalies.append(payload)
@@ -161,6 +178,7 @@ def test_flow_manager_shows_progress_and_accumulates_volume():
     assert db_handler.pours[0]["volume_ml"] == 35
     assert db_handler.pours[0]["tail_volume_ml"] == 0
     assert db_handler.pours[0]["price_cents"] == 52
+    assert sync_manager.registered_pending_pours[0]["volume_ml"] == 35
     assert hardware.valve_open_calls == 1
     assert hardware.reset_pulses_calls == 1
 
@@ -223,6 +241,89 @@ def test_flow_manager_does_not_carry_closed_valve_flow_into_next_pour():
     assert db_handler.pours[0]["volume_ml"] == 30
     assert db_handler.pours[1]["volume_ml"] == 15
     assert db_handler.pours[1]["tail_volume_ml"] == 0
+
+
+def test_flow_manager_zero_volume_card_removed_releases_backend_lock():
+    clock = FakeClock()
+    hardware = FakeHardware(card_present_responses=[True, False])
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours == []
+    assert sync_manager.registered_pending_pours == []
+    assert sync_manager.released_locks == [
+        {
+            "card_uid": "aabbccdd",
+            "tap_id": 1,
+            "reason": "card_removed",
+            "volume_ml": 0,
+        }
+    ]
+
+
+def test_flow_manager_flow_timeout_with_volume_registers_pending_and_does_not_release_lock():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True] * 220,
+        volume_deltas_liters=[0.02],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+    )
+
+    manager.process()
+
+    assert db_handler.pours[0]["volume_ml"] == 20
+    assert sync_manager.registered_pending_pours[0]["volume_ml"] == 20
+    assert sync_manager.released_locks == []
+
+
+def test_flow_manager_flow_timeout_without_volume_releases_lock_and_skips_pending_registration():
+    clock = FakeClock()
+    hardware = FakeHardware(card_present_responses=[True] * 220)
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+    )
+
+    manager.process()
+
+    assert db_handler.pours == []
+    assert sync_manager.registered_pending_pours == []
+    assert sync_manager.released_locks == [
+        {
+            "card_uid": "aabbccdd",
+            "tap_id": 1,
+            "reason": "flow_timeout",
+            "volume_ml": 0,
+        }
+    ]
 
 
 def test_flow_manager_reports_closed_valve_flow_without_session():

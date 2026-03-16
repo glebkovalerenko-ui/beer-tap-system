@@ -80,6 +80,25 @@ def _create_tap_with_keg(client, headers, suffix: str):
     return tap_id
 
 
+def _register_pending_pour(client, *, card_uid: str, tap_id: int, short_id: str):
+    response = client.post(
+        "/api/visits/register-pending-pour",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "client_tx_id": f"m5-report-sync-{short_id}",
+            "short_id": short_id,
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "duration_ms": 5000,
+            "volume_ml": 200,
+            "price_per_ml_at_pour": "0.5000",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+
+
+
 def _create_synced_pour_for_open_shift(client, headers, suffix: str):
     guest_id = _create_guest(client, headers, suffix=suffix)
     card_uid = f"CARD-RPT-{suffix}"
@@ -107,6 +126,8 @@ def _create_synced_pour_for_open_shift(client, headers, suffix: str):
         json={"card_uid": card_uid, "tap_id": tap_id},
     )
     assert authorize.status_code == 200
+    short_id = f"S{suffix[-5:]}"
+    _register_pending_pour(client, card_uid=card_uid, tap_id=tap_id, short_id=short_id)
 
     sync_resp = client.post(
         "/api/sync/pours",
@@ -117,7 +138,7 @@ def _create_synced_pour_for_open_shift(client, headers, suffix: str):
                     "client_tx_id": f"m5-report-sync-{suffix}",
                     "card_uid": card_uid,
                     "tap_id": tap_id,
-                    "short_id": f"S{suffix[-5:]}",
+                    "short_id": short_id,
                     "duration_ms": 5000,
                     "volume_ml": 200,
                     "price_cents": 0,

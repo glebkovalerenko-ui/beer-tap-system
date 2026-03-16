@@ -96,6 +96,55 @@ def _prepare_active_visit(client, suffix: str, card_uid: str):
     return headers, guest_id, visit_id, tap_id
 
 
+def _internal_headers():
+    return {"X-Internal-Token": "demo-secret-key"}
+
+
+def _register_pending_pour(
+    client,
+    *,
+    card_uid: str,
+    tap_id: int,
+    client_tx_id: str,
+    short_id: str,
+    volume_ml: int,
+    duration_ms: int,
+    price_per_ml_at_pour: str = "0.5000",
+):
+    response = client.post(
+        "/api/visits/register-pending-pour",
+        headers=_internal_headers(),
+        json={
+            "client_tx_id": client_tx_id,
+            "short_id": short_id,
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "duration_ms": duration_ms,
+            "volume_ml": volume_ml,
+            "price_per_ml_at_pour": price_per_ml_at_pour,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["outcome"] == "pending_recorded"
+    return response
+
+
+def _release_pour_lock(client, *, card_uid: str, tap_id: int, reason: str, volume_ml: int = 0):
+    response = client.post(
+        "/api/visits/release-pour-lock",
+        headers=_internal_headers(),
+        json={
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "reason": reason,
+            "volume_ml": volume_ml,
+        },
+    )
+    assert response.status_code == 200
+    return response
+
+
 def test_lock_kept_until_backend_accepts_sync(client, db_session):
     headers, _, _, tap_id = _prepare_active_visit(client, suffix="92001", card_uid="CARD-M4-001")
     auth = client.post(
@@ -107,6 +156,26 @@ def test_lock_kept_until_backend_accepts_sync(client, db_session):
     assert auth.json()["visit"]["active_tap_id"] == tap_id
     assert auth.json()["visit"]["lock_set_at"] is not None
 
+    pending_before_register = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_before_register == 0
+
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M4-001",
+        tap_id=tap_id,
+        client_tx_id="m4-sync-001",
+        short_id="A12001",
+        duration_ms=5000,
+        volume_ml=200,
+    )
+
     pending = (
         db_session.query(models.Pour)
         .filter(
@@ -116,6 +185,8 @@ def test_lock_kept_until_backend_accepts_sync(client, db_session):
         .one()
     )
     assert pending.authorized_at is not None
+    assert pending.short_id == "A12001"
+    assert pending.volume_ml == 200
 
     before_sync = client.get("/api/visits/active/by-card/CARD-M4-001", headers=headers)
     assert before_sync.status_code == 200
@@ -123,7 +194,7 @@ def test_lock_kept_until_backend_accepts_sync(client, db_session):
 
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {
@@ -146,6 +217,51 @@ def test_lock_kept_until_backend_accepts_sync(client, db_session):
     assert after_sync.json()["active_tap_id"] is None
 
 
+def test_zero_volume_release_clears_lock_without_creating_pending(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92008", card_uid="CARD-M4-008")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-008", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+    assert auth.json()["visit"]["active_tap_id"] == tap_id
+
+    pending_before_release = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_before_release == 0
+
+    release = _release_pour_lock(client, card_uid="CARD-M4-008", tap_id=tap_id, reason="card_removed")
+    assert release.json()["accepted"] is True
+    assert release.json()["outcome"] == "released"
+
+    db_session.expire_all()
+    visit = db_session.query(models.Visit).filter(models.Visit.visit_id == uuid.UUID(visit_id)).one()
+    assert visit.active_tap_id is None
+    assert visit.lock_set_at is None
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "active"
+
+    pending_after_release = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_after_release == 0
+
+
 def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_session):
     headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92005", card_uid="CARD-M4-005")
     auth = client.post(
@@ -154,6 +270,16 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
         json={"card_uid": "CARD-M4-005", "tap_id": tap_id},
     )
     assert auth.status_code == 200
+
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M4-005",
+        tap_id=tap_id,
+        client_tx_id="m4-sync-005",
+        short_id="E52005",
+        duration_ms=4200,
+        volume_ml=180,
+    )
 
     pending = (
         db_session.query(models.Pour)
@@ -165,12 +291,12 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
         .one()
     )
     pending_pour_id = pending.pour_id
-    assert pending.volume_ml == 0
-    assert pending.short_id is None
+    assert pending.volume_ml == 180
+    assert pending.short_id == "E52005"
 
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {

@@ -99,6 +99,39 @@ def _prepare_active_visit(client, suffix: str, card_uid: str, *, sell_price_per_
     return headers, guest_id, visit_id, tap_id
 
 
+def _internal_headers():
+    return {"X-Internal-Token": "demo-secret-key"}
+
+
+def _register_pending_pour(
+    client,
+    *,
+    card_uid: str,
+    tap_id: int,
+    client_tx_id: str,
+    short_id: str,
+    volume_ml: int,
+    duration_ms: int,
+    price_per_ml_at_pour: str = "0.5000",
+):
+    response = client.post(
+        "/api/visits/register-pending-pour",
+        headers=_internal_headers(),
+        json={
+            "client_tx_id": client_tx_id,
+            "short_id": short_id,
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "duration_ms": duration_ms,
+            "volume_ml": volume_ml,
+            "price_per_ml_at_pour": price_per_ml_at_pour,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    return response
+
+
 def test_authorize_denies_when_balance_below_min_start_threshold(client, db_session):
     headers, guest_id, visit_id, tap_id = _prepare_active_visit(
         client,
@@ -253,6 +286,27 @@ def test_pending_sync_created_only_when_authorize_allowed(client, db_session):
     assert allowed.status_code == 200
 
     db_session.expire_all()
+    pending_after_authorize = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .count()
+    )
+    assert pending_after_authorize == 0
+
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M6-97003",
+        tap_id=tap_id,
+        client_tx_id="m6-clamp-sync-97003",
+        short_id="L97003",
+        duration_ms=2500,
+        volume_ml=25,
+    )
+
     pending = (
         db_session.query(models.Pour)
         .filter(
@@ -282,6 +336,16 @@ def test_authorize_sync_updates_same_pour_and_clears_lock(client, db_session):
     assert authorize.status_code == 200
     assert authorize.json()["max_volume_ml"] == 38
 
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M6-97004",
+        tap_id=tap_id,
+        client_tx_id="m6-clamp-sync-97004",
+        short_id="L97004",
+        duration_ms=3000,
+        volume_ml=30,
+    )
+
     pending = (
         db_session.query(models.Pour)
         .filter(
@@ -295,7 +359,7 @@ def test_authorize_sync_updates_same_pour_and_clears_lock(client, db_session):
 
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {
@@ -377,7 +441,7 @@ def test_sync_accepts_tail_overdraft_when_base_volume_fits_balance(client, db_se
 
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {
@@ -436,6 +500,16 @@ def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_u
     )
     assert authorize.status_code == 200
 
+    _register_pending_pour(
+        client,
+        card_uid="CARD-M6-97006",
+        tap_id=tap_id,
+        client_tx_id="m6-clamp-sync-97006",
+        short_id="L97006",
+        duration_ms=2800,
+        volume_ml=30,
+    )
+
     pending = (
         db_session.query(models.Pour)
         .filter(
@@ -453,7 +527,7 @@ def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_u
 
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {
@@ -507,7 +581,7 @@ def test_sync_insufficient_funds_after_authorize_becomes_terminal_rejected_and_u
     assert details["amount_to_charge"] == "15.00"
 
 
-def test_sync_missing_pending_authorize_audits_and_clears_lock(client, db_session):
+def test_sync_backfills_missing_pending_when_active_lock_still_exists(client, db_session):
     headers, _, visit_id, tap_id = _prepare_active_visit(
         client,
         suffix="97007",
@@ -523,20 +597,9 @@ def test_sync_missing_pending_authorize_audits_and_clears_lock(client, db_sessio
     )
     assert authorize.status_code == 200
 
-    (
-        db_session.query(models.Pour)
-        .filter(
-            models.Pour.visit_id == uuid.UUID(visit_id),
-            models.Pour.tap_id == tap_id,
-            models.Pour.sync_status == "pending_sync",
-        )
-        .delete()
-    )
-    db_session.commit()
-
     sync_resp = client.post(
         "/api/sync/pours",
-        headers={"X-Internal-Token": "demo-secret-key"},
+        headers=_internal_headers(),
         json={
             "pours": [
                 {
@@ -553,17 +616,19 @@ def test_sync_missing_pending_authorize_audits_and_clears_lock(client, db_sessio
     )
     assert sync_resp.status_code == 200
     result = sync_resp.json()["results"][0]
-    assert result["status"] == "audit_only"
-    assert result["outcome"] == "audit_missing_pending"
-    assert result["reason"] == "missing_pending_authorize"
+    assert result["status"] == "accepted"
+    assert result["outcome"] == "pending_updated_to_synced"
+    assert result["reason"] == "Pour processed successfully."
 
     db_session.expire_all()
     pours = (
         db_session.query(models.Pour)
-        .filter(models.Pour.visit_id == uuid.UUID(visit_id))
+        .filter(models.Pour.visit_id == uuid.UUID(visit_id), models.Pour.short_id == "L97007")
         .all()
     )
-    assert pours == []
+    assert len(pours) == 1
+    assert pours[0].sync_status == "synced"
+    assert pours[0].client_tx_id == "m6-clamp-sync-97007"
 
     visit = client.get("/api/visits/active/by-card/CARD-M6-97007", headers=headers)
     assert visit.status_code == 200
@@ -574,9 +639,9 @@ def test_sync_missing_pending_authorize_audits_and_clears_lock(client, db_sessio
 
     audit_resp = client.get("/api/audit/", headers=headers)
     assert audit_resp.status_code == 200
-    missing_entries = [entry for entry in audit_resp.json() if entry["action"] == "sync_missing_pending"]
-    assert missing_entries
-    details = json.loads(missing_entries[0]["details"])
+    backfilled_entries = [entry for entry in audit_resp.json() if entry["action"] == "sync_pending_backfilled"]
+    assert backfilled_entries
+    details = json.loads(backfilled_entries[0]["details"])
     assert details["tap_id"] == tap_id
     assert details["client_tx_id"] == "m6-clamp-sync-97007"
     assert details["short_id"] == "L97007"
