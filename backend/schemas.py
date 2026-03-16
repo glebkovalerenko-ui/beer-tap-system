@@ -498,6 +498,30 @@ class VisitPourAuthorizeResponse(BaseModel):
     lock_set_at: Optional[datetime] = None
 
 
+class VisitRegisterPendingPourRequest(BaseModel):
+    client_tx_id: str
+    short_id: str = Field(..., min_length=6, max_length=8, json_schema_extra={"example": "A1B2C3D4"})
+    card_uid: str = Field(..., json_schema_extra={"example": "04AB7815CD6B80"})
+    tap_id: int = Field(..., ge=1, json_schema_extra={"example": 1})
+    duration_ms: Optional[int] = Field(default=None, ge=0, json_schema_extra={"example": 5000})
+    volume_ml: int = Field(..., ge=1, json_schema_extra={"example": 250})
+    price_per_ml_at_pour: Decimal = Field(..., gt=0, json_schema_extra={"example": "0.5000"})
+
+
+class VisitReleasePourLockRequest(BaseModel):
+    card_uid: str = Field(..., json_schema_extra={"example": "04AB7815CD6B80"})
+    tap_id: int = Field(..., ge=1, json_schema_extra={"example": 1})
+    reason: str = Field(..., min_length=1, json_schema_extra={"example": "card_removed"})
+    volume_ml: int = Field(default=0, ge=0, json_schema_extra={"example": 0})
+
+
+class VisitControllerActionResponse(BaseModel):
+    accepted: bool
+    outcome: str
+    visit_id: Optional[uuid.UUID] = None
+    lock_set_at: Optional[datetime] = None
+
+
 class LostCardCreateRequest(BaseModel):
     card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
     reported_by: Optional[str] = Field(default=None, json_schema_extra={'example': "operator_1"})

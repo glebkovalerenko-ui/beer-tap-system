@@ -143,6 +143,98 @@ def authorize_pour(
 
 
 @router.post(
+    "/register-pending-pour",
+    response_model=schemas.VisitControllerActionResponse,
+    summary="Register durable pending sync after a local pour artifact exists",
+)
+def register_pending_pour(
+    payload: schemas.VisitRegisterPendingPourRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_internal_service_user)] = None,
+):
+    request_id = get_request_id(request)
+    db_identity = get_db_identity(db)
+    alembic_revision = get_alembic_revision(db)
+    actor_id = current_user["username"] if current_user else "internal_rpi"
+
+    visit, outcome = visit_crud.register_pending_pour(
+        db=db,
+        card_uid=payload.card_uid,
+        tap_id=payload.tap_id,
+        short_id=payload.short_id,
+        volume_ml=payload.volume_ml,
+        duration_ms=payload.duration_ms,
+        price_per_ml_at_pour=payload.price_per_ml_at_pour,
+    )
+    accepted = outcome == "pending_recorded"
+
+    logger.info(
+        "register_pending_pour request_id=%s db_identity=%s alembic_revision=%s actor=%s card_uid=%s tap_id=%s client_tx_id=%s outcome=%s",
+        request_id,
+        db_identity,
+        alembic_revision,
+        actor_id,
+        payload.card_uid,
+        payload.tap_id,
+        payload.client_tx_id,
+        outcome,
+    )
+    return schemas.VisitControllerActionResponse(
+        accepted=accepted,
+        outcome=outcome,
+        visit_id=visit.visit_id if visit else None,
+        lock_set_at=visit.lock_set_at if visit else None,
+    )
+
+
+@router.post(
+    "/release-pour-lock",
+    response_model=schemas.VisitControllerActionResponse,
+    summary="Release authorize lock when no local pour artifact was created",
+)
+def release_pour_lock(
+    payload: schemas.VisitReleasePourLockRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_internal_service_user)] = None,
+):
+    request_id = get_request_id(request)
+    db_identity = get_db_identity(db)
+    alembic_revision = get_alembic_revision(db)
+    actor_id = current_user["username"] if current_user else "internal_rpi"
+
+    visit, outcome = visit_crud.release_authorized_pour_lock(
+        db=db,
+        card_uid=payload.card_uid,
+        tap_id=payload.tap_id,
+        reason=payload.reason,
+        volume_ml=payload.volume_ml,
+        actor_id=actor_id,
+    )
+    accepted = outcome == "released"
+
+    logger.info(
+        "release_pour_lock request_id=%s db_identity=%s alembic_revision=%s actor=%s card_uid=%s tap_id=%s outcome=%s reason=%s volume_ml=%s",
+        request_id,
+        db_identity,
+        alembic_revision,
+        actor_id,
+        payload.card_uid,
+        payload.tap_id,
+        outcome,
+        payload.reason,
+        payload.volume_ml,
+    )
+    return schemas.VisitControllerActionResponse(
+        accepted=accepted,
+        outcome=outcome,
+        visit_id=visit.visit_id if visit else None,
+        lock_set_at=visit.lock_set_at if visit else None,
+    )
+
+
+@router.post(
     "/{visit_id}/report-lost-card",
     response_model=schemas.VisitReportLostCardResponse,
     summary="Report card as lost from active visit",

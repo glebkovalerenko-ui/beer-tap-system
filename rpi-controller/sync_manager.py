@@ -157,6 +157,79 @@ class SyncManager:
             "safety_ml": int(context.get("safety_ml") or 0),
         }
 
+    def register_pending_pour(self, pour_data):
+        url = "/".join([self.server_url, "api", "visits", "register-pending-pour"])
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        payload = {
+            "client_tx_id": pour_data.get("client_tx_id"),
+            "short_id": pour_data.get("short_id"),
+            "card_uid": pour_data.get("card_uid"),
+            "tap_id": pour_data.get("tap_id"),
+            "duration_ms": pour_data.get("duration_ms"),
+            "volume_ml": pour_data.get("volume_ml"),
+            "price_per_ml_at_pour": pour_data.get("price_per_ml_at_pour"),
+        }
+        try:
+            response = self.session.post(url, json=payload, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            return {
+                "accepted": False,
+                "outcome": "request_failed",
+                "reason": f"register_pending_request_failed: {url}: {exc}",
+                "status_code": None,
+            }
+
+        if response.status_code != 200:
+            return {
+                "accepted": False,
+                "outcome": "http_error",
+                "reason": (response.text or "").strip() or f"http_{response.status_code}",
+                "status_code": response.status_code,
+            }
+
+        body = response.json()
+        return {
+            "accepted": bool(body.get("accepted")),
+            "outcome": body.get("outcome", "unknown"),
+            "reason": body.get("outcome", "unknown"),
+            "status_code": response.status_code,
+        }
+
+    def release_pour_lock(self, *, card_uid, tap_id, reason, volume_ml=0):
+        url = "/".join([self.server_url, "api", "visits", "release-pour-lock"])
+        headers = {"X-Internal-Token": INTERNAL_TOKEN}
+        payload = {
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "reason": reason,
+            "volume_ml": int(volume_ml or 0),
+        }
+        try:
+            response = self.session.post(url, json=payload, headers=headers, timeout=5)
+        except requests.RequestException as exc:
+            return {
+                "accepted": False,
+                "outcome": "request_failed",
+                "reason": f"release_lock_request_failed: {url}: {exc}",
+                "status_code": None,
+            }
+
+        if response.status_code != 200:
+            return {
+                "accepted": False,
+                "outcome": "http_error",
+                "reason": (response.text or "").strip() or f"http_{response.status_code}",
+                "status_code": response.status_code,
+            }
+
+        body = response.json()
+        return {
+            "accepted": bool(body.get("accepted")),
+            "outcome": body.get("outcome", "unknown"),
+            "reason": body.get("outcome", "unknown"),
+            "status_code": response.status_code,
+        }
+
     def report_flow_event(
         self,
         *,

@@ -690,18 +690,56 @@ class FlowManager:
                 "tail_volume_ml": self._liters_to_ml(tail_volume_liters),
                 "price_cents": price_cents,
                 "price_per_ml_at_pour": float(
-                    price_per_ml_cents if has_authorized_price else (PRICE_PER_100ML_CENTS / 100.0)
+                    (price_per_ml_cents / 100.0)
+                    if has_authorized_price
+                    else (PRICE_PER_100ML_CENTS / 10000.0)
                 ),
             }
             self.db_handler.add_pour(pour_data)
-            logging.info("Запись о наливе сохранена в локальную БД")
+            pending_result = self.sync_manager.register_pending_pour(pour_data)
+            if pending_result.get("accepted"):
+                logging.info(
+                    "Backend pending_sync registered: outcome=%s tx=%s",
+                    pending_result.get("outcome"),
+                    client_tx_id,
+                )
+            else:
+                logging.warning(
+                    "Failed to register backend pending_sync: outcome=%s reason=%s tx=%s",
+                    pending_result.get("outcome"),
+                    pending_result.get("reason"),
+                    client_tx_id,
+                )
+            logging.info("Pour record stored in local database")
 
-        elif stop_reason == "emergency_stop":
-            self._publish_runtime(
-                phase="blocked",
-                reason_code="emergency_stop",
-                card_present=final_card_present,
+        else:
+            release_result = self.sync_manager.release_pour_lock(
+                card_uid=card_uid,
+                tap_id=TAP_ID,
+                reason=stop_reason,
+                volume_ml=total_volume_ml,
             )
+            if release_result.get("accepted"):
+                logging.info(
+                    "Backend lock released for no-pour session: outcome=%s card=%s tap=%s",
+                    release_result.get("outcome"),
+                    card_uid,
+                    TAP_ID,
+                )
+            else:
+                logging.warning(
+                    "Failed to release backend lock for no-pour session: outcome=%s reason=%s card=%s tap=%s",
+                    release_result.get("outcome"),
+                    release_result.get("reason"),
+                    card_uid,
+                    TAP_ID,
+                )
+            if stop_reason == "emergency_stop":
+                self._publish_runtime(
+                    phase="blocked",
+                    reason_code="emergency_stop",
+                    card_present=final_card_present,
+                )
 
         if final_card_present:
             self._enter_card_must_be_removed("session_completed" if total_volume_ml > 1 else stop_reason)

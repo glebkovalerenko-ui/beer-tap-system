@@ -136,43 +136,61 @@ def _get_pending_pour_for_visit_tap(db: Session, visit_id: uuid.UUID, tap_id: in
     )
 
 
-def _ensure_pending_pour_for_active_visit(
+def _set_processing_sync_status(tap: models.Tap | None) -> None:
+    if tap and tap.status == "active":
+        tap.status = "processing_sync"
+
+
+def record_pending_pour_for_active_visit(
     db: Session,
     visit: models.Visit,
     tap_id: int,
     *,
     price_per_ml: Decimal,
-) -> str:
+    volume_ml: int,
+    duration_ms: int | None,
+    short_id: str | None,
+) -> tuple[models.Pour, str]:
     existing = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
-    if existing:
-        existing.price_per_ml_at_pour = price_per_ml
-        return "pending_exists"
-
     tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
     if not tap or not tap.keg_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tap is not configured with keg")
 
+    factual_volume_ml = max(int(volume_ml or 0), 0)
+    factual_duration_ms = int(duration_ms) if duration_ms is not None else None
+    authorized_at = visit.lock_set_at or func.now()
+
+    if existing:
+        existing.price_per_ml_at_pour = price_per_ml
+        existing.volume_ml = factual_volume_ml
+        existing.duration_ms = factual_duration_ms
+        existing.short_id = short_id
+        existing.poured_at = func.now()
+        existing.authorized_at = existing.authorized_at or authorized_at
+        _set_processing_sync_status(tap)
+        return existing, "pending_exists"
+
     pending_client_tx_id = f"pending-sync:{visit.visit_id}:{tap_id}:{uuid.uuid4().hex[:8]}"
-    db.add(
-        models.Pour(
-            client_tx_id=pending_client_tx_id,
-            card_uid=visit.card_uid,
-            tap_id=tap_id,
-            visit_id=visit.visit_id,
-            volume_ml=0,
-            poured_at=func.now(),
-            authorized_at=func.now(),
-            amount_charged=Decimal("0.00"),
-            price_per_ml_at_pour=price_per_ml,
-            duration_ms=None,
-            guest_id=visit.guest_id,
-            keg_id=tap.keg_id,
-            sync_status="pending_sync",
-            short_id=None,
-            is_manual_reconcile=False,
-        )
+    pending_pour = models.Pour(
+        client_tx_id=pending_client_tx_id,
+        card_uid=visit.card_uid,
+        tap_id=tap_id,
+        visit_id=visit.visit_id,
+        volume_ml=factual_volume_ml,
+        poured_at=func.now(),
+        authorized_at=authorized_at,
+        amount_charged=Decimal("0.00"),
+        price_per_ml_at_pour=price_per_ml,
+        duration_ms=factual_duration_ms,
+        guest_id=visit.guest_id,
+        keg_id=tap.keg_id,
+        sync_status="pending_sync",
+        short_id=short_id,
+        is_manual_reconcile=False,
     )
-    return "pending_created"
+    db.add(pending_pour)
+    _set_processing_sync_status(tap)
+    return pending_pour, "pending_created"
 
 
 def get_active_visits_list(db: Session):
@@ -438,19 +456,84 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             context={"active_tap_id": current_tap_id, "requested_tap_id": tap_id},
         )
 
-    if tap and tap.status == "active":
-        tap.status = "processing_sync"
-    price_per_ml = pour_policy.sell_price_per_liter_to_price_per_ml(beverage.sell_price_per_liter)
-    pending_outcome = _ensure_pending_pour_for_active_visit(
+    db.commit()
+    db.refresh(active_visit)
+    return active_visit, "lock_acquired", authorize_context
+
+
+def register_pending_pour(
+    db: Session,
+    *,
+    card_uid: str,
+    tap_id: int,
+    short_id: str,
+    volume_ml: int,
+    duration_ms: int | None,
+    price_per_ml_at_pour: Decimal,
+) -> tuple[models.Visit | None, str]:
+    visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
+    if not visit:
+        return None, "no_active_visit"
+
+    if visit.active_tap_id != tap_id:
+        return visit, "lock_not_held"
+
+    record_pending_pour_for_active_visit(
         db=db,
-        visit=active_visit,
+        visit=visit,
         tap_id=tap_id,
-        price_per_ml=price_per_ml,
+        price_per_ml=price_per_ml_at_pour,
+        volume_ml=volume_ml,
+        duration_ms=duration_ms,
+        short_id=short_id,
     )
 
     db.commit()
-    db.refresh(active_visit)
-    return active_visit, pending_outcome, authorize_context
+    db.refresh(visit)
+    return visit, "pending_recorded"
+
+
+def release_authorized_pour_lock(
+    db: Session,
+    *,
+    card_uid: str,
+    tap_id: int,
+    reason: str,
+    volume_ml: int,
+    actor_id: str,
+) -> tuple[models.Visit | None, str]:
+    visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
+    if not visit:
+        return None, "no_active_visit"
+
+    if visit.active_tap_id != tap_id:
+        return visit, "lock_not_held"
+
+    visit.active_tap_id = None
+    visit.lock_set_at = None
+
+    tap = db.query(models.Tap).filter(models.Tap.tap_id == tap_id).first()
+    pending_pour = _get_pending_pour_for_visit_tap(db=db, visit_id=visit.visit_id, tap_id=tap_id)
+    if tap and tap.status == "processing_sync" and pending_pour is None:
+        tap.status = "active"
+
+    _add_audit_log(
+        db,
+        actor_id=actor_id,
+        action="authorize_no_pour_release",
+        target_entity="Visit",
+        target_id=str(visit.visit_id),
+        details={
+            "card_uid": card_uid,
+            "tap_id": tap_id,
+            "reason": reason,
+            "volume_ml": int(volume_ml or 0),
+        },
+    )
+
+    db.commit()
+    db.refresh(visit)
+    return visit, "released"
 
 
 def report_lost_card_from_visit(

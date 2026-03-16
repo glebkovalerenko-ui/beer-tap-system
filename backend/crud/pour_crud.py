@@ -116,6 +116,21 @@ def _resolve_duration_ms(pour_data: schemas.PourData) -> int | None:
     return int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
 
 
+def _resolve_price_per_ml_from_sync_payload(
+    pour_data: schemas.PourData,
+    beverage: models.Beverage,
+) -> Decimal:
+    if int(pour_data.volume_ml or 0) > 0 and int(pour_data.price_cents or 0) > 0:
+        return (Decimal(pour_data.price_cents) / Decimal("100") / Decimal(pour_data.volume_ml)).quantize(
+            Decimal("0.0001"),
+            rounding=ROUND_HALF_UP,
+        )
+    return (beverage.sell_price_per_liter / Decimal("1000")).quantize(
+        Decimal("0.0001"),
+        rounding=ROUND_HALF_UP,
+    )
+
+
 def get_pour_by_client_tx_id(db: Session, client_tx_id: str):
     return db.query(models.Pour).filter(models.Pour.client_tx_id == client_tx_id).first()
 
@@ -300,10 +315,19 @@ def process_pour(db: Session, pour_data: schemas.PourData):
 
     pending_pour = get_pending_pour_for_visit_tap(db=db, visit_id=active_visit.visit_id, tap_id=pour_data.tap_id)
     if not pending_pour:
+        pending_pour, _ = visit_crud.record_pending_pour_for_active_visit(
+            db=db,
+            visit=active_visit,
+            tap_id=pour_data.tap_id,
+            price_per_ml=_resolve_price_per_ml_from_sync_payload(pour_data, beverage),
+            volume_ml=pour_data.volume_ml,
+            duration_ms=duration_ms,
+            short_id=pour_data.short_id,
+        )
         _add_audit_log(
             db,
             actor_id="internal_rpi",
-            action="sync_missing_pending",
+            action="sync_pending_backfilled",
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
@@ -316,8 +340,6 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 "duration_ms": duration_ms,
             },
         )
-        _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
-        return _result("audit_only", "audit_missing_pending", "missing_pending_authorize")
 
     price_per_ml = pending_pour.price_per_ml_at_pour
     if price_per_ml is None or price_per_ml <= 0:
