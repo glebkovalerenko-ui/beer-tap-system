@@ -655,8 +655,8 @@ class FlowManager:
                 logging.info("Клапан закрыт: причина=%s", stop_reason)
             progress_display.finish(total_volume_ml)
 
+        duration_ms = int((self._time_source() - started_monotonic) * 1000)
         if total_volume_ml > 1:
-            duration_ms = int((self._time_source() - started_monotonic) * 1000)
             price_cents = (
                 calculate_price_cents(total_volume_ml, price_per_ml_cents)
                 if has_authorized_price
@@ -696,12 +696,33 @@ class FlowManager:
             self.db_handler.add_pour(pour_data)
             logging.info("Запись о наливе сохранена в локальную БД")
 
-        elif stop_reason == "emergency_stop":
-            self._publish_runtime(
-                phase="blocked",
-                reason_code="emergency_stop",
-                card_present=final_card_present,
+        else:
+            self.db_handler.add_pour(
+                {
+                    "client_tx_id": client_tx_id,
+                    "short_id": short_id,
+                    "card_uid": card_uid,
+                    "tap_id": TAP_ID,
+                    "duration_ms": duration_ms,
+                    "volume_ml": 0,
+                    "tail_volume_ml": 0,
+                    "price_cents": 0,
+                    "price_per_ml_at_pour": float(
+                        price_per_ml_cents if has_authorized_price else (PRICE_PER_100ML_CENTS / 100.0)
+                    ),
+                }
             )
+            logging.info(
+                "Zero-volume authorized session queued for terminal sync: short_id=%s stop_reason=%s",
+                short_id,
+                stop_reason,
+            )
+            if stop_reason == "emergency_stop":
+                self._publish_runtime(
+                    phase="blocked",
+                    reason_code="emergency_stop",
+                    card_present=final_card_present,
+                )
 
         if final_card_present:
             self._enter_card_must_be_removed("session_completed" if total_volume_ml > 1 else stop_reason)

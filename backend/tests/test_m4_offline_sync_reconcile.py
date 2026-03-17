@@ -218,6 +218,71 @@ def test_pending_sync_transitions_to_synced_on_successful_sync(client, db_sessio
     assert matched[0]["synced_at"] is not None
 
 
+def test_zero_volume_sync_becomes_terminal_rejected_and_unlocks_visit(client, db_session):
+    headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92008", card_uid="CARD-M4-008")
+    auth = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": "CARD-M4-008", "tap_id": tap_id},
+    )
+    assert auth.status_code == 200
+
+    pending = (
+        db_session.query(models.Pour)
+        .filter(
+            models.Pour.visit_id == uuid.UUID(visit_id),
+            models.Pour.tap_id == tap_id,
+            models.Pour.sync_status == "pending_sync",
+        )
+        .one()
+    )
+    pending_pour_id = pending.pour_id
+
+    sync_resp = client.post(
+        "/api/sync/pours",
+        headers={"X-Internal-Token": "demo-secret-key"},
+        json={
+            "pours": [
+                {
+                    "client_tx_id": "m4-sync-008-zero",
+                    "card_uid": "CARD-M4-008",
+                    "tap_id": tap_id,
+                    "short_id": "Z92008",
+                    "duration_ms": 1900,
+                    "volume_ml": 0,
+                    "price_cents": 0,
+                }
+            ]
+        },
+    )
+    assert sync_resp.status_code == 200
+    result = sync_resp.json()["results"][0]
+    assert result["status"] == "rejected"
+    assert result["outcome"] == "rejected_zero_volume"
+    assert result["reason"] == "zero_volume_session"
+
+    db_session.expire_all()
+    rejected = db_session.query(models.Pour).filter(models.Pour.pour_id == pending_pour_id).one()
+    assert rejected.sync_status == "rejected"
+    assert rejected.client_tx_id == "m4-sync-008-zero"
+    assert rejected.short_id == "Z92008"
+    assert rejected.volume_ml == 0
+    assert rejected.duration_ms == 1900
+    assert str(rejected.amount_charged) == "0.00"
+    assert rejected.synced_at is None
+
+    visit = db_session.query(models.Visit).filter(models.Visit.visit_id == uuid.UUID(visit_id)).one()
+    assert visit.active_tap_id is None
+    assert visit.lock_set_at is None
+
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == tap_id).one()
+    assert tap.status == "active"
+
+    audit_resp = client.get("/api/audit/", headers=headers)
+    assert audit_resp.status_code == 200
+    assert any(item["action"] == "sync_rejected_zero_volume" for item in audit_resp.json())
+
+
 def test_sync_without_authorize_returns_audit_only_and_does_not_write_pour(client, db_session):
     headers, _, visit_id, tap_id = _prepare_active_visit(client, suffix="92006", card_uid="CARD-M4-006")
 

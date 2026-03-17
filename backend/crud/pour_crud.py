@@ -319,6 +319,30 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         _clear_active_visit_lock(active_visit=active_visit, tap=tap, keg=keg)
         return _result("audit_only", "audit_missing_pending", "missing_pending_authorize")
 
+    if int(pour_data.volume_ml) <= 0:
+        return _finalize_rejected_pending_pour(
+            db,
+            pending_pour=pending_pour,
+            active_visit=active_visit,
+            tap=tap,
+            keg=keg,
+            pour_data=pour_data,
+            duration_ms=duration_ms,
+            actor_id="internal_rpi",
+            audit_action="sync_rejected_zero_volume",
+            audit_details={
+                "card_uid": card.card_uid,
+                "guest_id": str(guest.guest_id),
+                "tap_id": pour_data.tap_id,
+                "client_tx_id": pour_data.client_tx_id,
+                "short_id": pour_data.short_id,
+                "volume_ml": int(pour_data.volume_ml),
+                "duration_ms": duration_ms,
+            },
+            reason="zero_volume_session",
+            outcome="rejected_zero_volume",
+        )
+
     price_per_ml = pending_pour.price_per_ml_at_pour
     if price_per_ml is None or price_per_ml <= 0:
         price_per_ml = beverage.sell_price_per_liter / Decimal(1000)

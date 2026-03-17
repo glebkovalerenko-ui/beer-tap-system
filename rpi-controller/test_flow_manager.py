@@ -194,6 +194,34 @@ def test_flow_manager_accounts_post_close_tail_in_current_pour():
     assert db_handler.pours[0]["tail_volume_ml"] == 10
 
 
+def test_flow_manager_queues_zero_volume_terminal_sync_when_card_removed_without_pour():
+    clock = FakeClock()
+    hardware = FakeHardware(card_present_responses=[True, True, False])
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+    )
+
+    manager.process()
+
+    assert len(db_handler.pours) == 1
+    assert db_handler.pours[0]["volume_ml"] == 0
+    assert db_handler.pours[0]["tail_volume_ml"] == 0
+    assert db_handler.pours[0]["price_cents"] == 0
+    assert sync_manager.reported_flow_events == []
+
+
 def test_flow_manager_does_not_carry_closed_valve_flow_into_next_pour():
     clock = FakeClock()
     hardware = FakeHardware(

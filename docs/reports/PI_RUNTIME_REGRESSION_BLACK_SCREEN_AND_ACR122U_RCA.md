@@ -186,6 +186,59 @@ Practical card-read smoke on `2026-03-17 13:25:47 MSK`:
 
 This proved the restored controller process could see the real reader, read the real card, authorize a session, update runtime/UI state, and handle card removal correctly on the Pi.
 
+### Follow-up: real display stuck in `processing_sync` after zero-volume card session
+
+During the physical smoke, the user reported that the display stayed on `Кран завершает синхронизацию` after the card had already been removed.
+
+Live evidence collected immediately after that report:
+
+- Pi runtime endpoint was already back to idle:
+  - `/local/display/runtime` returned `phase="idle"` and `card_present=false`
+- Pi bootstrap endpoint was still serving a backend snapshot with:
+  - `snapshot.tap.status="processing_sync"`
+- Hub snapshot API returned the same live backend state:
+  - `tap.status="processing_sync"`
+- Live DB inspection on the hub showed one stuck placeholder and one active lock for tap `1`:
+  - `pending_count=1`
+  - `active_visit_count=1`
+  - pending row card UID: `0b24b1cd`
+
+Additional root cause:
+
+- `authorize_pour_lock()` intentionally creates a `pending_sync` placeholder and sets `tap.status="processing_sync"` as soon as authorization is granted.
+- The controller only wrote a local sync record when `total_volume_ml > 1`.
+- In the reproduced real session, the card was authorized but no measurable pour volume was recorded, so the controller never emitted any terminal sync row.
+- Because no `/api/sync/pours` terminal event ever arrived, the backend placeholder remained `pending_sync`, the visit lock remained set, and the display snapshot legitimately stayed in `processing_sync`.
+
+Additional fix:
+
+- Updated `rpi-controller/flow_manager.py` so an authorized session that ends with `0 ml` now still writes a terminal local sync row.
+- Updated `backend/crud/pour_crud.py` so a sync payload with `volume_ml <= 0` finalizes the pending placeholder as terminal `rejected`, clears `active_tap_id`, and restores `tap.status="active"`.
+- Added regression tests for both sides:
+  - controller zero-volume terminal sync creation
+  - backend zero-volume sync rejection plus unlock
+- For the already stuck live placeholder, sent a one-shot internal zero-volume sync after deploying the code fix.
+
+Follow-up verification after rollout:
+
+- Hub sync endpoint returned:
+  - `status="rejected"`
+  - `outcome="rejected_zero_volume"`
+  - `reason="zero_volume_session"`
+- Live DB then showed:
+  - `tap_status active`
+  - `pending_count 0`
+  - `rejected_status rejected`
+  - `rejected_volume 0`
+  - `active_visit_count 0`
+- Hub display snapshot for tap `1` returned:
+  - `tap.status="active"`
+- Pi display bootstrap and runtime then aligned again:
+  - bootstrap snapshot `tap.status="active"`
+  - runtime `phase="idle"`
+
+This corrected the inaccurate intermediate conclusion that the system had simply returned to idle. The runtime had returned to idle, but the backend display snapshot had remained stuck in `processing_sync` until this zero-volume terminal sync path was fixed.
+
 ## 5. Remaining limitations
 
 - The kiosk launcher still logs some Chromium GPU-process noise on this Pi platform, but Chromium relaunches and the UI remains visible after boot. This is not the current blocker.
