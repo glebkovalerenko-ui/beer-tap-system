@@ -7,8 +7,10 @@ Expected pilot layout on device:
 - repo checkout: `/home/cybeer/beer-tap-system`
 - shared device env: `/etc/beer-tap/device.env`
 - controller runtime JSON: `/run/beer-tap/display-runtime.json`
-- controller venv: `/home/cybeer/beer-tap-system/.venv-controller`
-- display-agent venv: `/home/cybeer/beer-tap-system/.venv-display-agent`
+- runtime root: `/home/cybeer/.local/share/beer-tap`
+- runtime venv root: `/home/cybeer/.local/share/beer-tap/venvs`
+- controller venv: `/home/cybeer/.local/share/beer-tap/venvs/controller`
+- display-agent venv: `/home/cybeer/.local/share/beer-tap/venvs/display-agent`
 - kiosk user: `cybeer`
 
 Pilot network default:
@@ -32,12 +34,17 @@ Install flow:
    - `SERVER_URL` (`http://192.168.0.110:8000` for the current pilot)
    - `INTERNAL_TOKEN` for controller/internal traffic
    - `DISPLAY_API_KEY` for tap-display-agent read-only snapshot/media access
-3. Create Python environments:
-   - `python3 -m venv /home/cybeer/beer-tap-system/.venv-controller`
-   - `/home/cybeer/beer-tap-system/.venv-controller/bin/pip install -r /home/cybeer/beer-tap-system/rpi-controller/requirements.txt`
-   - `/home/cybeer/beer-tap-system/.venv-controller/bin/pip install pyscard`
-   - `python3 -m venv /home/cybeer/beer-tap-system/.venv-display-agent`
-   - `/home/cybeer/beer-tap-system/.venv-display-agent/bin/pip install -r /home/cybeer/beer-tap-system/tap-display-agent/requirements.txt`
+3. Provision runtime environments outside the synced repo path:
+   - `chmod 755 /home/cybeer/beer-tap-system/deploy/rpi/provision-runtime-venvs.sh`
+   - `sudo /home/cybeer/beer-tap-system/deploy/rpi/provision-runtime-venvs.sh`
+   - the script is idempotent and safe to rerun after dependency changes
+   - the script enforces:
+     - runtime root `/home/cybeer/.local/share/beer-tap`
+     - runtime venv root `/home/cybeer/.local/share/beer-tap/venvs`
+     - owner/group `cybeer:cybeer`
+     - root directory mode `0755`
+   - controller venv uses `python3 -m venv --system-site-packages` so distro-installed `python3-pyscard`, `python3-gpiozero`, and `python3-lgpio` remain available from the external env
+   - display-agent venv uses a standard `python3 -m venv`
 4. Copy systemd units from this folder into `/etc/systemd/system/`:
    - `beer-tap-controller.service`
    - `tap-display-agent.service`
@@ -87,4 +94,5 @@ Hardening notes in this MVP package:
 - Chromium is launched with `--disable-gpu` on the pilot Pi because the live device showed Wayland/EGL context failures after reboot and the display UI does not need GPU acceleration.
 - Chromium is relaunched by the launcher script if it exits.
 - The pilot Pi uses `labwc` session autostart rather than relying on `~/.config/autostart/*.desktop`, because the explicit `labwc` hook was the reliable path during real-device bring-up.
+- Pi systemd services must not depend on virtual environments inside the Syncthing-managed repo path. The live service contract is the external runtime root under `/home/cybeer/.local/share/beer-tap/venvs`.
 - This is still pilot-grade deployment: there is no fleet management, remote watchdog, or screenshot telemetry in this package.
