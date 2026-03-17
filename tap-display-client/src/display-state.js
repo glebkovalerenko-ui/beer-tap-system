@@ -29,11 +29,11 @@ export const DISPLAY_STATE_PRECEDENCE = [
   "runtime_blocked",
   "bootstrap_missing_backend_lost",
   "emergency_stop",
-  "tap_service_state",
   "runtime_authorizing",
   "runtime_authorized",
   "runtime_pouring",
   "runtime_finished",
+  "tap_service_state",
   "backend_link_lost",
   "booting",
   "idle",
@@ -103,11 +103,6 @@ export function resolveDisplayState({ bootstrap, runtimePayload, bootstrapError,
     return { kind: "service", code: "no_connection", runtime, snapshot, progress, warning: null };
   }
 
-  const tapServiceCode = resolveTapServiceCode(snapshot);
-  if (tapServiceCode) {
-    return { kind: "service", code: tapServiceCode, runtime, snapshot, progress, warning: null };
-  }
-
   if (runtimePhase === "authorizing") {
     return { kind: "authorized", code: "authorizing", runtime, snapshot, progress, warning: null };
   }
@@ -122,6 +117,11 @@ export function resolveDisplayState({ bootstrap, runtimePayload, bootstrapError,
 
   if (runtimePhase === "finished") {
     return { kind: "finished", code: "finished", runtime, snapshot, progress, warning };
+  }
+
+  const tapServiceCode = resolveTapServiceCode(snapshot);
+  if (tapServiceCode) {
+    return { kind: "service", code: tapServiceCode, runtime, snapshot, progress, warning: null };
   }
 
   if (backendLinkLost) {

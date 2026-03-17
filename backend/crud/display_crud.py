@@ -252,6 +252,24 @@ def _canonical_json(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _resolve_display_tap_status(db: Session, *, tap: models.Tap) -> str:
+    if tap.status != "processing_sync":
+        return tap.status
+
+    active_visit_lock = (
+        db.query(models.Visit.visit_id)
+        .filter(
+            models.Visit.status == "active",
+            models.Visit.active_tap_id == tap.tap_id,
+        )
+        .first()
+    )
+    if active_visit_lock:
+        return "active"
+
+    return tap.status
+
+
 def build_display_snapshot(
     db: Session,
     *,
@@ -279,7 +297,7 @@ def build_display_snapshot(
         "tap": {
             "tap_id": tap.tap_id,
             "display_name": tap.display_name,
-            "status": tap.status,
+            "status": _resolve_display_tap_status(db, tap=tap),
             "enabled": config.enabled if config else True,
         },
         "service_flags": {

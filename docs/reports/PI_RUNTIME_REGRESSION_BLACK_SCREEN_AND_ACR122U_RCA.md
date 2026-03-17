@@ -239,6 +239,60 @@ Follow-up verification after rollout:
 
 This corrected the inaccurate intermediate conclusion that the system had simply returned to idle. The runtime had returned to idle, but the backend display snapshot had remained stuck in `processing_sync` until this zero-volume terminal sync path was fixed.
 
+### Follow-up: active card session was still visually overridden by `processing_sync`
+
+After the zero-volume terminal sync fix above, the user still reported unstable display behavior during real card holds without opening the tap:
+
+- `Откройте кран`
+- then after roughly `5` to `10` seconds: `Кран завершает синхронизацию`
+- then later `Налив завершен` or `Налив остановлен`
+- then a short post-remove service screen before returning to idle
+
+Live controller evidence showed the session itself was stable:
+
+- controller journal on `2026-03-17 15:26:13 MSK` and `2026-03-17 15:26:41 MSK` recorded one continuous authorized session with repeated `Налив: 0 мл ...`
+- no early `card_removed` termination happened during those holds
+- the session only ended at `FLOW_TIMEOUT_SECONDS`, then queued and synced a zero-volume terminal record immediately
+
+Additional root cause:
+
+- backend `authorize_pour_lock()` creates the placeholder pending pour at authorize time and immediately sets `tap.status="processing_sync"`
+- display bootstrap polling can therefore observe `processing_sync` while the same tap is still in a live authorized session
+- that service-state snapshot is operationally correct for backend sync bookkeeping, but it is not the right user-facing state while the active visit lock is still held on that tap
+- in parallel, NFC presence sampling was too sensitive to short reader-presence dips, which made some earlier card-removal timing feel erratic
+
+Additional fix:
+
+- `tap-display-client/src/display-state.js`
+  - active runtime states now take precedence over snapshot service states such as `processing_sync`
+- `backend/crud/display_crud.py`
+  - display snapshots now mask `tap.status="processing_sync"` to `active` when there is still an active visit with `active_tap_id` on that tap
+  - this keeps backend locking semantics intact while preventing the display snapshot from advertising a sync-only service state during a live session
+- `rpi-controller/flow_manager.py`
+  - added `AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.8`
+  - an authorized session now requires sustained absence before treating the card as removed
+  - zero-volume authorized sessions also trigger an immediate sync cycle after the local terminal row is written
+
+Additional verification:
+
+- frontend state tests passed:
+  - `node --test tap-display-client/test/display-state.test.js`
+- controller runtime tests passed:
+  - `python -m pytest rpi-controller/test_flow_manager.py`
+- backend display snapshot and offline-sync tests passed:
+  - `DATABASE_URL=sqlite:///./backend-test.db python -m pytest backend/tests/test_tap_display_api.py backend/tests/test_m4_offline_sync_reconcile.py`
+- encoding guard passed:
+  - `python scripts/encoding_guard.py --all`
+- hub rollout:
+  - updated `backend/crud/display_crud.py`
+  - restarted only `beer_backend_api` in Docker Compose
+  - container returned `healthy`
+- final physical monitor verification on `2026-03-17`:
+  - during card hold without opening the tap, the user saw `Откройте кран`
+  - the display no longer switched to `Кран завершает синхронизацию` mid-session
+  - at timeout the user saw `Налив остановлен`
+  - after card removal, `Налив остановлен` stayed only briefly and then the display returned to the beer/tap idle screen
+
 ## 5. Remaining limitations
 
 - The kiosk launcher still logs some Chromium GPU-process noise on this Pi platform, but Chromium relaunches and the UI remains visible after boot. This is not the current blocker.

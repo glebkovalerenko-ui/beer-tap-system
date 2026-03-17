@@ -11,6 +11,7 @@ from terminal_progress import TerminalProgressDisplay
 
 class FlowManager:
     CARD_REMOVE_DEBOUNCE_SECONDS = 0.8
+    AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.8
     CARD_REMOVE_REMINDER_SECONDS = 10.0
     PROCESSING_SYNC_REMINDER_SECONDS = 10.0
     LOOP_INTERVAL_SECONDS = 0.1
@@ -544,10 +545,20 @@ class FlowManager:
         progress_display = self._progress_factory()
         live_flow_reported = False
         live_flow_last_report_at = None
+        card_absent_since = None
 
         try:
-            while self.hardware.is_card_present():
+            while True:
                 now = self._time_source()
+                if not self.hardware.is_card_present():
+                    if card_absent_since is None:
+                        card_absent_since = now
+                    elif now - card_absent_since >= self.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS:
+                        break
+                    self._sleep(self.LOOP_INTERVAL_SECONDS)
+                    continue
+
+                card_absent_since = None
                 if now >= next_emergency_check_at:
                     if self.sync_manager.check_emergency_stop():
                         logging.info("Экстренная остановка активна. Закрываем клапан.")
@@ -717,6 +728,10 @@ class FlowManager:
                 short_id,
                 stop_reason,
             )
+            try:
+                self.sync_manager.sync_cycle(self.db_handler)
+            except Exception:
+                logging.exception("Immediate zero-volume sync attempt failed: short_id=%s", short_id)
             if stop_reason == "emergency_stop":
                 self._publish_runtime(
                     phase="blocked",

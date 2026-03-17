@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 import models
@@ -234,6 +235,70 @@ def test_missing_media_asset_file_is_handled_without_breaking_snapshot(client, d
 
     content = client.get(f"/api/media-assets/{missing_asset.asset_id}/content", headers=headers)
     assert content.status_code == 404
+
+
+def test_display_snapshot_masks_processing_sync_while_active_visit_holds_tap(client, db_session, monkeypatch):
+    headers = _display_headers(monkeypatch)
+
+    guest = models.Guest(
+        last_name="Display",
+        first_name="Active",
+        phone_number="+17770001111",
+        date_of_birth=date(1990, 1, 1),
+        id_document="DISPLAY-ACTIVE-1",
+        balance=Decimal("100.00"),
+        is_active=True,
+    )
+    beverage = models.Beverage(
+        name="Display Sync Lager",
+        sell_price_per_liter=Decimal("500.00"),
+    )
+    keg = models.Keg(
+        beverage=beverage,
+        initial_volume_ml=30000,
+        current_volume_ml=30000,
+        purchase_price=Decimal("1000.00"),
+        status="in_use",
+    )
+    tap = models.Tap(display_name="Tap Active Visit", status="processing_sync", keg=keg)
+    db_session.add_all([guest, beverage, keg, tap])
+    db_session.flush()
+
+    visit = models.Visit(
+        guest_id=guest.guest_id,
+        status="active",
+        active_tap_id=tap.tap_id,
+        card_returned=False,
+    )
+    db_session.add(visit)
+    db_session.commit()
+
+    response = client.get(f"/api/display/taps/{tap.tap_id}/snapshot", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["tap"]["status"] == "active"
+
+
+def test_display_snapshot_keeps_processing_sync_without_active_visit_lock(client, db_session, monkeypatch):
+    headers = _display_headers(monkeypatch)
+
+    beverage = models.Beverage(
+        name="Display Pending Lager",
+        sell_price_per_liter=Decimal("500.00"),
+    )
+    keg = models.Keg(
+        beverage=beverage,
+        initial_volume_ml=30000,
+        current_volume_ml=30000,
+        purchase_price=Decimal("1000.00"),
+        status="in_use",
+    )
+    tap = models.Tap(display_name="Tap Pending Sync", status="processing_sync", keg=keg)
+    db_session.add_all([beverage, keg, tap])
+    db_session.commit()
+
+    response = client.get(f"/api/display/taps/{tap.tap_id}/snapshot", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["tap"]["status"] == "processing_sync"
 
 
 def test_beverage_update_and_tap_display_config_endpoints(client):

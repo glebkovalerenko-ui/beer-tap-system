@@ -81,6 +81,7 @@ class FakeSyncManager:
         self.auth_result = auth_result
         self.reported_anomalies = []
         self.reported_flow_events = []
+        self.sync_cycle_calls = 0
 
     def authorize_pour(self, card_uid, tap_id):
         return dict(self.auth_result)
@@ -95,6 +96,10 @@ class FakeSyncManager:
     def report_flow_event(self, **payload):
         self.reported_flow_events.append(payload)
         return True
+
+    def sync_cycle(self, db_handler):
+        self.sync_cycle_calls += 1
+        return None
 
 
 class FakeRuntimePublisher:
@@ -187,6 +192,7 @@ def test_flow_manager_accounts_post_close_tail_in_current_pour():
             force_live=False,
         ),
     )
+    manager.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.0
 
     manager.process()
 
@@ -212,6 +218,7 @@ def test_flow_manager_queues_zero_volume_terminal_sync_when_card_removed_without
             force_live=False,
         ),
     )
+    manager.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.0
 
     manager.process()
 
@@ -220,12 +227,43 @@ def test_flow_manager_queues_zero_volume_terminal_sync_when_card_removed_without
     assert db_handler.pours[0]["tail_volume_ml"] == 0
     assert db_handler.pours[0]["price_cents"] == 0
     assert sync_manager.reported_flow_events == []
+    assert sync_manager.sync_cycle_calls == 1
+
+
+def test_flow_manager_debounces_transient_card_loss_during_authorized_session():
+    clock = FakeClock()
+    hardware = FakeHardware(card_present_responses=[True, True, False] + [True] * 20)
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+    )
+    manager.FLOW_TIMEOUT_SECONDS = 0.6
+    manager.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.25
+
+    manager.process()
+
+    assert manager.card_must_be_removed is True
+    assert manager._card_must_be_removed_reason == "flow_timeout"
+    assert len(db_handler.pours) == 1
+    assert db_handler.pours[0]["volume_ml"] == 0
+    assert sync_manager.sync_cycle_calls == 1
 
 
 def test_flow_manager_does_not_carry_closed_valve_flow_into_next_pour():
     clock = FakeClock()
     hardware = FakeHardware(
-        card_present_responses=[True, True, False, False, True, True, False, False],
+        card_present_responses=[True, True, False, False, False, True, True, False, False, False],
         volume_deltas_liters=[0.02, 0.015],
         post_close_volume_deltas_liters=[0.01],
     )
@@ -244,6 +282,7 @@ def test_flow_manager_does_not_carry_closed_valve_flow_into_next_pour():
             force_live=False,
         ),
     )
+    manager.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.0
 
     manager.process()
     manager.process()
@@ -437,6 +476,7 @@ def test_flow_manager_publishes_finished_runtime_snapshot():
         ),
         runtime_publisher=runtime_publisher,
     )
+    manager.AUTHORIZED_CARD_ABSENCE_DEBOUNCE_SECONDS = 0.0
 
     manager.process()
 

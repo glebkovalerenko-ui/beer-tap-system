@@ -57,7 +57,7 @@ test("documents the frozen precedence order", () => {
     "runtime_blocked",
     "bootstrap_missing_backend_lost",
     "emergency_stop",
-    "tap_service_state",
+    "runtime_authorizing",
   ]);
 });
 
@@ -113,6 +113,23 @@ test("tap statuses beyond cleaning are mapped into service states", () => {
   assert.equal(locked.code, "locked");
   assert.equal(empty.code, "empty");
   assert.equal(processingSync.code, "processing_sync");
+});
+
+test("active runtime state wins over processing_sync snapshot", () => {
+  const state = resolveDisplayState({
+    bootstrap: { snapshot: makeSnapshot({ tap: { status: "processing_sync" } }), backend: { link_lost: false } },
+    runtimePayload: makeRuntimePayload({
+      runtime: {
+        phase: "authorized",
+        guest_first_name: "Test",
+      },
+    }),
+    bootstrapError: null,
+    runtimeError: null,
+  });
+
+  assert.equal(state.kind, "authorized");
+  assert.equal(state.code, "authorized");
 });
 
 test("backend link loss keeps active authorized state but adds warning", () => {
