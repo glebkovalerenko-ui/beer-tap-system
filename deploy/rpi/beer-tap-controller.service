@@ -10,7 +10,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=DEVICE_ENV_PATH=/etc/beer-tap/device.env
 RuntimeDirectory=beer-tap
 RuntimeDirectoryMode=0755
-ExecStart=/home/cybeer/beer-tap-system/.venv-controller/bin/python main.py
+ExecStart=/home/cybeer/.local/share/beer-tap/venvs/controller/bin/python main.py
 Restart=always
 RestartSec=3
 User=cybeer
