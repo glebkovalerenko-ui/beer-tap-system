@@ -82,6 +82,7 @@ class FakeSyncManager:
         self.reported_anomalies = []
         self.reported_flow_events = []
         self.sync_cycle_calls = 0
+        self.sync_wake_notifications = 0
 
     def authorize_pour(self, card_uid, tap_id):
         return dict(self.auth_result)
@@ -100,6 +101,9 @@ class FakeSyncManager:
     def sync_cycle(self, db_handler):
         self.sync_cycle_calls += 1
         return None
+
+    def notify_sync_needed(self):
+        self.sync_wake_notifications += 1
 
 
 class FakeRuntimePublisher:
@@ -350,6 +354,34 @@ def test_flow_manager_reports_live_authorized_pour_updates():
     assert sync_manager.reported_flow_events[-1]["volume_ml"] == 35
 
 
+def test_flow_manager_wakes_sync_worker_after_pour_is_saved():
+    clock = FakeClock()
+    hardware = FakeHardware(
+        card_present_responses=[True, True, False],
+        volume_deltas_liters=[0.02],
+    )
+    db_handler = FakeDbHandler()
+    sync_manager = FakeSyncManager({"allowed": True, "max_volume_ml": 100})
+    manager = FlowManager(
+        hardware,
+        db_handler,
+        sync_manager,
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+    )
+
+    manager.process()
+
+    assert db_handler.pours[0]["volume_ml"] == 20
+    assert sync_manager.sync_wake_notifications == 1
+
+
 def test_flow_manager_deny_does_not_start_progress():
     clock = FakeClock()
     hardware = FakeHardware(card_present_responses=[True])
@@ -486,3 +518,40 @@ def test_flow_manager_publishes_finished_runtime_snapshot():
     assert runtime_publisher.snapshots[-1]["phase"] == "finished"
     assert runtime_publisher.snapshots[-1]["guest_first_name"] == "Иван"
     assert runtime_publisher.snapshots[-1]["current_volume_ml"] == 20
+
+
+def test_flow_manager_returns_to_idle_after_zero_volume_card_removed_session():
+    clock = FakeClock()
+    runtime_publisher = FakeRuntimePublisher()
+    manager = FlowManager(
+        FakeHardware(
+            card_present_responses=[True, False, False],
+            volume_deltas_liters=[],
+        ),
+        FakeDbHandler(),
+        FakeSyncManager(
+            {
+                "allowed": True,
+                "guest_first_name": "Ivan",
+                "max_volume_ml": 100,
+                "price_per_ml_cents": 2,
+                "balance_cents": 1000,
+            }
+        ),
+        time_source=clock.monotonic,
+        sleep_fn=clock.sleep,
+        progress_factory=lambda: TerminalProgressDisplay(
+            stream=io.StringIO(),
+            time_source=clock.monotonic,
+            fallback_interval_seconds=0.0,
+            force_live=False,
+        ),
+        runtime_publisher=runtime_publisher,
+    )
+
+    manager.process()
+
+    phases = [snapshot["phase"] for snapshot in runtime_publisher.snapshots]
+    assert "authorized" in phases
+    assert runtime_publisher.snapshots[-1]["phase"] == "idle"
+    assert runtime_publisher.snapshots[-1]["card_present"] is False

@@ -1,37 +1,59 @@
-from gpiozero.pins.lgpio import LGPIOFactory
+import logging
+import time
+from threading import Lock
+
 from gpiozero import Device
 from gpiozero import DigitalInputDevice, OutputDevice
-from threading import Lock
-import time
-from config import PIN_RELAY, PIN_FLOW_SENSOR, FLOW_SENSOR_K_FACTOR
+from gpiozero.pins.lgpio import LGPIOFactory
 from smartcard.System import readers
 from smartcard.util import toHexString
 
-# Установка LGPIOFactory для gpiozero
+from config import FLOW_SENSOR_K_FACTOR, PIN_FLOW_SENSOR, PIN_RELAY
+
+
 Device.pin_factory = LGPIOFactory()
 
+
 class HardwareHandler:
+    PCSC_ERROR_LOG_INTERVAL_SECONDS = 5.0
+
     def __init__(self):
-        # Инициализация реле и датчика потока
         self.relay = OutputDevice(PIN_RELAY)
         self.flow_sensor = DigitalInputDevice(PIN_FLOW_SENSOR)
-
-        # Переменные для подсчета импульсов
         self.pulse_count = 0
         self.lock = Lock()
-
-        # Установка обработчика прерываний для датчика потока
+        self._last_pcsc_error_logged_at = 0.0
         self.flow_sensor.when_activated = self._pulse_detected
 
     def _pulse_detected(self):
         with self.lock:
             self.pulse_count += 1
 
+    def _log_pcsc_error(self, action, exc):
+        now = time.monotonic()
+        if now - self._last_pcsc_error_logged_at < self.PCSC_ERROR_LOG_INTERVAL_SECONDS:
+            return
+        self._last_pcsc_error_logged_at = now
+        logging.warning("PC/SC unavailable during %s: %s", action, exc)
+
+    def _create_card_connection(self):
+        try:
+            available_readers = readers()
+        except Exception as exc:
+            self._log_pcsc_error("reader enumeration", exc)
+            return None
+        if not available_readers:
+            return None
+        try:
+            return available_readers[0].createConnection()
+        except Exception as exc:
+            self._log_pcsc_error("reader connection setup", exc)
+            return None
+
     def is_card_present(self):
-        r = readers()
-        if not r:
+        connection = self._create_card_connection()
+        if not connection:
             return False
-        connection = r[0].createConnection()
         try:
             connection.connect()
             return True
@@ -39,13 +61,12 @@ class HardwareHandler:
             return False
 
     def get_card_uid(self):
-        r = readers()
-        if not r:
+        connection = self._create_card_connection()
+        if not connection:
             return None
-        connection = r[0].createConnection()
         try:
             connection.connect()
-            apdu = [0xFF, 0xCA, 0x00, 0x00, 0x00]  # Команда для получения UID
+            apdu = [0xFF, 0xCA, 0x00, 0x00, 0x00]
             response, sw1, sw2 = connection.transmit(apdu)
             if sw1 == 0x90 and sw2 == 0x00:
                 return toHexString(response)
@@ -63,7 +84,6 @@ class HardwareHandler:
         with self.lock:
             pulses = self.pulse_count
             self.pulse_count = 0
-        # Расчет объема в литрах
         return (pulses / FLOW_SENSOR_K_FACTOR) / 1000
 
     def reset_pulses(self):

@@ -705,6 +705,9 @@ class FlowManager:
                 ),
             }
             self.db_handler.add_pour(pour_data)
+            notify_sync_needed = getattr(self.sync_manager, "notify_sync_needed", None)
+            if callable(notify_sync_needed):
+                notify_sync_needed()
             logging.info("Запись о наливе сохранена в локальную БД")
 
         else:
@@ -737,6 +740,12 @@ class FlowManager:
                     phase="blocked",
                     reason_code="emergency_stop",
                     card_present=final_card_present,
+                )
+            elif not final_card_present:
+                self._last_session_summary = None
+                self._publish_runtime(
+                    phase="idle",
+                    card_present=False,
                 )
 
         if final_card_present:

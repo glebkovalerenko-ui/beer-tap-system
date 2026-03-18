@@ -14,7 +14,7 @@ from sync_manager import SyncManager
 def start_sync_worker(db, sync_manager):
     while True:
         sync_manager.sync_cycle(db)
-        time.sleep(SYNC_INTERVAL_SECONDS)
+        sync_manager.wait_for_next_sync_cycle(SYNC_INTERVAL_SECONDS)
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
     runtime_publisher = DisplayRuntimePublisher()
     sync_manager.log_startup_config()
     sync_manager.probe_backend()
+    sync_manager.start_flow_event_worker()
     flow_manager = FlowManager(hardware, db_handler, sync_manager, runtime_publisher=runtime_publisher)
 
     threading.Thread(target=start_sync_worker, args=(db_handler, sync_manager), daemon=True).start()
