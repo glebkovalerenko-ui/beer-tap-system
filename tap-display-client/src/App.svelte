@@ -1,10 +1,12 @@
 <script>
   import { onMount } from "svelte";
+  import { get, writable } from "svelte/store";
   import { getSnapshotCopy, isFastRuntimePhase, resolveDisplayState } from "./display-state.js";
 
   const FAST_RUNTIME_POLL_MS = 250;
-  const SLOW_RUNTIME_POLL_MS = 1000;
+  const SLOW_RUNTIME_POLL_MS = 250;
   const BOOTSTRAP_POLL_MS = 5000;
+  const AUTHORIZING_UI_GRACE_MS = 700;
 
   const deniedCopy = {
     lost_card: {
@@ -82,12 +84,19 @@
       code: "flow_timeout",
       tone: "warning",
     },
+    card_removed: {
+      headline: "Заберите карту",
+      nextStep: "Уберите карту со считывателя",
+      code: "card_removed",
+      tone: "neutral",
+    },
   };
 
-  let bootstrap = null;
-  let runtimePayload = null;
-  let bootstrapError = null;
-  let runtimeError = null;
+  const bootstrap = writable(null);
+  const runtimePayload = writable(null);
+  const bootstrapError = writable(null);
+  const runtimeError = writable(null);
+  let authorizingStartedAtMs = null;
   let runtimeTimer;
   let bootstrapTimer;
 
@@ -112,10 +121,10 @@
     try {
       const response = await fetch("/local/display/bootstrap");
       if (!response.ok) throw new Error(`bootstrap_http_${response.status}`);
-      bootstrap = await response.json();
-      bootstrapError = null;
+      bootstrap.set(await response.json());
+      bootstrapError.set(null);
     } catch (error) {
-      bootstrapError = error.message;
+      bootstrapError.set(error.message);
     }
   }
 
@@ -123,12 +132,12 @@
     try {
       const response = await fetch("/local/display/runtime");
       if (!response.ok) throw new Error(`runtime_http_${response.status}`);
-      runtimePayload = await response.json();
-      runtimeError = null;
+      runtimePayload.set(await response.json());
+      runtimeError.set(null);
     } catch (error) {
-      runtimeError = error.message;
+      runtimeError.set(error.message);
     } finally {
-      const phase = runtimePayload?.runtime?.phase ?? "idle";
+      const phase = get(runtimePayload)?.runtime?.phase ?? "idle";
       const nextDelay = isFastRuntimePhase(phase) ? FAST_RUNTIME_POLL_MS : SLOW_RUNTIME_POLL_MS;
       clearTimeout(runtimeTimer);
       runtimeTimer = window.setTimeout(refreshRuntime, nextDelay);
@@ -205,7 +214,23 @@
     };
   }
 
-  function resolveUiState() {
+  function buildIdleUi({ presentation, pricing, copy, theme }) {
+    return {
+      kind: "idle",
+      tone: "brand",
+      headline: presentation.name,
+      secondary: pricing.display_text,
+      tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" / "),
+      description: presentation.description_short,
+      brand: presentation.brand_name || presentation.brewery,
+      instruction: copy.idle_instruction || "Приложите карту",
+      accentColor: theme.accent_color ?? "#C79A3B",
+      backgroundUrl: theme.background_asset?.content_url ?? null,
+      logoUrl: theme.logo_asset?.content_url ?? null,
+    };
+  }
+
+  function resolveUiState({ bootstrap, runtimePayload, bootstrapError, runtimeError }) {
     const state = resolveDisplayState({ bootstrap, runtimePayload, bootstrapError, runtimeError });
     const snapshot = state.snapshot;
     const runtime = state.runtime;
@@ -233,6 +258,14 @@
     }
 
     if (state.kind === "authorized" && state.code === "authorizing") {
+      if (
+        snapshot &&
+        authorizingStartedAtMs !== null &&
+        Date.now() - authorizingStartedAtMs < AUTHORIZING_UI_GRACE_MS
+      ) {
+        return buildIdleUi({ presentation, pricing, copy, theme });
+      }
+
       return {
         kind: "authorized",
         tone: "brand",
@@ -290,233 +323,31 @@
       };
     }
 
-    return {
-      kind: "idle",
-      tone: "brand",
-      headline: presentation.name,
-      secondary: pricing.display_text,
-      tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" / "),
-      description: presentation.description_short,
-      brand: presentation.brand_name || presentation.brewery,
-      instruction: copy.idle_instruction || "Приложите карту",
-      accentColor: theme.accent_color ?? "#C79A3B",
-      backgroundUrl: theme.background_asset?.content_url ?? null,
-      logoUrl: theme.logo_asset?.content_url ?? null,
-    };
+    return buildIdleUi({ presentation, pricing, copy, theme });
   }
 
-  function resolveUiStateLegacy() {
-    const snapshot = bootstrap?.snapshot;
-    const runtime = runtimePayload?.runtime ?? {
-      phase: "idle",
-      reason_code: null,
-      current_volume_ml: 0,
-      current_cost_cents: 0,
-    };
-    const health = runtimePayload?.health ?? {};
-    const backendLinkLost = Boolean(bootstrap?.backend?.link_lost || health.backend_link_lost || bootstrapError);
-    const controllerRuntimeStale = Boolean(health.controller_runtime_stale || runtimeError);
-    const runtimePhase = runtime.phase ?? "idle";
-    const activeRuntime = ["authorized", "pouring", "finished"].includes(runtimePhase);
-    const copy = getSnapshotCopy(snapshot);
-    const presentation = snapshot?.presentation ?? {};
-    const pricing = snapshot?.pricing ?? {};
-    const theme = snapshot?.theme ?? {};
-    const progress = runtime.max_volume_ml ? Math.min(runtime.current_volume_ml / runtime.max_volume_ml, 1) : 0;
-    const warning = backendLinkLost && activeRuntime ? "Нет связи с системой" : null;
+  let ui = resolveUiState({
+    bootstrap: null,
+    runtimePayload: null,
+    bootstrapError: null,
+    runtimeError: null,
+  });
 
-    if (runtimePhase === "denied") {
-      const message = deniedCopy[runtime.reason_code] ?? deniedCopy.authorize_rejected;
-      return {
-        kind: "denied",
-        tone: "warning",
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: "Заберите карту",
-        code: runtime.reason_code,
-        accentColor: "#D97706",
-      };
+  $: {
+    const phase = $runtimePayload?.runtime?.phase ?? "idle";
+    if (phase === "authorizing") {
+      authorizingStartedAtMs ??= Date.now();
+    } else {
+      authorizingStartedAtMs = null;
     }
-
-    if (runtimePhase === "authorizing") {
-      return {
-        kind: "authorized",
-        tone: "brand",
-        headline: "Подождите",
-        secondary: "Проверяем карту",
-        tertiary: null,
-        accentColor: theme.accent_color ?? "#C79A3B",
-        backgroundUrl: theme.background_asset?.content_url ?? null,
-      };
-    }
-
-    if (runtimePhase === "authorized") {
-      return {
-        kind: "authorized",
-        tone: "brand",
-        headline: "Откройте кран",
-        secondary: runtime.guest_first_name
-          ? `${runtime.guest_first_name}, можно наливать`
-          : "Можно наливать",
-        tertiary: formatMoneyFromCents(runtime.balance_cents_at_authorize),
-        accentColor: theme.accent_color ?? "#C79A3B",
-        backgroundUrl: theme.background_asset?.content_url ?? null,
-        logoUrl: theme.logo_asset?.content_url ?? null,
-        warning,
-        priceChip: pricing.display_text,
-      };
-    }
-
-    if (runtimePhase === "pouring") {
-      return {
-        kind: "pouring",
-        tone: "brand",
-        headline: formatMl(runtime.current_volume_ml),
-        secondary: formatMoneyFromCents(runtime.current_cost_cents),
-        tertiary: formatMoneyFromCents(runtime.projected_remaining_balance_cents),
-        metaLabel: runtime.guest_first_name || presentation.name || "",
-        accentColor: theme.accent_color ?? "#C79A3B",
-        backgroundUrl: theme.background_asset?.content_url ?? null,
-        progress,
-        warning,
-      };
-    }
-
-    if (runtimePhase === "finished") {
-      return {
-        kind: "finished",
-        tone: "brand",
-        headline: formatMl(runtime.current_volume_ml),
-        secondary: formatMoneyFromCents(runtime.current_cost_cents),
-        tertiary: formatMoneyFromCents(runtime.projected_remaining_balance_cents),
-        accentColor: theme.accent_color ?? "#C79A3B",
-        backgroundUrl: theme.background_asset?.content_url ?? null,
-        logoUrl: theme.logo_asset?.content_url ?? null,
-        warning: backendLinkLost ? "Ожидается синхронизация" : null,
-      };
-    }
-
-    if (runtimePhase === "blocked") {
-      const serviceKey = runtime.reason_code in serviceCopy ? runtime.reason_code : "maintenance";
-      const message = serviceCopy[serviceKey];
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#334155",
-      };
-    }
-
-    if (controllerRuntimeStale && activeRuntime) {
-      const message = serviceCopy.controller_runtime_stale;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#9A6B28",
-      };
-    }
-
-    if (!snapshot && backendLinkLost) {
-      const message = serviceCopy.no_connection;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#9A6B28",
-      };
-    }
-
-    if (!snapshot) {
-      return {
-        kind: "service",
-        tone: "neutral",
-        headline: "Загрузка экрана",
-        secondary: "Подождите",
-        tertiary: null,
-        code: "booting",
-        accentColor: "#475569",
-      };
-    }
-
-    if (backendLinkLost && !activeRuntime) {
-      const message = serviceCopy.no_connection;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#9A6B28",
-        backgroundUrl: theme.background_asset?.content_url ?? null,
-      };
-    }
-
-    if (!snapshot.tap?.enabled || snapshot.tap?.status === "cleaning") {
-      const message = serviceCopy.maintenance;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: copy.maintenance_title || message.headline,
-        secondary: copy.maintenance_subtitle || message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#2563EB",
-      };
-    }
-
-    if (snapshot.service_flags?.emergency_stop) {
-      const message = serviceCopy.emergency_stop;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: message.headline,
-        secondary: message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#B91C1C",
-      };
-    }
-
-    if (!snapshot.assignment?.has_assignment) {
-      const message = serviceCopy.no_keg;
-      return {
-        kind: "service",
-        tone: message.tone,
-        headline: copy.fallback_title || message.headline,
-        secondary: copy.fallback_subtitle || message.nextStep,
-        tertiary: null,
-        code: message.code,
-        accentColor: "#475569",
-      };
-    }
-
-    return {
-      kind: "idle",
-      tone: "brand",
-      headline: presentation.name,
-      secondary: pricing.display_text,
-      tertiary: [presentation.style, formatAbv(presentation.abv)].filter(Boolean).join(" / "),
-      description: presentation.description_short,
-      brand: presentation.brand_name || presentation.brewery,
-      instruction: copy.idle_instruction || "Приложите карту",
-      accentColor: theme.accent_color ?? "#C79A3B",
-      backgroundUrl: theme.background_asset?.content_url ?? null,
-      logoUrl: theme.logo_asset?.content_url ?? null,
-    };
   }
 
-  $: ui = resolveUiState();
+  $: ui = resolveUiState({
+    bootstrap: $bootstrap,
+    runtimePayload: $runtimePayload,
+    bootstrapError: $bootstrapError,
+    runtimeError: $runtimeError,
+  });
   $: uiStyle = `--accent:${ui?.accentColor ?? "#C79A3B"}`;
 
   onMount(() => {

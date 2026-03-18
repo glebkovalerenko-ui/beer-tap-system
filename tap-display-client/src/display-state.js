@@ -15,6 +15,7 @@ const BLOCKED_SERVICE_CODES = new Set([
   "authorize_invalid_contract",
   "controller_runtime_stale",
   "flow_timeout",
+  "card_removed",
 ]);
 const TAP_SERVICE_CODES_BY_STATUS = {
   cleaning: "cleaning",

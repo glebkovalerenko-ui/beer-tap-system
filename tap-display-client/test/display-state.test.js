@@ -90,6 +90,20 @@ test("blocked runtime keeps explicit service code", () => {
   assert.equal(state.code, "flow_timeout");
 });
 
+test("blocked card_removed state does not collapse into maintenance", () => {
+  const state = resolveDisplayState({
+    bootstrap: { snapshot: makeSnapshot(), backend: { link_lost: false } },
+    runtimePayload: makeRuntimePayload({
+      runtime: { phase: "blocked", reason_code: "card_removed" },
+    }),
+    bootstrapError: null,
+    runtimeError: null,
+  });
+
+  assert.equal(state.kind, "service");
+  assert.equal(state.code, "card_removed");
+});
+
 test("tap statuses beyond cleaning are mapped into service states", () => {
   const locked = resolveDisplayState({
     bootstrap: { snapshot: makeSnapshot({ tap: { status: "locked" } }), backend: { link_lost: false } },
