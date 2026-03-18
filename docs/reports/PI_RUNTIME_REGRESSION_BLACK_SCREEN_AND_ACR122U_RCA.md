@@ -293,11 +293,134 @@ Additional verification:
   - at timeout the user saw `Налив остановлен`
   - after card removal, `Налив остановлен` stayed only briefly and then the display returned to the beer/tap idle screen
 
-## 5. Remaining limitations
+## 5. Post-restoration Stage 2 — display responsiveness and controller stability
+
+### Scope
+
+After the runtime restore above, the system was operational but still felt unstable in live use:
+
+- the display reacted later than the valve on card-present
+- `processing_sync` could stay visible for a variable amount of time after short pours
+- repeated fast card taps could end on confusing service-state screens
+- some sessions still showed `Нет связи с системой`
+- one intermediate local edit corrupted `tap-display-client/src/App.svelte` and produced mojibake on multiple screens
+
+The goal of this follow-up was not a redesign. It was a bounded stabilization pass on the existing Pi runtime path.
+
+### Evidence
+
+Display/UI timing evidence gathered on `2026-03-17` and `2026-03-18`:
+
+- idle runtime polling in the browser was still gated by the display polling contract rather than a push channel
+- the user consistently reported that the valve reacted before the `Откройте кран` screen appeared
+- long `processing_sync` durations correlated with the sync worker interval rather than with a permanently stuck state
+- repeated quick card touches could still surface generic service-state UX
+
+Controller/network evidence gathered on `2026-03-18`:
+
+- controller log at `2026-03-18 07:45:09 MSK` recorded:
+  - `authorize_request_failed: http://192.168.0.110:8000/api/visits/authorize-pour: ... Read timed out. (read timeout=5)`
+- the same controller then mapped that request failure into:
+  - `reason_code=backend_unreachable`
+- display-agent health stayed good during these episodes:
+  - `backend_link_lost=false`
+  - `controller_runtime_stale=false`
+- direct Pi-to-hub reachability was healthy at the same time:
+  - manual request to `authorize-pour` later returned a normal business response in about `0.111s`
+
+Platform evidence gathered on the Pi around the same failures:
+
+- `Undervoltage detected!`
+- `vcgencmd get_throttled` reported `0xd0000`
+- kernel logged multiple `dwc_otg_hcd_urb_dequeue ... Timed out`
+- `pcscd` logged repeated card power-up / removed-card errors
+
+This showed that the remaining `Нет связи` episodes were not caused by the display client. They were transient controller authorize failures, very likely amplified by Pi power/USB instability.
+
+### Additional fixes
+
+Display/UI follow-up:
+
+- `tap-display-client/src/App.svelte`
+  - idle polling reduced from `1000 ms` to `250 ms`
+  - runtime/bootstrap state moved onto explicit Svelte stores
+  - UI state resolution now depends on explicit reactive inputs instead of hidden dependencies
+  - `authorizing` gained a short UI grace period so a very fast authorize does not flash `Подождите`
+  - explicit `card_removed` copy added:
+    - `Заберите карту`
+    - `Уберите карту со считывателя`
+- `tap-display-client/src/display-state.js`
+  - `card_removed` preserved as an explicit blocked service code instead of collapsing into generic maintenance
+
+Controller/runtime follow-up:
+
+- `rpi-controller/sync_manager.py`
+  - `flow-events` moved off the hot loop into a dedicated background queue/worker
+  - sync worker gained explicit wake-up via `notify_sync_needed()`
+  - pour sync is no longer forced to wait only for the fixed interval
+  - authorize path now retries once after a transient `RequestException`, recreating the authorize session before retry
+- `rpi-controller/main.py`
+  - starts the flow-event worker
+  - sync worker now waits on `wait_for_next_sync_cycle()` instead of unconditional sleep
+- `rpi-controller/flow_manager.py`
+  - wakes the sync worker immediately after a local pour is written
+  - zero-volume card-removed sessions return runtime to `idle` immediately after completion instead of visually hanging on the active screen
+- `rpi-controller/hardware.py`
+  - PC/SC reader enumeration / connection setup is now wrapped so transient `pyscard` failures do not crash the whole controller process
+
+UTF-8 / mojibake follow-up:
+
+- a local encoding regression in `tap-display-client/src/App.svelte` briefly produced mojibake on the kiosk
+- the file was restored to clean UTF-8, rebuilt, redeployed, and protected again by `encoding_guard`
+
+### Verification
+
+Relevant repo checks on the assembled release line:
+
+- `python -m pytest rpi-controller/test_sync_manager.py rpi-controller/test_flow_manager.py rpi-controller/test_hardware_resilience.py`
+- `node --test tap-display-client/test/display-state.test.js`
+- `npm run build` in `tap-display-client`
+- `python scripts/encoding_guard.py --all`
+
+Live rollout and verification on the Pi:
+
+- controller restarted successfully from the external runtime path:
+  - `/home/cybeer/.local/share/beer-tap/venvs/controller/bin/python`
+- local display runtime stayed healthy:
+  - `phase="idle"`
+  - `controller_runtime_stale=false`
+- rebuilt kiosk bundle was served from:
+  - `/display/assets/index-Cr7mfanH.js`
+- physical text rendering recovered from mojibake and remained stable
+
+Final practical user verification:
+
+- `Нет связи` could no longer be reproduced in repeated normal taps after the authorize retry fix
+- the overall start now felt better to the user and explicitly “not worse”
+- after more than five very short tap-only interactions without pouring, the display showed `Заберите карту`
+  - this is now the intended explicit `card_removed` path, not a generic maintenance/service fallback
+
+### Result
+
+The software side of Stage 2 was completed:
+
+- display transitions are faster and more predictable
+- `processing_sync` behavior is no longer governed by a blind fixed wait after every short session
+- repeated fast card interactions surface an explicit user-facing state instead of a misleading generic one
+- a single transient authorize timeout no longer immediately degrades into the same user-visible failure mode
+
+The main residual risk is now below the application layer:
+
+- Pi power / USB instability can still produce transient stalls
+- this remains visible in `Undervoltage`, `dwc_otg`, and `pcscd` logs
+
+## 6. Remaining limitations
 
 - The kiosk launcher still logs some Chromium GPU-process noise on this Pi platform, but Chromium relaunches and the UI remains visible after boot. This is not the current blocker.
 - `local_journal.db` remains part of controller runtime operation under the repo path. That behavior was pre-existing and was not changed in this hotfix.
+- The strongest remaining operational risk is hardware-side:
+  - Pi power sag / USB instability can still affect NFC and controller responsiveness even though the software path now degrades more gracefully.
 
-## 6. Final verdict
+## 7. Final verdict
 
 `PI RUNTIME RESTORED`
