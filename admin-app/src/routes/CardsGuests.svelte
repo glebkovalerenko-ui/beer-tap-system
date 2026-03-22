@@ -11,7 +11,7 @@
   ];
 </script>
 
-{#if !$roleStore.permissions.cardsGuests}
+{#if !$roleStore.permissions.cards_manage}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает операции с картами и гостями.</p>

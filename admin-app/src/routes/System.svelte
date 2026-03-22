@@ -4,7 +4,7 @@
   import SystemHealthSummary from '../components/system/SystemHealthSummary.svelte';
 </script>
 
-{#if !$roleStore.permissions.system}
+{#if !$roleStore.permissions.system_view}
   <section class="ui-card restricted"><h1>System</h1><p>Раздел настроек и инженерных инструментов доступен только роли engineer_owner.</p></section>
 {:else}
   <section class="page">

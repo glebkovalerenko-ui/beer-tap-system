@@ -4,7 +4,7 @@
   import IncidentList from '../components/incidents/IncidentList.svelte';
 </script>
 
-{#if !$roleStore.permissions.incidents}
+{#if !$roleStore.permissions.incidents_manage}
   <section class="ui-card restricted"><h1>Incidents</h1><p>Раздел инцидентов скрыт для текущей роли.</p></section>
 {:else}
   <section class="page">

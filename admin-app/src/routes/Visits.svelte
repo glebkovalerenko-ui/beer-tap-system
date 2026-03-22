@@ -45,6 +45,14 @@
   $: lockAgeSeconds = visit?.lock_set_at ? Math.max(0, Math.floor((Date.now() - new Date(visit.lock_set_at).getTime()) / 1000)) : 0;
   $: suggestManualReconcile = lockAgeSeconds >= 60;
 
+  function requirePermission(permissionKey, message) {
+    if ($roleStore.permissions[permissionKey]) {
+      return true;
+    }
+    uiStore.notifyWarning(message);
+    return false;
+  }
+
   const fullName = (guestLike) => {
     if (!guestLike) return '—';
     if (guestLike.guest_full_name) return guestLike.guest_full_name;
@@ -151,6 +159,7 @@
   async function handleForceUnlock() {
     actionError = '';
     if (!visit) return;
+    if (!requirePermission('maintenance_actions', 'Принудительная разблокировка доступна только сервисному уровню.')) return;
     if (!forceUnlockReason.trim()) {
       uiStore.notifyWarning('Причина обязательна для снятия блокировки.');
       return;
@@ -193,6 +202,7 @@
   async function handleReconcilePour() {
     actionError = '';
     if (!visit) return;
+    if (!requirePermission('maintenance_actions', 'Ручная сверка и разблокировка доступны только сервисному уровню.')) return;
     if (!reconcileShortId.trim() || !reconcileVolumeMl || !reconcileAmount || !reconcileReason.trim()) {
       uiStore.notifyWarning('Заполните номер налива, объём, сумму и причину.');
       return;
@@ -251,6 +261,7 @@
   }
 
   async function handleLookupRestoreLost() {
+    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
     try {
@@ -336,6 +347,7 @@
   async function handleReportLostCard() {
     actionError = '';
     if (!visit || !visit.card_uid) return;
+    if (!requirePermission('cards_manage', 'Отметка потерянной карты доступна только ролям с управлением картами.')) return;
 
     const confirmed = await uiStore.confirm({
       title: 'Отметить карту потерянной',
@@ -367,7 +379,7 @@
   }
 </script>
 
-{#if !$roleStore.permissions.sessions}
+{#if !$roleStore.permissions.sessions_view}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает работу с визитами.</p>
@@ -433,7 +445,7 @@
               <div><strong>Визит:</strong> {cardLookupResult.lost_card?.visit_id || '—'}</div>
             </div>
             <div class="lookup-actions">
-              <button class="danger-btn" on:click={handleLookupRestoreLost} disabled={$lostCardStore.loading}>
+              <button class="danger-btn" on:click={handleLookupRestoreLost} disabled={$lostCardStore.loading || !$roleStore.permissions.cards_manage}>
                 Снять отметку потерянной
               </button>
               {#if hasLookupVisitTarget()}
@@ -527,8 +539,8 @@
             <h3>Принудительно снять блокировку</h3>
             <input type="text" bind:value={forceUnlockReason} placeholder="Причина (обязательно)" />
             <textarea bind:value={forceUnlockComment} rows="2" placeholder="Комментарий (опционально)"></textarea>
-            <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive}>Принудительно снять блокировку</button>
-            <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive}>Ручная сверка / разблокировать</button>
+            <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive || !$roleStore.permissions.maintenance_actions}>Принудительно снять блокировку</button>
+            <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive || !$roleStore.permissions.maintenance_actions}>Ручная сверка / разблокировать</button>
           </div>
 
           <div class="action-panel">
@@ -546,7 +558,7 @@
               <button
                 class="danger-btn"
                 on:click={handleReportLostCard}
-                disabled={$visitStore.loading || isCurrentCardLost}
+                disabled={$visitStore.loading || isCurrentCardLost || !$roleStore.permissions.cards_manage}
               >
                 Отметить карту потерянной
               </button>

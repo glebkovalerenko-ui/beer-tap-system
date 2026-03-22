@@ -25,17 +25,17 @@
     taps: {
       title: 'Краны',
       description: 'Оперативная работа по конкретному tap: статус, активный налив, оборудование и события.',
-      permission: 'taps',
+      permission: 'taps_view',
     },
     inventory: {
       title: 'Кеги и напитки',
       description: 'Инвентарь, каталог напитков и подготовка контента до подключения кранов.',
-      permission: 'inventory',
+      permission: 'settings_manage',
     },
     tapScreens: {
       title: 'Tap screens',
       description: 'Настройки экрана теперь открываются из detail drawer конкретного крана.',
-      permission: 'tapScreens',
+      permission: 'display_override',
     },
   };
 
@@ -102,12 +102,23 @@ $: if (selectedTap) {
     isTapDrawerOpen = true;
   }
 
+
+  function requirePermission(permissionKey, message) {
+    if ($roleStore.permissions[permissionKey]) {
+      return true;
+    }
+    uiStore.notifyWarning(message);
+    return false;
+  }
+
   function handleOpenAssignModal(event) {
+    if (!requirePermission('taps_control', 'Назначение кеги доступно только ролям с управлением кранами.')) return;
     tapToAssign = event.detail.tap;
     isAssignModalOpen = true;
   }
 
   function handleOpenTapDisplaySettings(event) {
+    if (!requirePermission('display_override', 'Настройки экрана доступны только management / engineering ролям.')) return;
     tapForDisplaySettings = event.detail.tap;
     isTapDisplayModalOpen = true;
   }
@@ -118,6 +129,12 @@ $: if (selectedTap) {
   }
 
   async function handleTapStatusChange(tap, nextStatus, title) {
+    const permissionKey = nextStatus === 'cleaning' || nextStatus === 'locked' ? 'maintenance_actions' : 'taps_control';
+    const deniedMessage = permissionKey === 'maintenance_actions'
+      ? 'Сервисные действия по крану доступны только старшему смены или инженеру.'
+      : 'Управление линией доступно только ролям с правом taps_control.';
+
+    if (!requirePermission(permissionKey, deniedMessage)) return;
     const approved = await uiStore.confirm({
       title,
       message: `Изменить статус ${tap.display_name} на "${nextStatus}"?`,
@@ -137,6 +154,7 @@ $: if (selectedTap) {
 
   async function handleUnassignTap(tap) {
     if (!tap.keg) return;
+    if (!requirePermission('taps_control', 'Снятие кеги доступно только ролям с управлением кранами.')) return;
 
     const approved = await uiStore.confirm({
       title: 'Снять кегу',
@@ -205,8 +223,12 @@ $: if (selectedTap) {
     </div>
     <nav class="section-tabs" aria-label="Разделы кранов и инвентаря">
       <a href="#/taps" class:active={activeTab === 'taps'}>Краны</a>
-      <a href="#/kegs-beverages" class:active={activeTab === 'inventory'}>Кеги и напитки</a>
-      <a href="#/tap-screens" class:active={activeTab === 'tapScreens'}>Tap screens</a>
+      {#if $roleStore.permissions.settings_manage}
+        <a href="#/kegs-beverages" class:active={activeTab === 'inventory'}>Кеги и напитки</a>
+      {/if}
+      {#if $roleStore.permissions.display_override}
+        <a href="#/tap-screens" class:active={activeTab === 'tapScreens'}>Tap screens</a>
+      {/if}
     </nav>
   </div>
 
@@ -226,6 +248,9 @@ $: if (selectedTap) {
       {:else}
         <TapGrid
           taps={$tapStore.taps}
+          canControl={$roleStore.permissions.taps_control}
+          canMaintain={$roleStore.permissions.maintenance_actions}
+          canDisplayOverride={$roleStore.permissions.display_override}
           on:open-detail={(event) => selectTap(event.detail.tap)}
           on:assign={handleOpenAssignModal}
           on:display-settings={handleOpenTapDisplaySettings}
@@ -322,6 +347,7 @@ $: if (selectedTap) {
   <Modal on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}>
     <TapDrawer
       tap={selectedTap}
+      canDisplayOverride={$roleStore.permissions.display_override}
       on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
       on:display-settings={handleOpenTapDisplaySettings}
     />

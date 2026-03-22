@@ -2,6 +2,9 @@
   import TapCard from './TapCard.svelte';
 
   export let taps = [];
+  export let canControl = false;
+  export let canMaintain = false;
+  export let canDisplayOverride = false;
 </script>
 
 {#if taps.length > 0}
@@ -10,6 +13,9 @@
       <div class="grid-item">
         <TapCard
           {tap}
+          {canControl}
+          {canMaintain}
+          {canDisplayOverride}
           on:open-detail
           on:assign
           on:display-settings

@@ -77,6 +77,14 @@
     window.location.hash = path;
   }
 
+  function requirePermission(permissionKey, message) {
+    if ($roleStore.permissions[permissionKey]) {
+      return true;
+    }
+    uiStore.notifyWarning(message);
+    return false;
+  }
+
   function dismissAlert(key) {
     dismissedAlertKeys = new Set([...dismissedAlertKeys, key]);
   }
@@ -145,6 +153,7 @@
   }
 
   async function handleEmergencyStopToggle() {
+    if (!requirePermission('maintenance_actions', 'Экстренная остановка доступна только сервисному уровню.')) return;
     const newState = !$systemStore.emergencyStop;
     try {
       await systemStore.setEmergencyStop(newState);
@@ -405,7 +414,7 @@
     <h1>{systemMode ? 'System' : 'Today'}</h1>
     <p class="page-subtitle">{systemMode ? 'Настройки смены, отчёты, API и инженерный контроль рабочего места.' : 'Сначала — situational awareness, затем следующий шаг для оператора.'}</p>
   </div>
-  {#if $roleStore.permissions.emergency}
+  {#if $roleStore.permissions.maintenance_actions}
     <button
       class="emergency-button"
       class:active={$systemStore.emergencyStop}
@@ -576,7 +585,7 @@
 
 {#if systemMode}
   <section class="management-stack">
-    {#if $roleStore.permissions.investorPanel}
+    {#if $roleStore.permissions.settings_manage}
       <InvestorValuePanel
         taps={$tapStore.taps}
         kegs={$kegStore.kegs}
