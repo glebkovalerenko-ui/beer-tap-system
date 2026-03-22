@@ -1,14 +1,15 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 import json
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import schemas
 from crud import lost_card_crud, pour_policy, system_crud
 from pos_adapter import get_pos_adapter
 
@@ -451,6 +452,195 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
     db.commit()
     db.refresh(active_visit)
     return active_visit, pending_outcome, authorize_context
+
+
+
+
+def _safe_details(details: str | None) -> dict:
+    if not details:
+        return {}
+    try:
+        return json.loads(details)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _operator_action_label(action: str, details: dict) -> tuple[str, str | None]:
+    mapping = {
+        "visit_force_unlock": "Оператор снял блокировку",
+        "reconcile_done": "Оператор выполнил ручную сверку",
+        "lost_card_blocked": "Карта заблокирована как потерянная",
+        "card_in_use_on_other_tap": "Попытка наливать на другом кране",
+        "insufficient_funds_blocked": "Налив заблокирован из-за недостатка средств",
+        "sync_tail_overdraft_accepted": "Принят налив с хвостом сверх баланса",
+        "sync_missing_pending": "Синхронизация пришла без pending-авторизации",
+        "sync_conflict": "Конфликт синхронизации по крану",
+        "sync_rejected_insufficient_funds": "Синхронизация отклонена: не хватило средств",
+        "late_sync_mismatch": "Поздняя синхронизация зафиксирована как инцидент",
+        "late_sync_matched": "Поздняя синхронизация сопоставлена с ручной сверкой",
+    }
+    detail_text = None
+    if action == 'visit_force_unlock':
+        detail_text = details.get('reason')
+    elif action == 'reconcile_done':
+        detail_text = details.get('comment') or details.get('reason')
+    elif action in {'card_in_use_on_other_tap', 'sync_conflict'}:
+        detail_text = f"Кран {details.get('requested_tap_id') or details.get('tap_id')} vs активный {details.get('active_tap_id')}"
+    elif action.startswith('sync_'):
+        detail_text = details.get('reason') or details.get('short_id')
+    return mapping.get(action, action), detail_text
+
+
+def _build_session_history_item(db: Session, visit: models.Visit, include_narrative: bool = False):
+    guest = visit.guest
+    full_name = ' '.join([part for part in [guest.last_name, guest.first_name, guest.patronymic] if part]) if guest else '—'
+    pours = list(sorted(visit.pours, key=lambda item: item.authorized_at or item.poured_at or item.created_at or visit.opened_at))
+    pour_tap_ids = sorted({int(p.tap_id) for p in pours if p.tap_id is not None})
+    tap_ids = set(pour_tap_ids)
+    audit_logs = db.query(models.AuditLog).filter(
+        models.AuditLog.target_entity == 'Visit',
+        models.AuditLog.target_id == str(visit.visit_id),
+    ).order_by(models.AuditLog.timestamp.asc()).all()
+    operator_actions = []
+    incident_actions = []
+    last_operator_action_at = None
+    contains_tail_pour = False
+    last_sync_at = None
+    for log in audit_logs:
+        details = _safe_details(log.details)
+        label, detail_text = _operator_action_label(log.action, details)
+        if log.action in {
+            'visit_force_unlock','reconcile_done','lost_card_blocked','card_in_use_on_other_tap',
+            'insufficient_funds_blocked','sync_tail_overdraft_accepted','sync_missing_pending',
+            'sync_conflict','sync_rejected_insufficient_funds','late_sync_mismatch','late_sync_matched'
+        }:
+            operator_actions.append(schemas.SessionOperatorAction(timestamp=log.timestamp, action=log.action, actor_id=log.actor_id, label=label, details=detail_text))
+            last_operator_action_at = log.timestamp
+        if log.action in {'card_in_use_on_other_tap','insufficient_funds_blocked','sync_missing_pending','sync_conflict','sync_rejected_insufficient_funds','late_sync_mismatch','lost_card_blocked'}:
+            incident_actions.append(log)
+        if log.action == 'sync_tail_overdraft_accepted':
+            contains_tail_pour = True
+            last_sync_at = log.timestamp
+
+    short_ids = [p.short_id for p in pours if p.short_id]
+    flow_filters = []
+    if visit.card_uid:
+        flow_filters.append(models.NonSaleFlow.card_uid == visit.card_uid)
+    if short_ids:
+        flow_filters.append(models.NonSaleFlow.short_id.in_(short_ids))
+    non_sale_flows = []
+    if flow_filters:
+        non_sale_query = db.query(models.NonSaleFlow).filter(or_(*flow_filters))
+        non_sale_query = non_sale_query.filter(models.NonSaleFlow.last_seen_at >= visit.opened_at - timedelta(hours=1))
+        if visit.closed_at is not None:
+            non_sale_query = non_sale_query.filter(models.NonSaleFlow.last_seen_at <= visit.closed_at + timedelta(hours=1))
+        non_sale_flows = non_sale_query.all()
+    contains_non_sale_flow = len(non_sale_flows) > 0
+
+    sync_statuses = {p.sync_status for p in pours}
+    if 'pending_sync' in sync_statuses or visit.active_tap_id is not None:
+        sync_state = 'pending_sync'
+    elif 'rejected' in sync_statuses:
+        sync_state = 'rejected'
+    elif 'reconciled' in sync_statuses:
+        sync_state = 'reconciled'
+    elif 'synced' in sync_statuses:
+        sync_state = 'synced'
+    else:
+        sync_state = 'not_started'
+
+    has_unsynced = sync_state in {'pending_sync','rejected'}
+    primary_tap_id = pour_tap_ids[-1] if pour_tap_ids else visit.active_tap_id
+    if visit.active_tap_id is not None:
+        tap_ids.add(int(visit.active_tap_id))
+    completion_source = None
+    if visit.status == 'closed':
+        reason = (visit.closed_reason or '').strip()
+        completion_source = 'operator_close' if reason in {'guest_checkout','operator_close','manual_close',''} else reason
+    elif visit.active_tap_id is None and has_unsynced:
+        completion_source = 'sync_pending'
+
+    operator_status = 'Активна' if visit.status == 'active' else 'Завершена'
+    if visit.status == 'closed' and (visit.closed_reason or '').strip() not in {'', 'guest_checkout', 'operator_close', 'manual_close'}:
+        operator_status = 'Прервана'
+    elif has_unsynced:
+        operator_status = 'Требует внимания'
+    elif incident_actions:
+        operator_status = 'С инцидентами'
+
+    first_authorized_at = next((p.authorized_at for p in pours if p.authorized_at), None)
+    first_pour_started_at = next((p.started_at for p in pours if p.started_at), None)
+    last_pour_ended_at = max([p.ended_at for p in pours if p.ended_at], default=None)
+    if last_sync_at is None:
+        last_sync_at = max([dt for dt in [p.synced_at or p.reconciled_at for p in pours] if dt], default=None)
+    last_event_at = max([dt for dt in [visit.closed_at, last_pour_ended_at, last_sync_at, last_operator_action_at, visit.lock_set_at, visit.opened_at] if dt])
+
+    item = schemas.SessionHistoryDetail if include_narrative else schemas.SessionHistoryListItem
+    payload = dict(
+        visit_id=visit.visit_id, guest_id=visit.guest_id, guest_full_name=full_name, phone_number=guest.phone_number if guest else None,
+        card_uid=visit.card_uid, visit_status=visit.status, operator_status=operator_status, completion_source=completion_source,
+        sync_state=sync_state, primary_tap_id=primary_tap_id, taps=sorted(tap_ids), incident_count=len(incident_actions),
+        has_incident=bool(incident_actions), has_unsynced=has_unsynced, contains_tail_pour=contains_tail_pour,
+        contains_non_sale_flow=contains_non_sale_flow, opened_at=visit.opened_at, closed_at=visit.closed_at, last_event_at=last_event_at,
+        operator_actions=operator_actions, lifecycle=schemas.SessionLifecycleTimestamps(
+            opened_at=visit.opened_at, first_authorized_at=first_authorized_at, first_pour_started_at=first_pour_started_at,
+            last_pour_ended_at=last_pour_ended_at, closed_at=visit.closed_at, last_sync_at=last_sync_at, last_operator_action_at=last_operator_action_at,
+        ),
+    )
+    if not include_narrative:
+        return item(**payload)
+
+    narrative = [schemas.SessionNarrativeEvent(timestamp=visit.opened_at, kind='open', title='Сессия открыта', description='Оператор открыл визит для гостя.')]
+    if first_authorized_at:
+        tap_text = f'Кран #{primary_tap_id}' if primary_tap_id is not None else 'кран не определён'
+        narrative.append(schemas.SessionNarrativeEvent(timestamp=first_authorized_at, kind='authorize', title='Налив авторизован', description=f'Backend разрешил налив, {tap_text}.', status=sync_state))
+    for pour in pours:
+        if pour.started_at:
+            tail_flag = ''
+            narrative.append(schemas.SessionNarrativeEvent(timestamp=pour.started_at, kind='pour', title='Зафиксирован налив', description=f'Продажа {pour.volume_ml} мл, чек {pour.amount_charged} ₽, short ID {pour.short_id or "—"}.{tail_flag}', status=pour.sync_status))
+        terminal_ts = pour.synced_at or pour.reconciled_at or pour.ended_at or pour.poured_at
+        if terminal_ts:
+            title = 'Синхронизация подтверждена' if pour.sync_status == 'synced' else ('Ручная сверка подтверждена' if pour.sync_status == 'reconciled' else 'Синхронизация завершилась ошибкой')
+            narrative.append(schemas.SessionNarrativeEvent(timestamp=terminal_ts, kind='sync_result', title=title, description=f'Статус backend: {pour.sync_status}.', status=pour.sync_status))
+    for flow in non_sale_flows:
+        narrative.append(schemas.SessionNarrativeEvent(timestamp=flow.last_seen_at, kind='non_sale', title='Зафиксирован несервисный/непродажный поток', description=f'Кран #{flow.tap_id}, причина: {flow.reason}, объём {flow.volume_ml} мл.', status=flow.flow_category))
+    for action in operator_actions:
+        narrative.append(schemas.SessionNarrativeEvent(timestamp=action.timestamp, kind='operator', title=action.label, description=action.details or 'Операторское вмешательство.', status=action.action, actor_id=action.actor_id))
+    if visit.closed_at:
+        close_kind = 'abort' if operator_status == 'Прервана' else 'close'
+        narrative.append(schemas.SessionNarrativeEvent(timestamp=visit.closed_at, kind=close_kind, title='Сессия завершена', description=f'Причина завершения: {visit.closed_reason or "не указана"}.', status=visit.status))
+    payload['narrative'] = sorted(narrative, key=lambda item: item.timestamp)
+    return item(**payload)
+
+
+def get_session_history(db: Session, *, date_from=None, date_to=None, tap_id=None, status=None, card_uid=None, incident_only=False, unsynced_only=False):
+    query = db.query(models.Visit).join(models.Guest).order_by(models.Visit.opened_at.desc())
+    if date_from:
+        query = query.filter(func.date(models.Visit.opened_at) >= date_from)
+    if date_to:
+        query = query.filter(func.date(models.Visit.opened_at) <= date_to)
+    if card_uid:
+        query = query.filter(models.Visit.card_uid.ilike(f'%{card_uid.strip()}%'))
+    if status in {'active','closed'}:
+        query = query.filter(models.Visit.status == status)
+    visits = query.all()
+    items = [_build_session_history_item(db, visit) for visit in visits]
+    if tap_id is not None:
+        items = [item for item in items if tap_id in item.taps or item.primary_tap_id == tap_id]
+    if status == 'aborted':
+        items = [item for item in items if item.operator_status == 'Прервана']
+    if incident_only:
+        items = [item for item in items if item.has_incident]
+    if unsynced_only:
+        items = [item for item in items if item.has_unsynced]
+    return items
+
+
+def get_session_history_detail(db: Session, visit_id: uuid.UUID):
+    visit = db.query(models.Visit).filter(models.Visit.visit_id == visit_id).first()
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Visit not found')
+    return _build_session_history_item(db, visit, include_narrative=True)
 
 
 def report_lost_card_from_visit(

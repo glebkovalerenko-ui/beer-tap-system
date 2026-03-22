@@ -338,6 +338,70 @@ pub struct LostCard {
     pub guest_id: Option<String>,
 }
 
+
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionLifecycleTimestamps {
+    pub opened_at: String,
+    pub first_authorized_at: Option<String>,
+    pub first_pour_started_at: Option<String>,
+    pub last_pour_ended_at: Option<String>,
+    pub closed_at: Option<String>,
+    pub last_sync_at: Option<String>,
+    pub last_operator_action_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionOperatorAction {
+    pub timestamp: String,
+    pub action: String,
+    pub actor_id: Option<String>,
+    pub label: String,
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionNarrativeEvent {
+    pub timestamp: String,
+    pub kind: String,
+    pub title: String,
+    pub description: String,
+    pub status: Option<String>,
+    pub actor_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionHistoryListItem {
+    pub visit_id: String,
+    pub guest_id: String,
+    pub guest_full_name: String,
+    pub phone_number: Option<String>,
+    pub card_uid: Option<String>,
+    pub visit_status: String,
+    pub operator_status: String,
+    pub completion_source: Option<String>,
+    pub sync_state: String,
+    pub primary_tap_id: Option<i32>,
+    pub taps: Vec<i32>,
+    pub incident_count: i32,
+    pub has_incident: bool,
+    pub has_unsynced: bool,
+    pub contains_tail_pour: bool,
+    pub contains_non_sale_flow: bool,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+    pub last_event_at: String,
+    pub operator_actions: Vec<SessionOperatorAction>,
+    pub lifecycle: SessionLifecycleTimestamps,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionHistoryDetail {
+    #[serde(flatten)]
+    pub summary: SessionHistoryListItem,
+    pub narrative: Vec<SessionNarrativeEvent>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VisitReportLostCardResponse {
     pub visit: Visit,
@@ -1268,6 +1332,44 @@ pub async fn resolve_card(token: &str, card_uid: &str) -> Result<CardResolveResp
             .json::<CardResolveResponse>()
             .await
             .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+
+pub async fn get_session_history(
+    token: &str,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+    tap_id: Option<i32>,
+    status: Option<&str>,
+    card_uid: Option<&str>,
+    incident_only: bool,
+    unsynced_only: bool,
+) -> Result<Vec<SessionHistoryListItem>, String> {
+    let url = build_api_url("visits/history");
+    let mut query: Vec<(&str, String)> = Vec::new();
+    if let Some(value) = date_from { if !value.is_empty() { query.push(("dateFrom", value.to_string())); } }
+    if let Some(value) = date_to { if !value.is_empty() { query.push(("dateTo", value.to_string())); } }
+    if let Some(value) = tap_id { query.push(("tapId", value.to_string())); }
+    if let Some(value) = status { if !value.is_empty() { query.push(("status", value.to_string())); } }
+    if let Some(value) = card_uid { if !value.is_empty() { query.push(("cardUid", value.to_string())); } }
+    if incident_only { query.push(("incidentOnly", "true".to_string())); }
+    if unsynced_only { query.push(("unsyncedOnly", "true".to_string())); }
+    let response = send(CLIENT.get(&url).query(&query).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Vec<SessionHistoryListItem>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_session_history_detail(token: &str, visit_id: &str) -> Result<SessionHistoryDetail, String> {
+    let url = build_api_url(&format!("visits/history/{}", visit_id));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<SessionHistoryDetail>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

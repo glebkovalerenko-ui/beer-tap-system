@@ -518,6 +518,38 @@ async fn list_shift_z_reports(
         .await
         .map_err(AppError::from)
 }
+
+#[tauri::command]
+async fn get_session_history(
+    token: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    tap_id: Option<i32>,
+    status: Option<String>,
+    card_uid: Option<String>,
+    incident_only: bool,
+    unsynced_only: bool,
+) -> Result<Vec<api_client::SessionHistoryListItem>, AppError> {
+    api_client::get_session_history(
+        &token,
+        date_from.as_deref(),
+        date_to.as_deref(),
+        tap_id,
+        status.as_deref(),
+        card_uid.as_deref(),
+        incident_only,
+        unsynced_only,
+    ).await.map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_session_history_detail(
+    token: String,
+    visit_id: String,
+) -> Result<api_client::SessionHistoryDetail, AppError> {
+    api_client::get_session_history_detail(&token, &visit_id).await.map_err(AppError::from)
+}
+
 #[tauri::command]
 async fn get_active_visits(
     token: String,
@@ -735,6 +767,8 @@ fn main() {
             get_shift_z_report,
             list_shift_z_reports,
             // API - Visits
+            get_session_history,
+            get_session_history_detail,
             get_active_visits,
             search_active_visit,
             open_visit,

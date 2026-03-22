@@ -12,6 +12,9 @@ function createVisitStore() {
   const { subscribe, update } = writable({
     activeVisits: [],
     currentVisit: null,
+    sessionHistory: [],
+    sessionHistoryDetail: null,
+    historyLoading: false,
     loading: false,
     error: null,
   });
@@ -29,6 +32,10 @@ function createVisitStore() {
       update((s) => ({ ...s, currentVisit: null, error: null }));
     },
 
+    clearSessionHistoryDetail: () => {
+      update((s) => ({ ...s, sessionHistoryDetail: null }));
+    },
+
     fetchActiveVisits: async () => {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null }));
@@ -39,6 +46,43 @@ function createVisitStore() {
       } catch (error) {
         const message = toErrorMessage('visitStore.fetchActiveVisits', error);
         update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
+
+    fetchSessionHistory: async (filters = {}) => {
+      const token = withAuth();
+      update((s) => ({ ...s, historyLoading: true, error: null }));
+      try {
+        const sessionHistory = await invoke('get_session_history', {
+          token,
+          dateFrom: filters.dateFrom || null,
+          dateTo: filters.dateTo || null,
+          tapId: filters.tapId ? Number(filters.tapId) : null,
+          status: filters.status || null,
+          cardUid: filters.cardUid || null,
+          incidentOnly: Boolean(filters.incidentOnly),
+          unsyncedOnly: Boolean(filters.unsyncedOnly),
+        });
+        update((s) => ({ ...s, sessionHistory, historyLoading: false }));
+        return sessionHistory;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.fetchSessionHistory', error);
+        update((s) => ({ ...s, historyLoading: false, error: message }));
+        throw new Error(message);
+      }
+    },
+
+    fetchSessionHistoryDetail: async (visitId) => {
+      const token = withAuth();
+      update((s) => ({ ...s, historyLoading: true, error: null }));
+      try {
+        const sessionHistoryDetail = await invoke('get_session_history_detail', { token, visitId });
+        update((s) => ({ ...s, sessionHistoryDetail, historyLoading: false }));
+        return sessionHistoryDetail;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.fetchSessionHistoryDetail', error);
+        update((s) => ({ ...s, historyLoading: false, error: message }));
         throw new Error(message);
       }
     },
