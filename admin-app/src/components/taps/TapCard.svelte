@@ -24,6 +24,12 @@
   $: session = operations.activeSessionSummary;
   $: productState = operations.productState || 'needs_help';
   $: stateTheme = productStateTheme[productState] || 'muted';
+  $: isLocked = tap.status === 'locked';
+  $: canShowStop = canControl && session;
+  $: canShowLockToggle = canControl && tap.keg_id;
+  $: canShowScreen = canDisplayOverride;
+  $: canShowKegAction = canControl;
+  $: canShowHistory = true;
   $: statusPills = [
     { label: 'Controller', value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
     { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
@@ -31,11 +37,11 @@
   ];
   $: actionCount = [
     true,
-    tap.keg_id ? canControl : canMaintain || canControl,
-    tap.keg_id && canMaintain,
-    tap.keg_id && canControl,
-    (tap.status === 'cleaning' || tap.status === 'empty') && canMaintain,
-    canDisplayOverride,
+    canShowStop,
+    canShowLockToggle,
+    canShowScreen,
+    canShowKegAction,
+    canShowHistory,
   ].filter(Boolean).length;
 
   function emit(name) {
@@ -116,35 +122,40 @@
   <div class="card-actions" class:multi-line={actionCount > 2}>
     <button class="cta primary" on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
 
-    {#if tap.keg_id}
-      {#if canControl}
-        <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
-          {tap.status === 'active' ? 'Блокировать' : 'Открыть линию'}
-        </button>
-      {/if}
-      {#if canMaintain}
-        <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
-      {/if}
-      {#if canControl}
-        <button class="cta danger" on:click|stopPropagation={() => emit('unassign')}>Снять кегу</button>
-      {/if}
-    {:else}
-      {#if canMaintain}
-        <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
-      {/if}
-      {#if canControl}
-        <button class="cta" on:click|stopPropagation={() => emit('assign')}>Назначить кегу</button>
-      {/if}
+    {#if canShowStop}
+      <button class="cta danger" on:click|stopPropagation={() => emit('stop-pour')}>Стоп</button>
     {/if}
 
-    {#if canMaintain && (tap.status === 'cleaning' || tap.status === 'empty')}
-      <button class="cta success" on:click|stopPropagation={() => emit('mark-ready')}>Вернуть в готовность</button>
+    {#if canShowLockToggle}
+      <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
+        {isLocked ? 'Разблокировать' : 'Блокировать'}
+      </button>
     {/if}
 
-    {#if canDisplayOverride}
+    {#if canShowScreen}
       <button class="cta" on:click|stopPropagation={() => emit('display-settings')}>Экран</button>
     {/if}
+
+    {#if canShowKegAction}
+      <button class="cta" on:click|stopPropagation={() => emit(tap.keg_id ? 'unassign' : 'assign')}>
+        {tap.keg_id ? 'Снять кегу' : 'Назначить кегу'}
+      </button>
+    {/if}
+
+    <button class="cta" on:click|stopPropagation={() => emit('open-detail')}>История</button>
   </div>
+
+  {#if canMaintain}
+    <div class="service-actions">
+      <span>Сервисные операции</span>
+      <div class="service-actions-list">
+        <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
+        {#if tap.status === 'cleaning' || tap.status === 'empty' || isLocked}
+          <button class="cta success" on:click|stopPropagation={() => emit('mark-ready')}>Перевести в готовность</button>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -185,6 +196,8 @@
   .session-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; color: var(--text-secondary, #64748b); font-size: 0.84rem; }
   .footer-meta { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.82rem; }
   .card-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+  .service-actions { display: grid; gap: 0.45rem; border-top: 1px dashed #cbd5e1; padding-top: 0.8rem; }
+  .service-actions-list { display: flex; flex-wrap: wrap; gap: 0.55rem; }
   .cta { border: 1px solid #cbd5e1; background: #fff; color: #0f172a; border-radius: 10px; padding: 0.6rem 0.8rem; font-weight: 600; }
   .cta.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
   .cta.danger { color: #b91c1c; border-color: #fecaca; }

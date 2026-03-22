@@ -55,6 +55,16 @@ function labelFromState(state) {
   return PRODUCT_STATE_LABELS[state] || state || 'Нет данных';
 }
 
+function titleCase(text) {
+  if (!text) return '';
+  return String(text).charAt(0).toUpperCase() + String(text).slice(1);
+}
+
+function humanizeCode(code) {
+  if (!code) return null;
+  return titleCase(String(code).replaceAll('_', ' '));
+}
+
 function deriveProductState(rawTap, activeSession, recentEvents) {
   const tap = rawTap || {};
   if (!tap.keg_id) return 'no_keg';
@@ -81,6 +91,117 @@ function buildSubsystemStatus(rawValue, fallbackState, fallbackLabel) {
     label: fallbackLabel,
     detail: null,
   };
+}
+
+function buildSessionAction(activeSession) {
+  const visitId = activeSession?.visit_id || null;
+  return visitId
+    ? {
+        label: `Сессия #${visitId}`,
+        href: '#/sessions',
+        visitId,
+      }
+    : null;
+}
+
+function buildIncidentAction(item) {
+  const incidentId = item?.incident_id || item?.related_incident_id || item?.incident?.incident_id || null;
+  return incidentId
+    ? {
+        label: `Инцидент #${incidentId}`,
+        href: '#/incidents',
+        incidentId,
+      }
+    : null;
+}
+
+function eventPriority(item) {
+  const priority = item?.priority || item?.severity || item?.incident?.priority || null;
+  if (priority) return priority;
+  if (item?.item_type === 'pour') return item?.status === 'rejected' ? 'high' : 'medium';
+  if (item?.reason === 'flow_detected_when_valve_closed_without_active_session') return 'critical';
+  if (item?.event_status === 'started') return 'medium';
+  return 'low';
+}
+
+function eventTone(priority) {
+  if (priority === 'critical') return 'critical';
+  if (priority === 'high') return 'warning';
+  if (priority === 'medium') return 'info';
+  return 'neutral';
+}
+
+function describeOperatorEvent(item, activeSession) {
+  if (item?.item_type === 'pour') {
+    return {
+      title: item.status === 'rejected' ? 'Продажа отклонена' : 'Продажа завершена',
+      description: item.status === 'rejected'
+        ? 'Налив не был подтверждён как продажа.'
+        : 'Завершён платный налив по активной сессии.',
+    };
+  }
+
+  if (item?.reason === 'authorized_pour_in_progress' || item?.session_state === 'authorized_session') {
+    return {
+      title: item?.event_status === 'stopped' ? 'Налив по сессии остановлен' : 'Идёт налив по активной сессии',
+      description: 'Контроллер фиксирует пролив в рамках авторизованной сессии.',
+    };
+  }
+
+  if (item?.reason === 'flow_detected_when_valve_closed_without_active_session') {
+    return {
+      title: 'Пролив без активной сессии',
+      description: 'Поток зафиксирован при закрытом клапане или без открытой сессии.',
+    };
+  }
+
+  if (item?.event_status === 'stopped') {
+    return {
+      title: 'Поток остановлен',
+      description: 'Контроллер сообщил об остановке пролива.',
+    };
+  }
+
+  if (item?.event_status === 'started') {
+    return {
+      title: 'Поток зафиксирован',
+      description: activeSession ? 'Есть признаки нового пролива по текущей сессии.' : 'Контроллер сообщил о начале потока.',
+    };
+  }
+
+  return {
+    title: humanizeCode(item?.item_type) || 'Событие крана',
+    description: humanizeCode(item?.reason || item?.event_status || item?.status) || 'Событие поступило без расшифровки кода.',
+  };
+}
+
+function buildOperatorHistory(recentEvents, activeSession) {
+  return recentEvents.map((item, index) => {
+    const summary = describeOperatorEvent(item, activeSession);
+    const priority = eventPriority(item);
+    const visitId = item?.visit_id || item?.session_id || activeSession?.visit_id || null;
+
+    return {
+      id: item?.item_id || `${item?.item_type || 'event'}-${item?.timestamp || item?.ended_at || item?.created_at || index}`,
+      title: summary.title,
+      description: summary.description,
+      priority,
+      tone: eventTone(priority),
+      priorityLabel: humanizeCode(priority) || 'Low',
+      happenedAt: item?.ended_at || item?.timestamp || item?.created_at || item?.started_at || null,
+      volumeMl: toNumber(item?.volume_ml),
+      amount: item?.amount_charged ?? null,
+      rawStatus: item?.status || item?.event_status || item?.reason || null,
+      sessionAction: visitId
+        ? {
+            label: `Сессия #${visitId}`,
+            href: '#/sessions',
+            visitId,
+          }
+        : null,
+      incidentAction: buildIncidentAction(item),
+    };
+  });
 }
 
 
@@ -204,6 +325,7 @@ function buildTapView(rawTap, context = {}) {
   const syncState = rawTap.sync_state || (rawTap.status === 'processing_sync' ? 'syncing' : activeSession ? 'live' : 'idle');
   const currentPourVolumeMl = toNumber(rawTap.current_pour_volume_ml ?? recentEvents[0]?.volume_ml);
   const currentPourAmount = rawTap.current_pour_amount ?? recentEvents[0]?.amount_charged ?? null;
+  const sessionAction = buildSessionAction(activeSession);
 
   const tapView = {
     ...rawTap,
@@ -228,6 +350,7 @@ function buildTapView(rawTap, context = {}) {
             openedAt: activeSession.opened_at || null,
             lockedAt: activeSession.lock_set_at || null,
             balance: activeSession.balance || activeSession.guest?.balance || null,
+            sessionAction,
           }
         : null,
       heartbeat: {
@@ -242,8 +365,10 @@ function buildTapView(rawTap, context = {}) {
       currentPour: {
         volumeMl: currentPourVolumeMl,
         amount: currentPourAmount,
+        isActive: Boolean(activeSession || (recentEvents[0] && recentEvents[0].event_status !== 'stopped')),
       },
       recentEvents,
+      operatorHistory: buildOperatorHistory(recentEvents, activeSession),
       liveStatus: rawTap.live_status || (productState === 'pouring' ? 'Идёт налив' : productState === 'ready' ? 'Готов к продаже' : 'Нужна проверка'),
     },
   };

@@ -102,6 +102,14 @@ $: if (selectedTap) {
     isTapDrawerOpen = true;
   }
 
+  function openSessionFromTap(event) {
+    const visitId = event.detail.visitId || event.detail.tap?.operations?.activeSessionSummary?.visitId || null;
+    if (visitId) {
+      sessionStorage.setItem('visits.lookupVisitId', visitId);
+    }
+    window.location.hash = '#/sessions';
+  }
+
 
   function requirePermission(permissionKey, message) {
     if ($roleStore.permissions[permissionKey]) {
@@ -128,19 +136,19 @@ $: if (selectedTap) {
     tapForDisplaySettings = null;
   }
 
-  async function handleTapStatusChange(tap, nextStatus, title) {
-    const permissionKey = nextStatus === 'cleaning' || nextStatus === 'locked' ? 'maintenance_actions' : 'taps_control';
-    const deniedMessage = permissionKey === 'maintenance_actions'
+  async function handleTapStatusChange(tap, nextStatus, title, options = {}) {
+    const permissionKey = options.permissionKey || (nextStatus === 'cleaning' ? 'maintenance_actions' : 'taps_control');
+    const deniedMessage = options.deniedMessage || (permissionKey === 'maintenance_actions'
       ? 'Сервисные действия по крану доступны только старшему смены или инженеру.'
-      : 'Управление линией доступно только ролям с правом taps_control.';
+      : 'Управление линией доступно только ролям с правом taps_control.');
 
     if (!requirePermission(permissionKey, deniedMessage)) return;
     const approved = await uiStore.confirm({
       title,
-      message: `Изменить статус ${tap.display_name} на "${nextStatus}"?`,
-      confirmText: 'Подтвердить',
+      message: options.message || `Изменить статус ${tap.display_name} на "${nextStatus}"?`,
+      confirmText: options.confirmText || 'Подтвердить',
       cancelText: 'Отмена',
-      danger: nextStatus === 'locked',
+      danger: options.danger ?? nextStatus === 'locked',
     });
 
     if (!approved) return;
@@ -150,6 +158,20 @@ $: if (selectedTap) {
     } catch (error) {
       uiStore.notifyError(`Ошибка: ${error}`);
     }
+  }
+
+  async function handleStopPour(tap) {
+    if (!tap?.operations?.activeSessionSummary) {
+      uiStore.notifyWarning('На этом кране нет активной сессии для остановки.');
+      return;
+    }
+
+    await handleTapStatusChange(tap, 'locked', 'Остановить налив и заблокировать кран', {
+      permissionKey: 'taps_control',
+      message: `Остановить текущий налив на ${tap.display_name} и перевести кран в блокировку?`,
+      confirmText: 'Остановить налив',
+      danger: true,
+    });
   }
 
   async function handleUnassignTap(tap) {
@@ -254,9 +276,15 @@ $: if (selectedTap) {
           on:open-detail={(event) => selectTap(event.detail.tap)}
           on:assign={handleOpenAssignModal}
           on:display-settings={handleOpenTapDisplaySettings}
-          on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'active' ? 'locked' : 'active', 'Изменение статуса крана')}
+          on:stop-pour={(event) => handleStopPour(event.detail.tap)}
+          on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
           on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}
-          on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'locked', 'Возврат крана в готовность после работ')}
+          on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'Вернуть кран в готовность', {
+            permissionKey: 'maintenance_actions',
+            message: `Перевести ${event.detail.tap.display_name} в статус "active" после сервисных работ?`,
+            confirmText: 'Вернуть в готовность',
+            danger: false,
+          })}
           on:unassign={(event) => handleUnassignTap(event.detail.tap)}
         />
       {/if}
@@ -348,8 +376,12 @@ $: if (selectedTap) {
     <TapDrawer
       tap={selectedTap}
       canDisplayOverride={$roleStore.permissions.display_override}
+      canControl={$roleStore.permissions.taps_control}
       on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
       on:display-settings={handleOpenTapDisplaySettings}
+      on:open-session={openSessionFromTap}
+      on:stop-pour={(event) => handleStopPour(event.detail.tap)}
+      on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
     />
   </Modal>
 {/if}
