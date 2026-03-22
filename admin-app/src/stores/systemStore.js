@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
@@ -14,31 +15,91 @@ function findSubsystem(subsystems, names) {
 
 function normalizeSubsystemHealth(item, fallbackLabel) {
   return {
+    name: item?.name || fallbackLabel.toLowerCase(),
     label: item?.label || fallbackLabel,
     state: item?.state || 'unknown',
     detail: item?.detail || item?.state || 'Нет данных',
+    devices: item?.devices || [],
   };
+}
+
+function summarizeDevices(devices = [], fallbackLabel = 'устройств') {
+  const problemDevices = devices.filter((device) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(device.state));
+  if (!devices.length) return `Нет данных по ${fallbackLabel}`;
+  if (!problemDevices.length) return `В работе: ${devices.length}`;
+  return `Требуют внимания: ${problemDevices.length} из ${devices.length}`;
 }
 
 function deriveHealthSummary(summary, error = null) {
   const subsystems = summary?.subsystems || [];
   const backend = error
-    ? { label: 'Backend', state: 'critical', detail: error }
-    : normalizeSubsystemHealth(findSubsystem(subsystems, ['backend', 'api', 'server']), 'Backend');
-  const controller = normalizeSubsystemHealth(findSubsystem(subsystems, ['controller', 'controllers']), 'Controller');
-  const displayAgent = normalizeSubsystemHealth(findSubsystem(subsystems, ['display-agent', 'display_agent', 'display']), 'Display-agent');
-  const states = [backend, controller, displayAgent].map((item) => item.state);
+    ? { name: 'backend', label: 'Бэкенд', state: 'critical', detail: error, devices: [] }
+    : normalizeSubsystemHealth(findSubsystem(subsystems, ['backend', 'api', 'server']), 'Бэкенд');
+  const controllers = normalizeSubsystemHealth(findSubsystem(subsystems, ['controller', 'controllers']), 'Контроллеры');
+  const displays = normalizeSubsystemHealth(findSubsystem(subsystems, ['display-agent', 'display_agent', 'display', 'displays']), 'Экраны');
+  const readers = normalizeSubsystemHealth(findSubsystem(subsystems, ['reader', 'readers', 'nfc', 'nfc-reader', 'nfc_reader']), 'Считыватели');
+  const sync = normalizeSubsystemHealth(findSubsystem(subsystems, ['sync', 'sync-service', 'sync_queue', 'queue']), 'Синхронизация');
+
+  const primary = [backend, controllers, displays, readers, sync];
+  const states = primary.map((item) => item.state);
   const overall = states.includes('critical') || states.includes('error')
     ? 'critical'
-    : states.includes('warning') || states.includes('degraded') || states.includes('unknown')
+    : states.includes('warning') || states.includes('degraded') || states.includes('unknown') || states.includes('offline')
       ? 'warning'
       : 'ok';
 
+  const primaryPills = [
+    { key: 'backend', label: 'Бэкенд', state: backend.state, detail: backend.detail },
+    { key: 'controllers', label: 'Контроллеры', state: controllers.state, detail: controllers.detail },
+    { key: 'displays', label: 'Экраны', state: displays.state, detail: displays.detail },
+    { key: 'readers', label: 'Считыватели', state: readers.state, detail: readers.detail },
+    { key: 'sync', label: 'Синхронизация', state: sync.state, detail: sync.detail },
+  ];
+
+  const problemSubsystems = primary.filter((item) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(item.state));
+  const problemDevices = subsystems.flatMap((subsystem) => (subsystem.devices || [])
+    .filter((device) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(device.state))
+    .map((device) => ({
+      ...device,
+      subsystem: subsystem.label || subsystem.name,
+    })));
+
   return {
     backend,
-    controller,
-    displayAgent,
+    controller: controllers,
+    controllers,
+    displayAgent: displays,
+    displays,
+    readers,
+    sync,
     overall,
+    primaryPills,
+    sections: {
+      overallStatus: {
+        title: 'Общий статус',
+        items: [backend, sync],
+      },
+      devices: {
+        title: 'Устройства',
+        items: [controllers, displays, readers],
+        summary: [
+          { key: 'controllers', label: 'Контроллеры', value: summarizeDevices(controllers.devices, 'контроллерам') },
+          { key: 'displays', label: 'Экраны', value: summarizeDevices(displays.devices, 'экранам') },
+          { key: 'readers', label: 'Считыватели', value: summarizeDevices(readers.devices, 'считывателям') },
+        ],
+      },
+      syncStatus: {
+        title: 'Синхронизация',
+        items: [sync],
+      },
+      accumulatedIssues: {
+        title: 'Накопившиеся проблемы',
+        subsystemCount: problemSubsystems.length,
+        deviceCount: problemDevices.length,
+        subsystems: problemSubsystems,
+        devices: problemDevices,
+      },
+    },
   };
 }
 
