@@ -671,10 +671,47 @@ pub struct AssignKegPayload {
 }
 
 // --- System State ---
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct SystemStateItem {
-    pub key: String,
-    pub value: String,
+pub struct IncidentListItem {
+    pub incident_id: String,
+    pub priority: String,
+    pub created_at: String,
+    pub tap: Option<String>,
+    pub r#type: String,
+    pub status: String,
+    pub operator: Option<String>,
+    pub note_action: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SystemDeviceHealth {
+    pub device_id: String,
+    pub device_type: String,
+    pub tap: Option<String>,
+    pub state: String,
+    pub label: String,
+    pub detail: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SystemSubsystemSummary {
+    pub name: String,
+    pub state: String,
+    pub label: String,
+    pub detail: Option<String>,
+    pub devices: Vec<SystemDeviceHealth>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SystemOperationalSummary {
+    pub emergency_stop: bool,
+    pub overall_state: String,
+    pub generated_at: String,
+    pub open_incident_count: i32,
+    pub subsystems: Vec<SystemSubsystemSummary>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -937,6 +974,20 @@ pub async fn get_flow_summary(token: &str) -> Result<FlowSummaryResponse, String
     }
 }
 
+
+pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListItem>, String> {
+    let url = build_api_url(&format!("incidents/?limit={}", limit));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<Vec<IncidentListItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 // --- Beverage Functions ---
 /// Получение списка всех напитков.
 pub async fn get_beverages(token: &str) -> Result<Vec<Beverage>, String> {
@@ -1013,13 +1064,13 @@ pub async fn create_beverage(
 }
 
 // --- System Functions ---
-/// Получение статуса экстренной остановки.
-pub async fn get_system_status(token: &str) -> Result<SystemStateItem, String> {
+/// Получение operational summary системы.
+pub async fn get_system_status(token: &str) -> Result<SystemOperationalSummary, String> {
     let url = build_api_url("system/status");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
         response
-            .json::<SystemStateItem>()
+            .json::<SystemOperationalSummary>()
             .await
             .map_err(|e| e.to_string())
     } else {
@@ -1031,12 +1082,12 @@ pub async fn get_system_status(token: &str) -> Result<SystemStateItem, String> {
 pub async fn set_emergency_stop(
     token: &str,
     payload: &SystemStateUpdatePayload,
-) -> Result<SystemStateItem, String> {
+) -> Result<SystemOperationalSummary, String> {
     let url = build_api_url("system/emergency_stop");
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
         response
-            .json::<SystemStateItem>()
+            .json::<SystemOperationalSummary>()
             .await
             .map_err(|e| e.to_string())
     } else {

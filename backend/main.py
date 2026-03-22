@@ -26,7 +26,7 @@ from runtime_diagnostics import get_alembic_revision, get_db_identity, get_reque
 from startup_checks import verify_database_ready
 
 # --- Импорты для новых роутеров API ---
-from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits, shifts, lost_cards, reports, display
+from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits, shifts, lost_cards, reports, display, incidents
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,6 +61,7 @@ app.include_router(kegs.router, prefix="/api")
 app.include_router(beverages.router, prefix="/api")
 app.include_router(controllers.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
+app.include_router(incidents.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(pours.router, prefix="/api")
 app.include_router(visits.router, prefix="/api")

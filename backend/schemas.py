@@ -897,6 +897,44 @@ class SystemStateItem(BaseModel):
     key: str
     value: str
 
+
+class IncidentListItem(BaseModel):
+    incident_id: str
+    priority: Literal["low", "medium", "high", "critical"]
+    created_at: datetime
+    tap: Optional[str] = None
+    type: str
+    status: Literal["new", "in_progress", "closed"]
+    operator: Optional[str] = None
+    note_action: Optional[str] = None
+    source: Optional[str] = None
+
+
+class SystemDeviceHealth(BaseModel):
+    device_id: str
+    device_type: str
+    tap: Optional[str] = None
+    state: Literal["ok", "warning", "critical"]
+    label: str
+    detail: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class SystemSubsystemSummary(BaseModel):
+    name: str
+    state: Literal["ok", "warning", "critical"]
+    label: str
+    detail: Optional[str] = None
+    devices: list[SystemDeviceHealth] = []
+
+
+class SystemOperationalSummary(BaseModel):
+    emergency_stop: bool
+    overall_state: Literal["ok", "warning", "critical"]
+    generated_at: datetime
+    open_incident_count: int = 0
+    subsystems: list[SystemSubsystemSummary] = []
+
 class SystemStateUpdate(BaseModel):
     value: str = Field(..., json_schema_extra={'example': "true"}, description="Новое значение для флага (e.g., 'true' or 'false')")
 

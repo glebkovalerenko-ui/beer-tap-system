@@ -1,4 +1,3 @@
-// admin-app/src/stores/systemStore.js
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
@@ -12,6 +11,10 @@ function toErrorMessage(context, error) {
 const createSystemStore = () => {
   const { subscribe, update } = writable({
     emergencyStop: false,
+    overallState: 'ok',
+    generatedAt: null,
+    openIncidentCount: 0,
+    subsystems: [],
     loading: false,
     error: null,
   });
@@ -19,44 +22,36 @@ const createSystemStore = () => {
   let pollingInterval = null;
   const POLLING_RATE_MS = 10000;
 
+  const applySummary = (summary) => update((store) => ({
+    ...store,
+    emergencyStop: Boolean(summary?.emergency_stop),
+    overallState: summary?.overall_state || 'ok',
+    generatedAt: summary?.generated_at || null,
+    openIncidentCount: summary?.open_incident_count || 0,
+    subsystems: summary?.subsystems || [],
+    loading: false,
+    error: null,
+  }));
+
   const fetchSystemStatus = async () => {
     const token = get(sessionStore).token;
-    if (!token) {
-      console.warn('[SystemStore] Пропуск загрузки статуса: отсутствует токен авторизации.');
-      return;
-    }
-
+    if (!token) return;
     try {
-      const statusItem = await invoke('get_system_status', { token });
-      if (statusItem && statusItem.key === 'emergency_stop_enabled') {
-        update((store) => ({ ...store, emergencyStop: statusItem.value === 'true', error: null }));
-      }
+      const summary = await invoke('get_system_status', { token });
+      applySummary(summary);
     } catch (err) {
       const message = toErrorMessage('systemStore.fetchSystemStatus', err);
-      update((store) => ({ ...store, error: message }));
+      update((store) => ({ ...store, loading: false, error: message }));
     }
   };
 
   const setEmergencyStop = async (enabled) => {
     const token = get(sessionStore).token;
-    if (!token) {
-      const error = 'Требуется повторный вход в систему';
-      update((store) => ({ ...store, error }));
-      throw new Error(error);
-    }
-
+    if (!token) throw new Error('Требуется повторный вход в систему');
     update((store) => ({ ...store, loading: true }));
     try {
-      const value = enabled ? 'true' : 'false';
-      const updatedStatus = await invoke('set_emergency_stop', { token, value });
-      if (updatedStatus && updatedStatus.key === 'emergency_stop_enabled') {
-        update((store) => ({
-          ...store,
-          emergencyStop: updatedStatus.value === 'true',
-          loading: false,
-          error: null,
-        }));
-      }
+      const summary = await invoke('set_emergency_stop', { token, value: enabled ? 'true' : 'false' });
+      applySummary(summary);
     } catch (err) {
       const message = toErrorMessage('systemStore.setEmergencyStop', err);
       update((store) => ({ ...store, loading: false, error: message }));
@@ -66,24 +61,17 @@ const createSystemStore = () => {
 
   const startPolling = () => {
     if (pollingInterval) return;
-    console.log('[SystemStore] Запуск опроса состояния системы.');
     fetchSystemStatus();
     pollingInterval = setInterval(fetchSystemStatus, POLLING_RATE_MS);
   };
 
   const stopPolling = () => {
     if (!pollingInterval) return;
-    console.log('[SystemStore] Остановка опроса состояния системы.');
     clearInterval(pollingInterval);
     pollingInterval = null;
   };
 
-  return {
-    subscribe,
-    setEmergencyStop,
-    startPolling,
-    stopPolling,
-  };
+  return { subscribe, setEmergencyStop, startPolling, stopPolling, fetchSystemStatus };
 };
 
 export const systemStore = createSystemStore();
