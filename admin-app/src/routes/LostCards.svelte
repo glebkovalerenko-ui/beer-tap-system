@@ -16,6 +16,14 @@
   let nfcError = '';
   let cardLookupResult = null;
 
+  function requirePermission(permissionKey, message) {
+    if ($roleStore.permissions[permissionKey]) {
+      return true;
+    }
+    uiStore.notifyWarning(message);
+    return false;
+  }
+
   const toIsoOrNull = (value) => {
     if (!value || !value.trim()) return null;
     const date = new Date(value);
@@ -34,6 +42,7 @@
 
   async function onRestore(item) {
     actionError = '';
+    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
     const ok = await uiStore.confirm({
       title: 'Снять отметку потери',
       message: `Снять отметку для карты ${item.card_uid}?`,
@@ -81,6 +90,7 @@
   }
 
   async function handleLookupRestoreLost() {
+    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
     try {
@@ -116,7 +126,7 @@
   });
 </script>
 
-{#if !$roleStore.permissions.cardsGuests}
+{#if !$roleStore.permissions.cards_manage}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает сценарии LostCards.</p>

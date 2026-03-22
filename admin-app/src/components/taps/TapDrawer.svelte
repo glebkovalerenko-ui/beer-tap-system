@@ -3,6 +3,7 @@
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
 
   export let tap;
+  export let canDisplayOverride = false;
 
   const dispatch = createEventDispatcher();
 
@@ -67,7 +68,9 @@
           <h3>Последние события крана</h3>
           <p>События берутся из live feed и локального снапшота крана.</p>
         </div>
-        <button class="secondary-btn" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
+        {#if canDisplayOverride}
+          <button class="secondary-btn" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
+        {/if}
       </div>
 
       {#if events.length}

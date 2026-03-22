@@ -44,19 +44,17 @@
   };
 
   const primaryNav = [
-    { href: '#/today', label: 'Today', permission: 'today' },
-    { href: '#/taps', label: 'Taps', permission: 'taps' },
-    { href: '#/sessions', label: 'Sessions', permission: 'sessions' },
-    { href: '#/cards-guests', label: 'CardsGuests', permission: 'cardsGuests' },
-    { href: '#/kegs-beverages', label: 'KegsBeverages', permission: 'inventory' },
-    { href: '#/incidents', label: 'Incidents', permission: 'incidents' },
-    { href: '#/tap-screens', label: 'TapScreens', permission: 'tapScreens' },
-    { href: '#/system', label: 'System', permission: 'system' },
+    { href: '#/today', label: 'Today', visible: (permissions) => permissions.taps_view || permissions.sessions_view },
+    { href: '#/taps', label: 'Taps', visible: (permissions) => permissions.taps_view },
+    { href: '#/sessions', label: 'Sessions', visible: (permissions) => permissions.sessions_view },
+    { href: '#/cards-guests', label: 'CardsGuests', visible: (permissions) => permissions.cards_manage },
+    { href: '#/incidents', label: 'Incidents', visible: (permissions) => permissions.incidents_manage },
   ];
 
   const secondaryNav = [
-    { href: '#/system', label: 'Настройки', permission: 'system' },
-    { href: '#/incidents', label: 'Справка / регламенты', permission: 'incidents' },
+    { href: '#/tap-screens', label: 'TapScreens', visible: (permissions) => permissions.display_override },
+    { href: '#/kegs-beverages', label: 'KegsBeverages', visible: (permissions) => permissions.settings_manage },
+    { href: '#/system', label: 'System', visible: (permissions) => permissions.system_view },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -123,7 +121,7 @@
           <div class="nav-title">Операторские сценарии</div>
           <nav aria-label="Главная навигация">
             {#each primaryNav as item}
-              {#if $roleStore.permissions[item.permission]}
+              {#if item.visible($roleStore.permissions)}
                 <a href={item.href}>{item.label}</a>
               {/if}
             {/each}
@@ -134,7 +132,7 @@
           <div class="nav-title">Внизу shell</div>
           <nav aria-label="Вторичная навигация">
             {#each secondaryNav as item}
-              {#if $roleStore.permissions[item.permission]}
+              {#if item.visible($roleStore.permissions)}
                 <a href={item.href}>{item.label}</a>
               {/if}
             {/each}

@@ -3,50 +3,59 @@ import { auditTrailStore } from './auditTrailStore.js';
 
 const STORAGE_KEY = 'admin_role';
 
+const PERMISSIONS = {
+  taps_view: 'Доступ к обзору кранов и рабочему экрану оператора.',
+  taps_control: 'Оперативное управление линиями, кегами и выдачей.',
+  sessions_view: 'Просмотр и сопровождение активных визитов.',
+  cards_manage: 'Операции с гостями, картами и LostCards.',
+  incidents_manage: 'Разбор инцидентов и регламентов.',
+  system_view: 'Просмотр состояния систем без сервисных изменений.',
+  maintenance_actions: 'Опасные сервисные действия: разблокировки, промывка, стопы.',
+  display_override: 'Override контента и сценариев экрана крана.',
+  settings_manage: 'Изменение системных настроек и management-инструменты.',
+};
+
 const ROLES = {
   operator: {
     label: 'Оператор',
     permissions: {
-      today: true,
-      taps: true,
-      sessions: true,
-      cardsGuests: true,
-      inventory: false,
-      incidents: true,
-      tapScreens: false,
-      system: false,
-      investorPanel: false,
-      emergency: false,
+      taps_view: true,
+      taps_control: false,
+      sessions_view: true,
+      cards_manage: false,
+      incidents_manage: false,
+      system_view: false,
+      maintenance_actions: false,
+      display_override: false,
+      settings_manage: false,
     },
   },
   shift_lead: {
     label: 'Старший смены',
     permissions: {
-      today: true,
-      taps: true,
-      sessions: true,
-      cardsGuests: true,
-      inventory: true,
-      incidents: true,
-      tapScreens: true,
-      system: false,
-      investorPanel: false,
-      emergency: true,
+      taps_view: true,
+      taps_control: true,
+      sessions_view: true,
+      cards_manage: true,
+      incidents_manage: true,
+      system_view: true,
+      maintenance_actions: true,
+      display_override: false,
+      settings_manage: false,
     },
   },
   engineer_owner: {
     label: 'Инженер / владелец',
     permissions: {
-      today: true,
-      taps: true,
-      sessions: true,
-      cardsGuests: true,
-      inventory: true,
-      incidents: true,
-      tapScreens: true,
-      system: true,
-      investorPanel: true,
-      emergency: true,
+      taps_view: true,
+      taps_control: true,
+      sessions_view: true,
+      cards_manage: true,
+      incidents_manage: true,
+      system_view: true,
+      maintenance_actions: true,
+      display_override: true,
+      settings_manage: true,
     },
   },
 };
@@ -67,6 +76,8 @@ function createRoleStore() {
   return {
     subscribe,
     roles: ROLES,
+    permissions: PERMISSIONS,
+    hasPermission: (roleKey, permissionKey) => Boolean(ROLES[roleKey]?.permissions?.[permissionKey]),
     setRole: (roleKey) => {
       if (!ROLES[roleKey]) return;
       if (typeof localStorage !== 'undefined') {

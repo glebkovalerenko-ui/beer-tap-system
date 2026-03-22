@@ -4,6 +4,9 @@
   import { formatDateTimeRu, formatRubAmount, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
 
   export let tap;
+  export let canControl = false;
+  export let canMaintain = false;
+  export let canDisplayOverride = false;
 
   const dispatch = createEventDispatcher();
 
@@ -26,7 +29,14 @@
     { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
     { label: 'Reader', value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
   ];
-  $: actionCount = tap.keg_id ? 3 : 2;
+  $: actionCount = [
+    true,
+    tap.keg_id ? canControl : canMaintain || canControl,
+    tap.keg_id && canMaintain,
+    tap.keg_id && canControl,
+    (tap.status === 'cleaning' || tap.status === 'empty') && canMaintain,
+    canDisplayOverride,
+  ].filter(Boolean).length;
 
   function emit(name) {
     dispatch(name, { tap });
@@ -107,18 +117,32 @@
     <button class="cta primary" on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
 
     {#if tap.keg_id}
-      <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
-        {tap.status === 'active' ? 'Блокировать' : 'Открыть линию'}
-      </button>
-      <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
-      <button class="cta danger" on:click|stopPropagation={() => emit('unassign')}>Снять кегу</button>
+      {#if canControl}
+        <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
+          {tap.status === 'active' ? 'Блокировать' : 'Открыть линию'}
+        </button>
+      {/if}
+      {#if canMaintain}
+        <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
+      {/if}
+      {#if canControl}
+        <button class="cta danger" on:click|stopPropagation={() => emit('unassign')}>Снять кегу</button>
+      {/if}
     {:else}
-      <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
-      <button class="cta" on:click|stopPropagation={() => emit('assign')}>Назначить кегу</button>
+      {#if canMaintain}
+        <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
+      {/if}
+      {#if canControl}
+        <button class="cta" on:click|stopPropagation={() => emit('assign')}>Назначить кегу</button>
+      {/if}
     {/if}
 
-    {#if tap.status === 'cleaning' || tap.status === 'empty'}
+    {#if canMaintain && (tap.status === 'cleaning' || tap.status === 'empty')}
       <button class="cta success" on:click|stopPropagation={() => emit('mark-ready')}>Вернуть в готовность</button>
+    {/if}
+
+    {#if canDisplayOverride}
+      <button class="cta" on:click|stopPropagation={() => emit('display-settings')}>Экран</button>
     {/if}
   </div>
 </div>
