@@ -6,6 +6,7 @@
   import { guestStore } from '../stores/guestStore.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
   import NFCModal from '../components/modals/NFCModal.svelte';
+  import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import {
     formatDateTimeRu,
@@ -430,62 +431,21 @@
       </div>
       <input type="text" bind:value={filterQuery} placeholder="Фильтр: ФИО / телефон / карта / ID визита" />
 
-      {#if cardLookupResult}
-        <div class="lookup-card">
-          <h3>Результат поиска по карте</h3>
-          <div class="lookup-meta">
-            <div><strong>UID:</strong> {cardLookupResult.card_uid}</div>
-          </div>
-
-          {#if cardLookupResult.is_lost}
-            <p class="lookup-status lookup-status-danger">Карта отмечена как потерянная</p>
-            <div class="lookup-meta">
-              <div><strong>Дата отметки:</strong> {formatDateTimeRu(cardLookupResult.lost_card?.reported_at)}</div>
-              <div><strong>Комментарий:</strong> {cardLookupResult.lost_card?.comment || '—'}</div>
-              <div><strong>Визит:</strong> {cardLookupResult.lost_card?.visit_id || '—'}</div>
-            </div>
-            <div class="lookup-actions">
-              <button class="danger-btn" on:click={handleLookupRestoreLost} disabled={$lostCardStore.loading || !$roleStore.permissions.cards_manage}>
-                Снять отметку потерянной
-              </button>
-              {#if hasLookupVisitTarget()}
-                <button on:click={handleLookupOpenVisit}>Открыть визит</button>
-              {/if}
-            </div>
-          {:else if cardLookupResult.active_visit}
-            <p class="lookup-status lookup-status-warning">Карта используется в активном визите</p>
-            <div class="lookup-meta">
-              <div><strong>Гость:</strong> {cardLookupResult.active_visit.guest_full_name}</div>
-              <div><strong>Телефон:</strong> {cardLookupResult.active_visit.phone_number || '—'}</div>
-              <div><strong>Визит:</strong> {cardLookupResult.active_visit.visit_id}</div>
-              <div>
-                <strong>Лок:</strong>
-                {#if cardLookupResult.active_visit.active_tap_id}
-                  Занята на кране #{cardLookupResult.active_visit.active_tap_id}
-                {:else}
-                  Нет активного лока
-                {/if}
-              </div>
-            </div>
-            <div class="lookup-actions">
-              <button on:click={handleLookupOpenVisit}>Открыть карточку визита</button>
-            </div>
-          {:else if cardLookupResult.guest}
-            <p class="lookup-status lookup-status-info">Карта привязана к гостю, активного визита нет</p>
-            <div class="lookup-meta">
-              <div><strong>Гость:</strong> {cardLookupResult.guest.full_name}</div>
-              <div><strong>Телефон:</strong> {cardLookupResult.guest.phone_number || '—'}</div>
-            </div>
-            <div class="lookup-actions">
-              <button on:click={handleLookupOpenNewVisit}>Открыть новый визит этому гостю</button>
-            </div>
-          {:else if cardLookupResult.card}
-            <p class="lookup-status lookup-status-muted">Карта зарегистрирована, но не привязана к гостю</p>
-          {:else}
-            <p class="lookup-status lookup-status-muted">Карта не зарегистрирована в системе</p>
-          {/if}
-        </div>
-      {/if}
+      <CardLookupPanel
+        title="Результат поиска по карте"
+        description="Единый lookup для operator flow в сессиях, потерянных картах и карточке гостя."
+        result={cardLookupResult}
+        error={actionError}
+        loading={$lostCardStore.loading || $visitStore.loading}
+        allowRestoreLost={$roleStore.permissions.cards_manage}
+        allowOpenVisit={hasLookupVisitTarget()}
+        allowOpenGuest={false}
+        allowOpenNewVisit={true}
+        on:lookup={(event) => resolveByCardUid(event.detail.uid).catch((error) => { nfcError = error?.message || error?.toString?.() || 'Не удалось выполнить поиск по карте'; })}
+        on:restore-lost={handleLookupRestoreLost}
+        on:open-visit={handleLookupOpenVisit}
+        on:open-new-visit={handleLookupOpenNewVisit}
+      />
 
       {#if $visitStore.loading && $visitStore.activeVisits.length === 0}
         <p>Загрузка активных визитов...</p>
@@ -639,22 +599,6 @@
   .list-header h2 { margin: 0; }
   .list-actions { display: flex; gap: 0.5rem; }
 
-  .lookup-card {
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
-    background: var(--bg-surface-muted);
-    padding: 0.75rem;
-    display: grid;
-    gap: 0.5rem;
-  }
-  .lookup-card h3 { margin: 0; }
-  .lookup-meta { display: grid; gap: 0.25rem; }
-  .lookup-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .lookup-status { margin: 0; font-weight: 700; }
-  .lookup-status-danger { color: #c61f35; }
-  .lookup-status-warning { color: #8a5a00; }
-  .lookup-status-info { color: #1f4a7c; }
-  .lookup-status-muted { color: var(--text-secondary); }
 
   .visit-list { display: grid; gap: 0.5rem; }
   .visit-item {

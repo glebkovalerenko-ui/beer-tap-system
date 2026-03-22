@@ -17,6 +17,11 @@
   $: detail = $visitStore.sessionHistoryDetail;
 
   onMount(() => {
+    const presetCardUid = sessionStorage.getItem('sessions.history.cardUid');
+    if (presetCardUid) {
+      sessionStorage.removeItem('sessions.history.cardUid');
+      filters = { ...filters, cardUid: presetCardUid };
+    }
     visitStore.fetchSessionHistory(filters).catch(() => {});
   });
 
