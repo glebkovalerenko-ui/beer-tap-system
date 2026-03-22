@@ -8,6 +8,40 @@ function toErrorMessage(context, error) {
   return normalizeError(error);
 }
 
+function findSubsystem(subsystems, names) {
+  return (subsystems || []).find((item) => names.includes(item.name));
+}
+
+function normalizeSubsystemHealth(item, fallbackLabel) {
+  return {
+    label: item?.label || fallbackLabel,
+    state: item?.state || 'unknown',
+    detail: item?.detail || item?.state || 'Нет данных',
+  };
+}
+
+function deriveHealthSummary(summary, error = null) {
+  const subsystems = summary?.subsystems || [];
+  const backend = error
+    ? { label: 'Backend', state: 'critical', detail: error }
+    : normalizeSubsystemHealth(findSubsystem(subsystems, ['backend', 'api', 'server']), 'Backend');
+  const controller = normalizeSubsystemHealth(findSubsystem(subsystems, ['controller', 'controllers']), 'Controller');
+  const displayAgent = normalizeSubsystemHealth(findSubsystem(subsystems, ['display-agent', 'display_agent', 'display']), 'Display-agent');
+  const states = [backend, controller, displayAgent].map((item) => item.state);
+  const overall = states.includes('critical') || states.includes('error')
+    ? 'critical'
+    : states.includes('warning') || states.includes('degraded') || states.includes('unknown')
+      ? 'warning'
+      : 'ok';
+
+  return {
+    backend,
+    controller,
+    displayAgent,
+    overall,
+  };
+}
+
 const createSystemStore = () => {
   const { subscribe, update } = writable({
     emergencyStop: false,
@@ -15,6 +49,7 @@ const createSystemStore = () => {
     generatedAt: null,
     openIncidentCount: 0,
     subsystems: [],
+    health: deriveHealthSummary(null),
     loading: false,
     error: null,
   });
@@ -29,6 +64,7 @@ const createSystemStore = () => {
     generatedAt: summary?.generated_at || null,
     openIncidentCount: summary?.open_incident_count || 0,
     subsystems: summary?.subsystems || [],
+    health: deriveHealthSummary(summary),
     loading: false,
     error: null,
   }));
@@ -41,7 +77,7 @@ const createSystemStore = () => {
       applySummary(summary);
     } catch (err) {
       const message = toErrorMessage('systemStore.fetchSystemStatus', err);
-      update((store) => ({ ...store, loading: false, error: message }));
+      update((store) => ({ ...store, health: deriveHealthSummary({ subsystems: store.subsystems }, message), loading: false, error: message }));
     }
   };
 

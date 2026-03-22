@@ -83,6 +83,102 @@ function buildSubsystemStatus(rawValue, fallbackState, fallbackLabel) {
   };
 }
 
+
+function deriveTapAttentionItems(tapView) {
+  const items = [];
+  const tapLabel = tapView.display_name || tapView.name || `Кран #${tapView.tap_id}`;
+
+  if (tapView.operations.heartbeat.isStale) {
+    items.push({
+      key: `stale-heartbeat-${tapView.tap_id}`,
+      kind: 'stale_heartbeat',
+      severity: 'warning',
+      title: tapLabel,
+      description: `Нет heartbeat ${tapView.operations.heartbeat.minutesAgo} мин`,
+      actionLabel: 'Открыть кран',
+      href: '#/taps',
+    });
+  }
+
+  if (!tapView.keg_id) {
+    items.push({
+      key: `no-keg-${tapView.tap_id}`,
+      kind: 'no_keg',
+      severity: 'warning',
+      title: tapLabel,
+      description: 'Кран без назначенной кеги.',
+      actionLabel: 'Открыть кран',
+      href: '#/taps',
+    });
+  }
+
+  if (tapView.operations.syncState.code === 'syncing') {
+    items.push({
+      key: `unsynced-flow-${tapView.tap_id}`,
+      kind: 'unsynced_flow',
+      severity: 'warning',
+      title: tapLabel,
+      description: 'Есть локальный пролив, ожидающий синхронизацию.',
+      actionLabel: 'Открыть сессию',
+      href: '#/sessions',
+      visitId: tapView.active_session?.visit_id || null,
+    });
+  }
+
+  if (['warning', 'critical', 'error', 'offline'].includes(tapView.operations.readerStatus.state)) {
+    items.push({
+      key: `reader-offline-${tapView.tap_id}`,
+      kind: 'reader_offline',
+      severity: tapView.operations.readerStatus.state === 'critical' || tapView.operations.readerStatus.state === 'error' ? 'critical' : 'warning',
+      title: tapLabel,
+      description: tapView.operations.readerStatus.detail || tapView.operations.readerStatus.label,
+      actionLabel: 'Открыть кран',
+      href: '#/taps',
+    });
+  }
+
+  if (['warning', 'critical', 'error', 'offline'].includes(tapView.operations.displayStatus.state)) {
+    items.push({
+      key: `display-offline-${tapView.tap_id}`,
+      kind: 'display_offline',
+      severity: tapView.operations.displayStatus.state === 'critical' || tapView.operations.displayStatus.state === 'error' ? 'critical' : 'warning',
+      title: tapLabel,
+      description: tapView.operations.displayStatus.detail || tapView.operations.displayStatus.label,
+      actionLabel: 'Открыть кран',
+      href: '#/taps',
+    });
+  }
+
+  if (['warning', 'critical', 'error', 'offline'].includes(tapView.operations.controllerStatus.state)) {
+    items.push({
+      key: `controller-offline-${tapView.tap_id}`,
+      kind: 'controller_offline',
+      severity: tapView.operations.controllerStatus.state === 'critical' || tapView.operations.controllerStatus.state === 'error' ? 'critical' : 'warning',
+      title: tapLabel,
+      description: tapView.operations.controllerStatus.detail || tapView.operations.controllerStatus.label,
+      actionLabel: 'Открыть кран',
+      href: '#/taps',
+    });
+  }
+
+  return items;
+}
+
+function deriveTapSummary(taps) {
+  const attentionItems = taps.flatMap((tap) => tap.operations.attentionItems || []);
+  return {
+    activeCount: taps.filter((tap) => tap.status === 'active').length,
+    pouringCount: taps.filter((tap) => tap.operations.productState === 'pouring').length,
+    noKegCount: attentionItems.filter((item) => item.kind === 'no_keg').length,
+    staleHeartbeatCount: attentionItems.filter((item) => item.kind === 'stale_heartbeat').length,
+    unsyncedFlowCount: attentionItems.filter((item) => item.kind === 'unsynced_flow').length,
+    readerOfflineCount: attentionItems.filter((item) => item.kind === 'reader_offline').length,
+    displayOfflineCount: attentionItems.filter((item) => item.kind === 'display_offline').length,
+    controllerOfflineCount: attentionItems.filter((item) => item.kind === 'controller_offline').length,
+    attentionItems,
+  };
+}
+
 function buildTapView(rawTap, context = {}) {
   const activeVisits = context.activeVisits || [];
   const feedItems = context.feedItems || [];
@@ -109,7 +205,7 @@ function buildTapView(rawTap, context = {}) {
   const currentPourVolumeMl = toNumber(rawTap.current_pour_volume_ml ?? recentEvents[0]?.volume_ml);
   const currentPourAmount = rawTap.current_pour_amount ?? recentEvents[0]?.amount_charged ?? null;
 
-  return {
+  const tapView = {
     ...rawTap,
     keg,
     active_session: activeSession,
@@ -128,6 +224,7 @@ function buildTapView(rawTap, context = {}) {
         ? {
             guestName: activeSession.guest_full_name || [activeSession.guest?.first_name, activeSession.guest?.last_name].filter(Boolean).join(' ') || 'Гость без имени',
             cardUid: activeSession.card_uid || null,
+            visitId: activeSession.visit_id || null,
             openedAt: activeSession.opened_at || null,
             lockedAt: activeSession.lock_set_at || null,
             balance: activeSession.balance || activeSession.guest?.balance || null,
@@ -150,12 +247,16 @@ function buildTapView(rawTap, context = {}) {
       liveStatus: rawTap.live_status || (productState === 'pouring' ? 'Идёт налив' : productState === 'ready' ? 'Готов к продаже' : 'Нужна проверка'),
     },
   };
+
+  tapView.operations.attentionItems = deriveTapAttentionItems(tapView);
+  return tapView;
 }
 
 function createTapStore() {
   const initialState = {
     rawTaps: [],
     taps: [],
+    summary: deriveTapSummary([]),
     loading: false,
     error: null,
     context: {
@@ -176,9 +277,11 @@ function createTapStore() {
   }
 
   function refreshDerived(state) {
+    const taps = state.rawTaps.map((tap) => buildTapView(tap, state.context));
     return {
       ...state,
-      taps: state.rawTaps.map((tap) => buildTapView(tap, state.context)),
+      taps,
+      summary: deriveTapSummary(taps),
     };
   }
 
