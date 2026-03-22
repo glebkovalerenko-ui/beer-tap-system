@@ -24,7 +24,7 @@
   const sections = {
     taps: {
       title: 'Краны',
-      description: 'Оперативная работа по конкретному tap: статус, активный налив, оборудование и события.',
+      description: 'Оперативная работа по каждому крану: статус, активный налив, подключённая кега и связанные события.',
       permission: 'taps_view',
     },
     inventory: {
@@ -33,8 +33,8 @@
       permission: 'settings_manage',
     },
     tapScreens: {
-      title: 'Tap screens',
-      description: 'Настройки экрана теперь открываются из detail drawer конкретного крана.',
+      title: 'Экраны кранов',
+      description: 'Управление экранами кранов и сценариями показа для гостевых дисплеев.',
       permission: 'display_override',
     },
   };
@@ -213,7 +213,7 @@ $: if (selectedTap) {
 {#if !$roleStore.permissions[activeView.permission]}
   <section class="ui-card restricted">
     <h1>{activeView.title}</h1>
-    <p>Текущая роль не предусматривает доступ к этому разделу operator workspace.</p>
+    <p>Текущая роль не предусматривает доступ к этому разделу.</p>
   </section>
 {:else}
   <div class="page-header">
@@ -227,7 +227,7 @@ $: if (selectedTap) {
         <a href="#/kegs-beverages" class:active={activeTab === 'inventory'}>Кеги и напитки</a>
       {/if}
       {#if $roleStore.permissions.display_override}
-        <a href="#/tap-screens" class:active={activeTab === 'tapScreens'}>Tap screens</a>
+        <a href="#/tap-screens" class:active={activeTab === 'tapScreens'}>Экраны кранов</a>
       {/if}
     </nav>
   </div>
@@ -236,8 +236,8 @@ $: if (selectedTap) {
     <section class="operator-layout">
       <div class="section-header">
         <div>
-          <h2>Operator screen</h2>
-          <p class="section-hint">Каждая карточка теперь показывает состояние продукта, подсистем и активной сессии. Tap display настраивается из detail drawer.</p>
+          <h2>Рабочая зона по кранам</h2>
+          <p class="section-hint">Каждая карточка показывает состояние крана, напитка, подсистем и текущей сессии. Настройки экрана доступны в карточке конкретного крана.</p>
         </div>
       </div>
 

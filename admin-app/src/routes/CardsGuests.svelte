@@ -7,7 +7,7 @@
 
   const tabs = [
     { key: 'guests', label: 'Гости и карты' },
-    { key: 'lost-cards', label: 'LostCards' },
+    { key: 'lost-cards', label: 'Потерянные карты' },
   ];
 </script>
 
@@ -20,8 +20,8 @@
   <section class="cards-guests-page">
     <header class="page-header">
       <div>
-        <h1>CardsGuests</h1>
-        <p>Рабочий сценарий по гостям, картам, пополнениям и обработке LostCards внутри одного раздела.</p>
+        <h1>Карты и гости</h1>
+        <p>Здесь оператор работает с гостями, картами, пополнениями и обращениями по потерянным картам.</p>
       </div>
       <div class="tabs" role="tablist" aria-label="Карты и гости">
         {#each tabs as tab}

@@ -5,18 +5,18 @@
 </script>
 
 {#if !$roleStore.permissions.system_view}
-  <section class="ui-card restricted"><h1>System</h1><p>Раздел настроек и инженерных инструментов доступен только роли engineer_owner.</p></section>
+  <section class="ui-card restricted"><h1>Система</h1><p>Раздел настроек и инженерных инструментов доступен только инженерным ролям.</p></section>
 {:else}
   <section class="page">
     <div class="page-header">
-      <h1>System</h1>
-      <p>Operational summary по backend, database, controllers, display agents, readers и sync queue.</p>
+      <h1>Система</h1>
+      <p>Сводка по состоянию сервера, базы данных, контроллеров, экранов, считывателей и очередей обмена.</p>
     </div>
     <div class="ui-card panel">
       <div class="hero">
-        <div><span class="eyebrow">Overall</span><strong>{$systemStore.overallState}</strong></div>
-        <div><span class="eyebrow">Open incidents</span><strong>{$systemStore.openIncidentCount}</strong></div>
-        <div><span class="eyebrow">Emergency stop</span><strong>{$systemStore.emergencyStop ? 'ON' : 'OFF'}</strong></div>
+        <div><span class="eyebrow">Общее состояние</span><strong>{$systemStore.overallState}</strong></div>
+        <div><span class="eyebrow">Открытые инциденты</span><strong>{$systemStore.openIncidentCount}</strong></div>
+        <div><span class="eyebrow">Экстренная остановка</span><strong>{$systemStore.emergencyStop ? 'Включена' : 'Выключена'}</strong></div>
       </div>
     </div>
     <SystemHealthSummary summary={$systemStore} />

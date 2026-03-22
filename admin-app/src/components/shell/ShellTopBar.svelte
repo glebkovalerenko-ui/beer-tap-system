@@ -9,7 +9,8 @@
   import DemoModeToggle from '../system/DemoModeToggle.svelte';
   import ServerSettingsModal from '../system/ServerSettingsModal.svelte';
 
-  export let title = 'Operator workspace';
+  export let title = 'Рабочее место оператора';
+  export let modeLabel = 'Режим работы';
 
   function changeRole(event) {
     roleStore.setRole(event.target.value);
@@ -37,8 +38,9 @@
 <header class="topbar ui-card">
   <div class="left">
     <div>
-      <p class="eyebrow">Beer Tap System · operator workspace</p>
+      <p class="eyebrow">Beer Tap System</p>
       <h1>{title}</h1>
+      <p class="mode-label">{modeLabel}: {$roleStore.roles[$roleStore.key]?.label || 'Не выбран'}</p>
     </div>
     <ShellGuestContextChip
       guestName={$guestContextStore.guestName}
@@ -56,12 +58,12 @@
       <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
     {/if}
     <DemoModeToggle />
-    <select on:change={changeRole} value={$roleStore.key} aria-label="Рабочая роль">
+    <select on:change={changeRole} value={$roleStore.key} aria-label="Выбор рабочей роли">
       {#each Object.entries(roleStore.roles) as [key, role]}
         <option value={key}>{role.label}</option>
       {/each}
     </select>
-    <button class="ghost" on:click={() => sessionStore.logout()}>Выйти из workspace</button>
+    <button class="ghost" on:click={() => sessionStore.logout()}>Выйти</button>
   </div>
 </header>
 
@@ -84,6 +86,11 @@
     margin: 0 0 0.2rem;
   }
   h1 { font-size: 1.1rem; margin: 0; min-width: 150px; }
+  .mode-label {
+    margin: 0.25rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
   .right { display: flex; align-items: center; gap: 10px; }
   select { min-width: 170px; }
   .ghost { background: #edf2fb; color: #23416b; }

@@ -26,7 +26,7 @@
 <section class="session-shell">
   <header class="session-header">
     <div>
-      <h1>Sessions</h1>
+      <h1>Сессии</h1>
       <p>Активные визиты остаются в текущем workflow, а история вынесена в отдельный операторский журнал.</p>
     </div>
     <div class="subnav">
