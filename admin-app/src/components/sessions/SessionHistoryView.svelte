@@ -1,4 +1,5 @@
 <script>
+  // @ts-nocheck
   import { onMount } from 'svelte';
   import { visitStore } from '../../stores/visitStore.js';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
@@ -21,6 +22,11 @@
     if (presetCardUid) {
       sessionStorage.removeItem('sessions.history.cardUid');
       filters = { ...filters, cardUid: presetCardUid };
+    }
+    const presetTapId = sessionStorage.getItem('sessions.history.tapId');
+    if (presetTapId) {
+      sessionStorage.removeItem('sessions.history.tapId');
+      filters = { ...filters, tapId: presetTapId };
     }
     visitStore.fetchSessionHistory(filters).catch(() => {});
   });
