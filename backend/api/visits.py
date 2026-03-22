@@ -241,6 +241,41 @@ def search_active_visit(
     return visit
 
 
+
+
+@router.get("/history", response_model=list[schemas.SessionHistoryListItem], summary="List session history")
+def list_session_history(
+    date_from: str | None = Query(default=None, alias="dateFrom"),
+    date_to: str | None = Query(default=None, alias="dateTo"),
+    tap_id: int | None = Query(default=None, alias="tapId"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    card_uid: str | None = Query(default=None, alias="cardUid"),
+    incident_only: bool = Query(default=False, alias="incidentOnly"),
+    unsynced_only: bool = Query(default=False, alias="unsyncedOnly"),
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    parsed_from = schemas.SessionHistoryFilterParams(date_from=date_from, date_to=date_to).date_from if date_from else None
+    parsed_to = schemas.SessionHistoryFilterParams(date_from=date_from, date_to=date_to).date_to if date_to else None
+    return visit_crud.get_session_history(
+        db=db,
+        date_from=parsed_from,
+        date_to=parsed_to,
+        tap_id=tap_id,
+        status=status_filter,
+        card_uid=card_uid,
+        incident_only=incident_only,
+        unsynced_only=unsynced_only,
+    )
+
+
+@router.get("/history/{visit_id}", response_model=schemas.SessionHistoryDetail, summary="Get session history detail")
+def get_session_history_detail(
+    visit_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    return visit_crud.get_session_history_detail(db=db, visit_id=visit_id)
 @router.get("/active", response_model=list[schemas.VisitActiveListItem], summary="List all active visits")
 def list_active_visits(
     db: Session = Depends(get_db),

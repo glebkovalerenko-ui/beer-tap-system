@@ -567,6 +567,72 @@ class CardResolveResponse(BaseModel):
     recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
 
 
+
+
+class SessionHistoryFilterParams(BaseModel):
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    tap_id: Optional[int] = None
+    status: Optional[str] = None
+    card_uid: Optional[str] = None
+    incident_only: bool = False
+    unsynced_only: bool = False
+
+
+class SessionLifecycleTimestamps(BaseModel):
+    opened_at: datetime
+    first_authorized_at: Optional[datetime] = None
+    first_pour_started_at: Optional[datetime] = None
+    last_pour_ended_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    last_sync_at: Optional[datetime] = None
+    last_operator_action_at: Optional[datetime] = None
+
+
+class SessionOperatorAction(BaseModel):
+    timestamp: datetime
+    action: str
+    actor_id: Optional[str] = None
+    label: str
+    details: Optional[str] = None
+
+
+class SessionNarrativeEvent(BaseModel):
+    timestamp: datetime
+    kind: str
+    title: str
+    description: str
+    status: Optional[str] = None
+    actor_id: Optional[str] = None
+
+
+class SessionHistoryListItem(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: Optional[str] = None
+    card_uid: Optional[str] = None
+    visit_status: str
+    operator_status: str
+    completion_source: Optional[str] = None
+    sync_state: str
+    primary_tap_id: Optional[int] = None
+    taps: list[int] = []
+    incident_count: int = 0
+    has_incident: bool = False
+    has_unsynced: bool = False
+    contains_tail_pour: bool = False
+    contains_non_sale_flow: bool = False
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    last_event_at: datetime
+    operator_actions: list[SessionOperatorAction] = []
+    lifecycle: SessionLifecycleTimestamps
+
+
+class SessionHistoryDetail(SessionHistoryListItem):
+    narrative: list[SessionNarrativeEvent] = []
+
 class VisitReportLostCardResponse(BaseModel):
     visit: Visit
     lost_card: LostCard

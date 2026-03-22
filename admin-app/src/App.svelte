@@ -34,6 +34,7 @@
     '/today': Today,
     '/taps': Taps,
     '/sessions': Sessions,
+    '/sessions/history': Sessions,
     '/cards-guests': CardsGuests,
     '/kegs-beverages': KegsBeverages,
     '/incidents': Incidents,
