@@ -1,4 +1,5 @@
 <script>
+  export let embedded = false;
   import { guestStore } from '../stores/guestStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { roleStore } from '../stores/roleStore.js';
@@ -105,12 +106,19 @@
   }
 </script>
 
-{#if !$roleStore.permissions.guests}
+{#if !$roleStore.permissions.cardsGuests}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
-    <p>Текущая роль не предусматривает управление гостями.</p>
+    <p>Текущая роль не предусматривает работу с гостями и картами.</p>
   </section>
 {:else}
+  {#if !embedded}
+    <div class="section-intro ui-card">
+      <h1>CardsGuests · гости</h1>
+      <p>Открывайте карточку гостя, привязывайте карту и пополняйте баланс без перехода в отдельные административные сущности.</p>
+    </div>
+  {/if}
+
   <div class="guests-page-layout">
     <div class="list-panel ui-card">
       <div class="panel-header">
@@ -188,6 +196,9 @@
 
 <style>
   .access-denied { padding: 1rem; }
+  .section-intro { padding: 1rem; margin-bottom: 1rem; }
+  .section-intro h1 { margin: 0 0 0.25rem; }
+  .section-intro p { margin: 0; color: var(--text-secondary); }
   .guests-page-layout { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 1rem; min-height: 70vh; }
   .list-panel, .detail-panel { padding: 1rem; overflow-y: auto; }
   .error { color: #c61f35; }

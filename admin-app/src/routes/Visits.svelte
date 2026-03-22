@@ -367,14 +367,14 @@
   }
 </script>
 
-{#if !$roleStore.permissions.guests}
+{#if !$roleStore.permissions.sessions}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает работу с визитами.</p>
   </section>
 {:else}
   <section class="ui-card open-section">
-    <h1>Активные визиты</h1>
+    <h1>Sessions</h1>
     <button class="primary-open" on:click={startOpenFlow}>Открыть новый визит</button>
 
     {#if openFlowVisible}

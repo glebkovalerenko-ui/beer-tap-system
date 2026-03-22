@@ -12,11 +12,14 @@
   import { shiftStore } from './stores/shiftStore.js';
   import { initializeBackendBaseUrl } from './lib/config.js';
 
-  import Dashboard from './routes/Dashboard.svelte';
-  import Guests from './routes/Guests.svelte';
-  import TapsKegs from './routes/TapsKegs.svelte';
-  import Visits from './routes/Visits.svelte';
-  import LostCards from './routes/LostCards.svelte';
+  import Today from './routes/Today.svelte';
+  import Taps from './routes/Taps.svelte';
+  import Sessions from './routes/Sessions.svelte';
+  import CardsGuests from './routes/CardsGuests.svelte';
+  import KegsBeverages from './routes/KegsBeverages.svelte';
+  import Incidents from './routes/Incidents.svelte';
+  import TapScreens from './routes/TapScreens.svelte';
+  import System from './routes/System.svelte';
   import Login from './routes/Login.svelte';
 
   import ToastContainer from './components/feedback/ToastContainer.svelte';
@@ -27,13 +30,33 @@
   import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
 
   const routes = {
-    '/': Dashboard,
-    '/guests': Guests,
-    '/taps-kegs': TapsKegs,
-    '/visits': Visits,
-    '/lost-cards': LostCards,
-    '*': Dashboard,
+    '/': Today,
+    '/today': Today,
+    '/taps': Taps,
+    '/sessions': Sessions,
+    '/cards-guests': CardsGuests,
+    '/kegs-beverages': KegsBeverages,
+    '/incidents': Incidents,
+    '/tap-screens': TapScreens,
+    '/system': System,
+    '*': Today,
   };
+
+  const primaryNav = [
+    { href: '#/today', label: 'Today', permission: 'today' },
+    { href: '#/taps', label: 'Taps', permission: 'taps' },
+    { href: '#/sessions', label: 'Sessions', permission: 'sessions' },
+    { href: '#/cards-guests', label: 'CardsGuests', permission: 'cardsGuests' },
+    { href: '#/kegs-beverages', label: 'KegsBeverages', permission: 'inventory' },
+    { href: '#/incidents', label: 'Incidents', permission: 'incidents' },
+    { href: '#/tap-screens', label: 'TapScreens', permission: 'tapScreens' },
+    { href: '#/system', label: 'System', permission: 'system' },
+  ];
+
+  const secondaryNav = [
+    { href: '#/system', label: 'Настройки', permission: 'system' },
+    { href: '#/incidents', label: 'Справка / регламенты', permission: 'incidents' },
+  ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   let shiftLoadAttempted = false;
@@ -90,20 +113,34 @@
       </div>
     {/if}
 
-    <ShellTopBar title="Рабочее место оператора" />
+    <ShellTopBar title="Operator workspace" />
     <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
 
     <div class="workspace-grid">
       <aside class="left-rail ui-card">
-        <nav aria-label="Главная навигация">
-          <a href="#/">Дашборд</a>
-          {#if $roleStore.permissions.guests}<a href="#/visits">Визиты</a>{/if}
-          {#if $roleStore.permissions.guests}<a href="#/lost-cards">Потерянные карты</a>{/if}
-          {#if $roleStore.permissions.guests}<a href="#/guests">Гости и операции</a>{/if}
-          {#if $roleStore.permissions.taps}<a href="#/taps-kegs">Краны и кеги</a>{/if}
-        </nav>
+        <div class="nav-group">
+          <div class="nav-title">Операторские сценарии</div>
+          <nav aria-label="Главная навигация">
+            {#each primaryNav as item}
+              {#if $roleStore.permissions[item.permission]}
+                <a href={item.href}>{item.label}</a>
+              {/if}
+            {/each}
+          </nav>
+        </div>
 
-        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Режим демонстрации</button>
+        <div class="nav-group secondary">
+          <div class="nav-title">Внизу shell</div>
+          <nav aria-label="Вторичная навигация">
+            {#each secondaryNav as item}
+              {#if $roleStore.permissions[item.permission]}
+                <a href={item.href}>{item.label}</a>
+              {/if}
+            {/each}
+          </nav>
+        </div>
+
+        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Операторский walkthrough</button>
         <ActivityTrail />
       </aside>
 
@@ -155,6 +192,23 @@
     flex-direction: column;
     gap: var(--space-3);
     overflow: hidden;
+  }
+
+  .nav-group {
+    display: grid;
+    gap: 10px;
+  }
+
+  .secondary {
+    margin-top: auto;
+  }
+
+  .nav-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
   }
 
   nav {

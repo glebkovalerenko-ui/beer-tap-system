@@ -1,23 +1,67 @@
 import { writable } from 'svelte/store';
 import { auditTrailStore } from './auditTrailStore.js';
 
+const STORAGE_KEY = 'admin_role';
+
 const ROLES = {
-  owner: {
-    label: 'Владелец',
-    permissions: { guests: true, taps: true, investorPanel: true, emergency: true }
+  operator: {
+    label: 'Оператор',
+    permissions: {
+      today: true,
+      taps: true,
+      sessions: true,
+      cardsGuests: true,
+      inventory: false,
+      incidents: true,
+      tapScreens: false,
+      system: false,
+      investorPanel: false,
+      emergency: false,
+    },
   },
-  manager: {
-    label: 'Менеджер',
-    permissions: { guests: true, taps: true, investorPanel: true, emergency: true }
+  shift_lead: {
+    label: 'Старший смены',
+    permissions: {
+      today: true,
+      taps: true,
+      sessions: true,
+      cardsGuests: true,
+      inventory: true,
+      incidents: true,
+      tapScreens: true,
+      system: false,
+      investorPanel: false,
+      emergency: true,
+    },
   },
-  bartender: {
-    label: 'Бармен',
-    permissions: { guests: false, taps: true, investorPanel: false, emergency: false }
+  engineer_owner: {
+    label: 'Инженер / владелец',
+    permissions: {
+      today: true,
+      taps: true,
+      sessions: true,
+      cardsGuests: true,
+      inventory: true,
+      incidents: true,
+      tapScreens: true,
+      system: true,
+      investorPanel: true,
+      emergency: true,
+    },
   },
 };
 
+function getInitialRole() {
+  if (typeof localStorage === 'undefined') {
+    return 'operator';
+  }
+
+  const savedRole = localStorage.getItem(STORAGE_KEY);
+  return ROLES[savedRole] ? savedRole : 'operator';
+}
+
 function createRoleStore() {
-  const initialRole = localStorage.getItem('admin_role') || 'owner';
+  const initialRole = getInitialRole();
   const { subscribe, set } = writable({ key: initialRole, ...ROLES[initialRole] });
 
   return {
@@ -25,9 +69,11 @@ function createRoleStore() {
     roles: ROLES,
     setRole: (roleKey) => {
       if (!ROLES[roleKey]) return;
-      localStorage.setItem('admin_role', roleKey);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, roleKey);
+      }
       set({ key: roleKey, ...ROLES[roleKey] });
-      auditTrailStore.add('Смена роли', `Роль изменена на: ${ROLES[roleKey].label}`);
+      auditTrailStore.add('Смена роли', `Активная рабочая роль: ${ROLES[roleKey].label}`);
     }
   };
 }
