@@ -21,14 +21,14 @@
   <section class="page">
     <div class="page-header">
       <h1>Система</h1>
-      <p>Сводка по состоянию сервера, базы данных, контроллеров, экранов, считывателей и очередей обмена.</p>
+      <p>Панель для старшего смены и инженера: видно, что работает штатно, какие устройства требуют внимания и где замедлилась синхронизация.</p>
     </div>
     <div class="ui-card panel">
       {#if incidentFocusSource}
-        <div class="incident-context">Открыто из инцидента: проверьте источник <strong>{incidentFocusSource}</strong> и связанные subsystem/device карточки.</div>
+        <div class="incident-context">Открыто из инцидента: сначала проверьте источник <strong>{incidentFocusSource}</strong>, затем состояние связанных устройств и очередей обмена.</div>
       {/if}
       <div class="hero">
-        <div><span class="eyebrow">Общее состояние</span><strong>{$systemStore.overallState}</strong></div>
+        <div><span class="eyebrow">Общий статус</span><strong>{$systemStore.health.overall === 'ok' ? 'Работаем штатно' : 'Нужно внимание смены'}</strong></div>
         <div><span class="eyebrow">Открытые инциденты</span><strong>{$systemStore.openIncidentCount}</strong></div>
         <div><span class="eyebrow">Экстренная остановка</span><strong>{$systemStore.emergencyStop ? 'Включена' : 'Выключена'}</strong></div>
       </div>
@@ -37,4 +37,13 @@
   </section>
 {/if}
 
-<style>.restricted,.panel{padding:1rem}.page{display:grid;gap:1rem}.page-header h1,.page-header p{margin:0}.hero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.eyebrow{display:block;color:var(--text-secondary);font-size:.8rem;text-transform:uppercase}.incident-context{margin-bottom:1rem;padding:.85rem 1rem;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e3a8a}</style>
+<style>
+  .restricted,.panel{padding:1rem}
+  .page{display:grid;gap:1rem}
+  .page-header h1,.page-header p{margin:0}
+  .page-header{display:grid;gap:.35rem}
+  .hero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+  .eyebrow{display:block;color:var(--text-secondary);font-size:.8rem;text-transform:uppercase}
+  .incident-context{margin-bottom:1rem;padding:.85rem 1rem;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e3a8a}
+  @media (max-width: 860px){.hero{grid-template-columns:1fr}}
+</style>
