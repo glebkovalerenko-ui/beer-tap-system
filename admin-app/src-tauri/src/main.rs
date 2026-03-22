@@ -379,6 +379,14 @@ async fn get_flow_summary(token: String) -> Result<api_client::FlowSummaryRespon
 }
 
 #[tauri::command]
+async fn get_incidents(token: String, limit: u32) -> Result<Vec<api_client::IncidentListItem>, AppError> {
+    info!("[COMMAND]     incidents API...");
+    api_client::get_incidents(&token, limit)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn get_beverages(token: String) -> Result<Vec<api_client::Beverage>, AppError> {
     info!("[COMMAND]     API...");
     api_client::get_beverages(&token)
@@ -430,7 +438,7 @@ async fn update_tap(
 }
 
 #[tauri::command]
-async fn get_system_status(token: String) -> Result<api_client::SystemStateItem, AppError> {
+async fn get_system_status(token: String) -> Result<api_client::SystemOperationalSummary, AppError> {
     info!("[COMMAND]   ...");
     api_client::get_system_status(&token)
         .await
@@ -441,7 +449,7 @@ async fn get_system_status(token: String) -> Result<api_client::SystemStateItem,
 async fn set_emergency_stop(
     token: String,
     value: String,
-) -> Result<api_client::SystemStateItem, AppError> {
+) -> Result<api_client::SystemOperationalSummary, AppError> {
     info!("[COMMAND]     Emergency Stop  '{}'", value);
     let payload = api_client::SystemStateUpdatePayload { value };
     api_client::set_emergency_stop(&token, &payload)
@@ -750,6 +758,7 @@ fn main() {
             get_pours,
             get_live_pour_feed,
             get_flow_summary,
+            get_incidents,
             // API - Beverages
             get_beverages,
             create_beverage,

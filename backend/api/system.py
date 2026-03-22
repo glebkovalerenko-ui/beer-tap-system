@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import schemas
 import security
-from crud import system_crud
+from crud import system_crud, incident_crud
 from database import get_db
 
 router = APIRouter(
@@ -16,19 +16,12 @@ router = APIRouter(
 
 EMERGENCY_STOP_KEY = "emergency_stop_enabled"
 
-@router.get("/status", response_model=schemas.SystemStateItem, summary="Получить статус экстренной остановки")
+@router.get("/status", response_model=schemas.SystemOperationalSummary, summary="Получить operational summary системы")
 def get_system_status(db: Session = Depends(get_db)):
-    """
-    Возвращает текущее состояние флага экстренной остановки.
-
-    Этот эндпоинт является публичным и оптимизирован для частого опроса
-    контроллерами (RPi) для проверки глобального состояния системы.
-    """
-    state = system_crud.get_state(db, EMERGENCY_STOP_KEY, "false")
-    return state
+    return incident_crud.get_system_summary(db)
 
 
-@router.post("/emergency_stop", response_model=schemas.SystemStateItem, summary="Включить/выключить экстренную остановку")
+@router.post("/emergency_stop", response_model=schemas.SystemOperationalSummary, summary="Включить/выключить экстренную остановку")
 def set_emergency_stop(
     state_update: schemas.SystemStateUpdate,
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)],
@@ -43,12 +36,12 @@ def set_emergency_stop(
     if state_update.value not in ["true", "false"]:
         raise HTTPException(status_code=400, detail="Value must be 'true' or 'false'")
     
-    updated_state = system_crud.set_state(
+    system_crud.set_state(
         db=db,
         key=EMERGENCY_STOP_KEY,
         value=state_update.value
     )
-    return updated_state
+    return incident_crud.get_system_summary(db)
 
 
 @router.get("/states/all", response_model=List[schemas.SystemStateItem], summary="Получить все флаги состояния системы", include_in_schema=False)
