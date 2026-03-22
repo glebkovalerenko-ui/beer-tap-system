@@ -89,9 +89,9 @@
     { label: 'Открытые инциденты', value: activeIncidents.length },
   ];
   $: healthItems = [
-    { key: 'backend', label: 'Backend', ...$systemStore.health.backend },
-    { key: 'controller', label: 'Controller', ...$systemStore.health.controller },
-    { key: 'display', label: 'Display-agent', ...$systemStore.health.displayAgent },
+    { key: 'backend', label: 'Сервер', ...$systemStore.health.backend },
+    { key: 'controller', label: 'Контроллер', ...$systemStore.health.controller },
+    { key: 'display', label: 'Экраны кранов', ...$systemStore.health.displayAgent },
   ];
   $: attentionItems = [
     ...(($tapStore.summary?.attentionItems || []).map((item) => ({ ...item, category: item.kind.replaceAll('_', ' ') }))),
@@ -125,7 +125,7 @@
       <small>{formatDateTimeRu(now.toISOString())}</small>
     </article>
     <article class="health-overview" data-tone={$systemStore.health.overall}>
-      <span class="eyebrow">Health</span>
+      <span class="eyebrow">Состояние системы</span>
       <strong>{$systemStore.health.overall}</strong>
       <div class="health-pills">
         {#each healthItems as item}
@@ -137,9 +137,9 @@
 
   <section class="hero ui-card">
     <div class="hero-copy">
-      <span class="eyebrow">Today</span>
-      <h1>Операционный срез смены</h1>
-      <p>Короткий путь от текущего состояния системы к следующему действию оператора.</p>
+      <span class="eyebrow">Сегодня</span>
+      <h1>Главное за текущую смену</h1>
+      <p>Смотрите ключевые показатели, живые события и задачи, которые требуют действий прямо сейчас.</p>
     </div>
     <div class="hero-actions">
       <a class="cta-button" href="#/incidents">Инциденты</a>
@@ -184,7 +184,7 @@
       <div class="section-head">
         <div>
           <h2>Требует внимания</h2>
-          <p>Только actionable-состояния: heartbeat, keg, sync, reader, display, controller.</p>
+          <p>Показываем только задачи, которые оператор может проверить или обработать прямо сейчас.</p>
         </div>
         <span class="count">{attentionItems.length}</span>
       </div>

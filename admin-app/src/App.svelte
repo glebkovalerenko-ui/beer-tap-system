@@ -44,17 +44,19 @@
   };
 
   const primaryNav = [
-    { href: '#/today', label: 'Today', visible: (permissions) => permissions.taps_view || permissions.sessions_view },
-    { href: '#/taps', label: 'Taps', visible: (permissions) => permissions.taps_view },
-    { href: '#/sessions', label: 'Sessions', visible: (permissions) => permissions.sessions_view },
-    { href: '#/cards-guests', label: 'CardsGuests', visible: (permissions) => permissions.cards_manage },
-    { href: '#/incidents', label: 'Incidents', visible: (permissions) => permissions.incidents_manage },
+    { href: '#/today', label: 'Сегодня', visible: (permissions) => permissions.taps_view || permissions.sessions_view },
+    { href: '#/taps', label: 'Краны', visible: (permissions) => permissions.taps_view },
+    { href: '#/sessions', label: 'Сессии', visible: (permissions) => permissions.sessions_view },
+    { href: '#/cards-guests', label: 'Карты и гости', visible: (permissions) => permissions.cards_manage },
+    { href: '#/kegs-beverages', label: 'Кеги и напитки', visible: (permissions) => permissions.settings_manage },
+    { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_manage },
+    { href: '#/tap-screens', label: 'Экраны кранов', visible: (permissions) => permissions.display_override },
+    { href: '#/system', label: 'Система', visible: (permissions) => permissions.system_view },
   ];
 
-  const secondaryNav = [
-    { href: '#/tap-screens', label: 'TapScreens', visible: (permissions) => permissions.display_override },
-    { href: '#/kegs-beverages', label: 'KegsBeverages', visible: (permissions) => permissions.settings_manage },
-    { href: '#/system', label: 'System', visible: (permissions) => permissions.system_view },
+  const supportNav = [
+    { href: '#/system', label: 'Настройки', visible: (permissions) => permissions.system_view },
+    { href: '#/system', label: 'Справка / регламенты', visible: (permissions) => permissions.system_view },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -112,13 +114,13 @@
       </div>
     {/if}
 
-    <ShellTopBar title="Operator workspace" />
+    <ShellTopBar title="Рабочее место оператора" modeLabel="Режим работы" />
     <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
 
     <div class="workspace-grid">
       <aside class="left-rail ui-card">
         <div class="nav-group">
-          <div class="nav-title">Операторские сценарии</div>
+          <div class="nav-title">Основные разделы</div>
           <nav aria-label="Главная навигация">
             {#each primaryNav as item}
               {#if item.visible($roleStore.permissions)}
@@ -129,9 +131,9 @@
         </div>
 
         <div class="nav-group secondary">
-          <div class="nav-title">Внизу shell</div>
-          <nav aria-label="Вторичная навигация">
-            {#each secondaryNav as item}
+          <div class="nav-title">Поддержка и настройки</div>
+          <nav aria-label="Дополнительные разделы">
+            {#each supportNav as item}
               {#if item.visible($roleStore.permissions)}
                 <a href={item.href}>{item.label}</a>
               {/if}
@@ -139,7 +141,7 @@
           </nav>
         </div>
 
-        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Операторский walkthrough</button>
+        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Показать сценарий обучения</button>
         <ActivityTrail />
       </aside>
 

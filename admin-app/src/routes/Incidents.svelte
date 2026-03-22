@@ -5,12 +5,12 @@
 </script>
 
 {#if !$roleStore.permissions.incidents_manage}
-  <section class="ui-card restricted"><h1>Incidents</h1><p>Раздел инцидентов скрыт для текущей роли.</p></section>
+  <section class="ui-card restricted"><h1>Инциденты</h1><p>Раздел инцидентов скрыт для текущей роли.</p></section>
 {:else}
   <section class="page">
     <div class="page-header">
-      <h1>Incidents</h1>
-      <p>Агрегированный список operational anomalies, non-sale flow и operator follow-up действий.</p>
+      <h1>Инциденты</h1>
+      <p>Здесь собраны отклонения, служебные события и действия, которые нужно отработать оператору.</p>
     </div>
     <div class="ui-card panel">
       {#if $incidentStore.loading && $incidentStore.items.length === 0}<p>Загрузка инцидентов...</p>

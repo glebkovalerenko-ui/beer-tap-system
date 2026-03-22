@@ -129,11 +129,11 @@
 {#if !$roleStore.permissions.cards_manage}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
-    <p>Текущая роль не предусматривает сценарии LostCards.</p>
+    <p>Текущая роль не предусматривает работу с потерянными картами.</p>
   </section>
 {:else}
   <section class="ui-card panel">
-    <h1>{embedded ? 'LostCards workflow' : 'Incidents · LostCards'}</h1>
+    <h1>{embedded ? 'Потерянные карты' : 'Инциденты по картам'}</h1>
 
     <div class="filters">
       <input type="text" bind:value={uidFilter} placeholder="Поиск по UID" />
