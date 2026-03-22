@@ -1,4 +1,5 @@
 <script>
+  // @ts-nocheck
   export let initialSection = 'taps';
 
   import { get } from 'svelte/store';
@@ -82,6 +83,28 @@ $: if (selectedTap) {
       beverageStore.fetchBeverages();
       visitStore.fetchActiveVisits().catch(() => {});
       initialLoadAttempted = true;
+    }
+
+    const focusTapId = sessionStorage.getItem('incidents.focusTapId');
+    if (focusTapId) {
+      sessionStorage.removeItem('incidents.focusTapId');
+      activeTab = 'taps';
+      const openTapWhenReady = () => {
+        const target = $tapStore.taps.find((item) => String(item.tap_id) === String(focusTapId));
+        if (target) {
+          selectTap(target);
+          return true;
+        }
+        return false;
+      };
+
+      if (!openTapWhenReady()) {
+        const unsubscribe = tapStore.subscribe((state) => {
+          if (state.taps?.length && openTapWhenReady()) {
+            unsubscribe();
+          }
+        });
+      }
     }
   });
 
