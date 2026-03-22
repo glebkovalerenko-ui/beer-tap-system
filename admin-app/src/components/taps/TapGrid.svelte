@@ -1,4 +1,3 @@
-<!-- src/components/taps/TapGrid.svelte -->
 <script>
   import TapCard from './TapCard.svelte';
 
@@ -9,7 +8,16 @@
   <div class="tap-grid">
     {#each taps as tap (tap.tap_id)}
       <div class="grid-item">
-        <TapCard {tap} on:assign on:display-settings />
+        <TapCard
+          {tap}
+          on:open-detail
+          on:assign
+          on:display-settings
+          on:toggle-lock
+          on:cleaning
+          on:mark-ready
+          on:unassign
+        />
       </div>
     {/each}
   </div>
@@ -22,9 +30,9 @@
 <style>
   .tap-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.5rem;
-    padding: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    padding: 0.25rem 0;
   }
 
   .grid-item {

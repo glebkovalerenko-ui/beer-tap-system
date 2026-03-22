@@ -1,6 +1,6 @@
-<!-- src/routes/TapsKegs.svelte -->
 <script>
   export let initialSection = 'taps';
+
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
 
@@ -9,16 +9,38 @@
   import KegList from '../components/kegs/KegList.svelte';
   import KegForm from '../components/kegs/KegForm.svelte';
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
-  import TapGrid from '../components/taps/TapGrid.svelte';
   import TapDisplaySettingsModal from '../components/taps/TapDisplaySettingsModal.svelte';
+  import TapDrawer from '../components/taps/TapDrawer.svelte';
+  import TapGrid from '../components/taps/TapGrid.svelte';
   import { beverageStore } from '../stores/beverageStore.js';
   import { kegStore } from '../stores/kegStore.js';
+  import { pourStore } from '../stores/pourStore.js';
+  import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
-  import { roleStore } from '../stores/roleStore.js';
+  import { visitStore } from '../stores/visitStore.js';
+
+  const sections = {
+    taps: {
+      title: 'Краны',
+      description: 'Оперативная работа по конкретному tap: статус, активный налив, оборудование и события.',
+      permission: 'taps',
+    },
+    inventory: {
+      title: 'Кеги и напитки',
+      description: 'Инвентарь, каталог напитков и подготовка контента до подключения кранов.',
+      permission: 'inventory',
+    },
+    tapScreens: {
+      title: 'Tap screens',
+      description: 'Настройки экрана теперь открываются из detail drawer конкретного крана.',
+      permission: 'tapScreens',
+    },
+  };
 
   let initialLoadAttempted = false;
+  let activeTab = initialSection;
 
   let isKegFormModalOpen = false;
   let kegToEdit = null;
@@ -28,45 +50,56 @@
   let tapToAssign = null;
   let isAssigning = false;
 
+  let selectedTap = null;
+  let isTapDrawerOpen = false;
+
   let isTapDisplayModalOpen = false;
   let tapForDisplaySettings = null;
 
+  $: activeView = sections[activeTab] || sections.taps;
   $: if ($sessionStore.token && !initialLoadAttempted) {
     tapStore.fetchTaps();
     kegStore.fetchKegs();
     beverageStore.fetchBeverages();
+    visitStore.fetchActiveVisits().catch(() => {});
     initialLoadAttempted = true;
   }
 
+  $: tapStore.setOperationalContext({
+    activeVisits: $visitStore.activeVisits,
+    feedItems: $pourStore.feedItems,
+  });
+
+$: if (selectedTap) {
+    selectedTap = $tapStore.taps.find((item) => item.tap_id === selectedTap.tap_id) || selectedTap;
+  }
+
   onMount(() => {
-    try {
-      const token = get(sessionStore).token;
-      if (token && !initialLoadAttempted) {
-        tapStore.fetchTaps();
-        kegStore.fetchKegs();
-        beverageStore.fetchBeverages();
-        initialLoadAttempted = true;
-      }
-    } catch (error) {
-      console.error('Ошибка при загрузке TapsKegs:', error);
+    const token = get(sessionStore).token;
+    if (token && !initialLoadAttempted) {
+      tapStore.fetchTaps();
+      kegStore.fetchKegs();
+      beverageStore.fetchBeverages();
+      visitStore.fetchActiveVisits().catch(() => {});
+      initialLoadAttempted = true;
     }
   });
 
   function handleOpenCreateModal() {
-    try {
-      const current = get(beverageStore);
-      if (!current || !Array.isArray(current.beverages) || current.beverages.length === 0) {
-        uiStore.notifyWarning('Сначала добавьте напиток в справочник, затем создайте кегу.');
-        return;
-      }
-
-      kegToEdit = null;
-      kegFormError = '';
-      isKegFormModalOpen = true;
-    } catch (error) {
-      console.error('Ошибка в handleOpenCreateModal:', error);
-      uiStore.notifyError('Не удалось открыть форму кеги. Проверьте состояние API и справочника напитков.');
+    const current = get(beverageStore);
+    if (!current?.beverages?.length) {
+      uiStore.notifyWarning('Сначала добавьте напиток в справочник, затем создайте кегу.');
+      return;
     }
+
+    kegToEdit = null;
+    kegFormError = '';
+    isKegFormModalOpen = true;
+  }
+
+  function selectTap(tap) {
+    selectedTap = tap;
+    isTapDrawerOpen = true;
   }
 
   function handleOpenAssignModal(event) {
@@ -82,6 +115,45 @@
   function handleCloseTapDisplaySettings() {
     isTapDisplayModalOpen = false;
     tapForDisplaySettings = null;
+  }
+
+  async function handleTapStatusChange(tap, nextStatus, title) {
+    const approved = await uiStore.confirm({
+      title,
+      message: `Изменить статус ${tap.display_name} на "${nextStatus}"?`,
+      confirmText: 'Подтвердить',
+      cancelText: 'Отмена',
+      danger: nextStatus === 'locked',
+    });
+
+    if (!approved) return;
+
+    try {
+      await tapStore.updateTapStatus(tap.tap_id, nextStatus);
+    } catch (error) {
+      uiStore.notifyError(`Ошибка: ${error}`);
+    }
+  }
+
+  async function handleUnassignTap(tap) {
+    if (!tap.keg) return;
+
+    const approved = await uiStore.confirm({
+      title: 'Снять кегу',
+      message: `Отключить кегу "${tap.keg.beverage?.name || 'без названия'}" с ${tap.display_name}?`,
+      confirmText: 'Да, снять',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+
+    if (!approved) return;
+
+    try {
+      await tapStore.unassignKegFromTap(tap.tap_id);
+      kegStore.markKegAsAvailable(tap.keg.keg_id);
+    } catch (error) {
+      uiStore.notifyError(`Ошибка: ${error}`);
+    }
   }
 
   async function handleSaveAssign(event) {
@@ -116,89 +188,110 @@
     } catch (error) {
       const message = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Неизвестная ошибка';
       kegFormError = `Ошибка при сохранении кеги: ${message}`;
-      console.error('handleSaveKeg error:', error);
     }
   }
 </script>
 
-{#if (initialSection === 'inventory' && !$roleStore.permissions.inventory) || (initialSection === 'tapScreens' && !$roleStore.permissions.tapScreens) || (initialSection === 'taps' && !$roleStore.permissions.taps)}
+{#if !$roleStore.permissions[activeView.permission]}
   <section class="ui-card restricted">
-    <h1>{initialSection === 'inventory' ? 'KegsBeverages' : initialSection === 'tapScreens' ? 'TapScreens' : 'Taps'}</h1>
+    <h1>{activeView.title}</h1>
     <p>Текущая роль не предусматривает доступ к этому разделу operator workspace.</p>
   </section>
 {:else}
-<div class="page-header">
-  <h1>{initialSection === 'inventory' ? 'KegsBeverages' : initialSection === 'tapScreens' ? 'TapScreens' : 'Taps'}</h1>
-  <p>{initialSection === 'inventory' ? 'Поставка кег, справочник напитков и готовность запаса на смену.' : initialSection === 'tapScreens' ? 'Настройка контента и параметров экранов на кранах.' : 'Статус линий, назначение кег и контроль готовности к наливу.'}</p>
-</div>
-
-<div class="page-layout">
-  {#if initialSection !== 'inventory'}
-  <section class="taps-section">
-    <div class="section-header">
-      <div>
-        <h2>Статус кранов</h2>
-        <p class="section-hint">Из карточки крана можно открыть назначение кеги и настройки Tap Display.</p>
-      </div>
+  <div class="page-header">
+    <div>
+      <h1>{activeView.title}</h1>
+      <p>{activeView.description}</p>
     </div>
+    <nav class="section-tabs" aria-label="Разделы кранов и инвентаря">
+      <a href="#/taps" class:active={activeTab === 'taps'}>Краны</a>
+      <a href="#/kegs-beverages" class:active={activeTab === 'inventory'}>Кеги и напитки</a>
+      <a href="#/tap-screens" class:active={activeTab === 'tapScreens'}>Tap screens</a>
+    </nav>
+  </div>
 
-    {#if $tapStore.loading && $tapStore.taps.length === 0}
-      <p>Загрузка кранов...</p>
-    {:else if $tapStore.error}
-      <p class="error">Ошибка загрузки кранов: {$tapStore.error}</p>
-    {:else}
-      <TapGrid taps={$tapStore.taps} on:assign={handleOpenAssignModal} on:display-settings={handleOpenTapDisplaySettings} />
-    {/if}
-  </section>
-{/if}
-
-  {#if initialSection !== 'tapScreens'}
-  <div class="inventory-grid">
-    <section class="kegs-section">
+  {#if activeTab === 'taps'}
+    <section class="operator-layout">
       <div class="section-header">
-        <h2>Инвентарь кег</h2>
-        <button
-          class:disabled={$beverageStore.beverages.length === 0}
-          aria-disabled={$beverageStore.beverages.length === 0}
-          title={$beverageStore.beverages.length === 0 ? 'Сначала добавьте напиток' : 'Добавить кегу'}
-          on:click={handleOpenCreateModal}
-        >
-          + Добавить кегу
-        </button>
+        <div>
+          <h2>Operator screen</h2>
+          <p class="section-hint">Каждая карточка теперь показывает состояние продукта, подсистем и активной сессии. Tap display настраивается из detail drawer.</p>
+        </div>
       </div>
 
-      {#if $beverageStore.beverages.length === 0}
-        <p class="hint">Справочник напитков пуст. Сначала добавьте напиток, затем создайте кегу.</p>
-      {/if}
-
-      {#if $kegStore.loading && $kegStore.kegs.length === 0}
-        <p>Загрузка кег...</p>
-      {:else if $kegStore.error}
-        <p class="error">Ошибка загрузки кег: {$kegStore.error}</p>
+      {#if $tapStore.loading && $tapStore.taps.length === 0}
+        <p>Загрузка кранов...</p>
+      {:else if $tapStore.error}
+        <p class="error">Ошибка загрузки кранов: {$tapStore.error}</p>
       {:else}
-        <KegList
-          kegs={$kegStore.kegs}
-          on:edit={(event) => {
-            kegToEdit = event.detail.keg;
-            isKegFormModalOpen = true;
-          }}
-          on:delete={() => {}}
+        <TapGrid
+          taps={$tapStore.taps}
+          on:open-detail={(event) => selectTap(event.detail.tap)}
+          on:assign={handleOpenAssignModal}
+          on:display-settings={handleOpenTapDisplaySettings}
+          on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'active' ? 'locked' : 'active', 'Изменение статуса крана')}
+          on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}
+          on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'locked', 'Возврат крана в готовность после работ')}
+          on:unassign={(event) => handleUnassignTap(event.detail.tap)}
         />
       {/if}
     </section>
-
-    <section class="beverages-section">
-      <div class="section-header">
-        <div>
-          <h2>Справочник напитков</h2>
-          <p class="section-hint">Здесь оператор настраивает общий контент напитка для экрана гостя.</p>
+  {:else if activeTab === 'inventory'}
+    <div class="inventory-grid">
+      <section class="kegs-section">
+        <div class="section-header">
+          <div>
+            <h2>Инвентарь кег</h2>
+            <p class="section-hint">Логистика и подготовка запасов вынесены отдельно от операторской панели кранов.</p>
+          </div>
+          <button
+            class:disabled={$beverageStore.beverages.length === 0}
+            aria-disabled={$beverageStore.beverages.length === 0}
+            title={$beverageStore.beverages.length === 0 ? 'Сначала добавьте напиток' : 'Добавить кегу'}
+            on:click={handleOpenCreateModal}
+          >
+            + Добавить кегу
+          </button>
         </div>
-      </div>
-      <BeverageManager />
+
+        {#if $beverageStore.beverages.length === 0}
+          <p class="hint">Справочник напитков пуст. Сначала добавьте напиток, затем создайте кегу.</p>
+        {/if}
+
+        {#if $kegStore.loading && $kegStore.kegs.length === 0}
+          <p>Загрузка кег...</p>
+        {:else if $kegStore.error}
+          <p class="error">Ошибка загрузки кег: {$kegStore.error}</p>
+        {:else}
+          <KegList
+            kegs={$kegStore.kegs}
+            on:edit={(event) => {
+              kegToEdit = event.detail.keg;
+              isKegFormModalOpen = true;
+            }}
+            on:delete={() => {}}
+          />
+        {/if}
+      </section>
+
+      <section class="beverages-section">
+        <div class="section-header">
+          <div>
+            <h2>Справочник напитков</h2>
+            <p class="section-hint">Контент напитков и базовые тексты для гостевого экрана живут отдельно от оперативной работы с tap.</p>
+          </div>
+        </div>
+        <BeverageManager />
+      </section>
+    </div>
+  {:else}
+    <section class="ui-card tap-screen-focus">
+      <h2>Tap display settings moved into tap detail</h2>
+      <p>Чтобы настроить экран конкретного крана, откройте раздел “Краны”, выберите tap и используйте кнопку “Настройки экрана” в detail drawer.</p>
+      <a class="back-link" href="#/taps">Перейти к operator screen</a>
     </section>
-  </div>
   {/if}
-</div>
+{/if}
 
 {#if isKegFormModalOpen}
   <Modal on:close={() => { isKegFormModalOpen = false; kegToEdit = null; }}>
@@ -225,12 +318,14 @@
   </Modal>
 {/if}
 
-{#if initialSection === 'tapScreens'}
-  <section class="ui-card tap-screen-focus">
-    <h2>Экранные настройки</h2>
-    <p>Откройте карточку крана и выберите "настройки Tap Display" для изменения медиа и конфигурации экрана.</p>
-    <TapGrid taps={$tapStore.taps} on:display-settings={handleOpenTapDisplaySettings} />
-  </section>
+{#if isTapDrawerOpen && selectedTap}
+  <Modal on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}>
+    <TapDrawer
+      tap={selectedTap}
+      on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
+      on:display-settings={handleOpenTapDisplaySettings}
+    />
+  </Modal>
 {/if}
 
 {#if isTapDisplayModalOpen && tapForDisplaySettings}
@@ -243,86 +338,35 @@
   </Modal>
 {/if}
 
-{/if}
-
 <style>
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #eee;
-  }
-
-  .page-header h1 {
-    margin: 0;
-  }
-
-  .page-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-  }
-
-  .inventory-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr);
-    gap: 2rem;
-    align-items: start;
-  }
-
+  .page-header,
   .section-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
     gap: 1rem;
-    margin-bottom: 1rem;
+    align-items: flex-start;
   }
-
-  .section-header h2 {
-    margin: 0;
+  .page-header { margin-bottom: 1rem; }
+  .page-header h1, .section-header h2 { margin: 0; }
+  .page-header p, .section-hint { margin: 0.3rem 0 0; color: var(--text-secondary, #64748b); }
+  .section-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .section-tabs a, .back-link {
+    text-decoration: none;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.55rem 0.9rem;
+    color: #0f172a;
+    font-weight: 600;
+    background: #fff;
   }
-
-  .section-header button.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .section-hint,
-  .hint {
-    margin: 0.35rem 0 0;
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-  }
-
-  .beverages-section {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-
-  .error {
-    color: #c61f35;
-  }
-
-  .modal-error {
-    margin-top: 1rem;
-  }
-
-  @media (max-width: 1180px) {
-    .inventory-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 860px) {
-    .section-header {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  }
-.page-header p { margin: 0.25rem 0 0; color: var(--text-secondary); }
-  .tap-screen-focus { padding: 1rem; margin-top: 1rem; }
+  .section-tabs a.active { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
+  .operator-layout, .tap-screen-focus { display: grid; gap: 1rem; }
+  .inventory-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .kegs-section, .beverages-section, .tap-screen-focus { display: grid; gap: 1rem; }
+  .hint, .error { margin: 0; }
+  .error { color: #b91c1c; }
   .restricted { padding: 1rem; }
+  @media (max-width: 980px) {
+    .page-header, .section-header, .inventory-grid { grid-template-columns: 1fr; display: grid; }
+  }
 </style>

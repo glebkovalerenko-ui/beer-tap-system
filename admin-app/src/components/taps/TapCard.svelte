@@ -1,347 +1,171 @@
-<!-- src/components/taps/TapCard.svelte -->
 <script>
   import { createEventDispatcher } from 'svelte';
 
-  import { formatTapStatus, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
-  import { kegStore } from '../../stores/kegStore.js';
-  import { tapStore } from '../../stores/tapStore.js';
-  import { uiStore } from '../../stores/uiStore.js';
+  import { formatDateTimeRu, formatRubAmount, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
 
   export let tap;
 
   const dispatch = createEventDispatcher();
 
+  const productStateTheme = {
+    ready: 'ok',
+    pouring: 'live',
+    needs_help: 'warn',
+    unavailable: 'muted',
+    syncing: 'sync',
+    no_keg: 'muted',
+  };
+
+  $: operations = tap.operations || {};
   $: keg = tap.keg;
-  $: kegPercentage = keg ? (keg.current_volume_ml / keg.initial_volume_ml) * 100 : 0;
-  $: isAssignable = !tap.keg_id && (tap.status === 'locked' || tap.status === 'empty');
+  $: session = operations.activeSessionSummary;
+  $: productState = operations.productState || 'needs_help';
+  $: stateTheme = productStateTheme[productState] || 'muted';
+  $: statusPills = [
+    { label: 'Controller', value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
+    { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
+    { label: 'Reader', value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
+  ];
+  $: actionCount = tap.keg_id ? 3 : 2;
 
-  let isLoading = false;
-
-  async function handleUnassign() {
-    if (!keg) return;
-
-    const approved = await uiStore.confirm({
-      title: 'Подтвердите действие',
-      message: `Отключить кегу "${keg.beverage.name}" с ${tap.display_name}?`,
-      confirmText: 'Да, снять',
-      cancelText: 'Отмена',
-      danger: true,
-    });
-
-    if (!approved) {
-      return;
-    }
-
-    isLoading = true;
-    try {
-      await tapStore.unassignKegFromTap(tap.tap_id);
-      kegStore.markKegAsAvailable(keg.keg_id);
-    } catch (error) {
-      uiStore.notifyError(`Ошибка: ${error}`);
-    } finally {
-      isLoading = false;
-    }
+  function emit(name) {
+    dispatch(name, { tap });
   }
 
-  async function handleStatusChange(newStatus) {
-    const statusMap = {
-      locked: 'Заблокирован',
-      active: 'Активен',
-      cleaning: 'На промывке',
-      empty: 'Пуст',
-    };
-
-    const approved = await uiStore.confirm({
-      title: 'Изменение статуса крана',
-      message: `Изменить статус ${tap.display_name} на "${statusMap[newStatus] || newStatus}"?`,
-      confirmText: 'Подтвердить',
-      cancelText: 'Отмена',
-    });
-
-    if (!approved) {
-      return;
-    }
-
-    isLoading = true;
-    try {
-      await tapStore.updateTapStatus(tap.tap_id, newStatus);
-    } catch (error) {
-      uiStore.notifyError(`Ошибка: ${error}`);
-    } finally {
-      isLoading = false;
-    }
-  }
 </script>
 
-<div class="tap-card" class:loading={isLoading}>
-  {#if isLoading}
-    <div class="overlay">
-      <div class="spinner"></div>
-    </div>
-  {/if}
-
+<div class="tap-card" role="button" tabindex="0" on:click={() => emit('open-detail')} on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}>
   <div class="card-header">
-    <span class="tap-name">{tap.display_name}</span>
-    <span class="status-badge {tap.status}">
-      {formatTapStatus(tap.status)}
-    </span>
+    <div>
+      <div class="eyebrow">Tap #{tap.tap_id}</div>
+      <h3>{tap.display_name}</h3>
+    </div>
+    <div class="state-badge {stateTheme}">
+      <span>{operations.productStateLabel}</span>
+    </div>
   </div>
 
   <div class="card-body">
-    {#if keg && keg.beverage}
-      <div class="beverage-info">
-        <h3 class="beverage-name">{keg.beverage.name}</h3>
-        <p class="beverage-style">{keg.beverage.style || 'Стиль не указан'}</p>
+    <section class="hero">
+      <div>
+        <strong>{operations.beverageName}</strong>
+        <p>{operations.beverageStyle || 'Без стиля / контента'}</p>
       </div>
+      <div class="meta-block">
+        <span class="meta-label">Live status</span>
+        <strong>{operations.liveStatus}</strong>
+      </div>
+    </section>
 
-      <div class="progress-container" title={formatVolumeRangeRu(keg.current_volume_ml, keg.initial_volume_ml)}>
-        <div class="progress-bar" style="width: {kegPercentage}%" class:low={kegPercentage < 15}></div>
+    <section class="keg-section">
+      <div class="section-title-row">
+        <span class="section-title">Остаток</span>
+        <span class="percent">{operations.remainingPercent || 0}%</span>
       </div>
-      <div class="volume-labels">
-        <span>{formatVolumeRu(keg.current_volume_ml)}</span>
-        <span class="text-muted">из {formatVolumeRu(keg.initial_volume_ml)}</span>
+      <div class="progress-container" title={formatVolumeRangeRu(operations.remainingVolumeMl, operations.initialVolumeMl)}>
+        <div class="progress-bar" style={`width: ${operations.remainingPercent || 0}%`} class:low={(operations.remainingPercent || 0) < 15}></div>
       </div>
-    {:else}
-      <div class="empty-state">
-        <span class="empty-icon">Кега не назначена</span>
-        <p>Экран можно настроить заранее, даже пока напиток не подключен.</p>
+      <div class="volume-row">
+        <span>{keg ? formatVolumeRu(operations.remainingVolumeMl) : 'Нет подключённой кеги'}</span>
+        {#if keg}
+          <span class="muted">из {formatVolumeRu(operations.initialVolumeMl)}</span>
+        {/if}
       </div>
+    </section>
+
+    <section class="systems-grid">
+      {#each statusPills as item}
+        <article class={`system-pill ${item.tone || 'ok'}`}>
+          <span>{item.label}</span>
+          <strong>{item.value || 'Нет данных'}</strong>
+        </article>
+      {/each}
+    </section>
+
+    {#if session}
+      <section class="session-summary">
+        <div class="section-title-row compact">
+          <span class="section-title">Активная сессия</span>
+          <span class="muted">{session.cardUid || 'без карты'}</span>
+        </div>
+        <strong>{session.guestName}</strong>
+        <div class="session-grid">
+          <span>{session.lockedAt ? `Lock ${formatDateTimeRu(session.lockedAt)}` : 'Ожидает lock'}</span>
+          <span>{operations.currentPour?.volumeMl ? formatVolumeRu(operations.currentPour.volumeMl) : '0 мл'}</span>
+          <span>{operations.currentPour?.amount ? formatRubAmount(operations.currentPour.amount) : '0 ₽'}</span>
+        </div>
+      </section>
     {/if}
+
+    <section class="footer-meta">
+      <span>Heartbeat: {operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'нет данных'}</span>
+      <span>Sync: {operations.syncState?.label || 'нет данных'}</span>
+    </section>
   </div>
 
-  <div class="card-footer">
-    <div class="primary-actions">
-      {#if tap.keg_id}
-        <button class="btn-action" on:click={() => handleStatusChange(tap.status === 'active' ? 'locked' : 'active')}>
-          {tap.status === 'active' ? 'Блокировать' : 'Открыть'}
-        </button>
-        <button class="btn-action danger" on:click={handleUnassign}>Снять кегу</button>
-      {:else}
-        {#if tap.status === 'cleaning'}
-          <button class="btn-action primary wide-action" on:click={() => handleStatusChange('locked')}>
-            Чисто
-          </button>
-        {:else}
-          <button class="btn-action" on:click={() => handleStatusChange('cleaning')}>Чистка</button>
-          <button class="btn-action primary" on:click={() => dispatch('assign', { tap })} disabled={!isAssignable}>
-            Назначить
-          </button>
-        {/if}
-      {/if}
-    </div>
+  <div class="card-actions" class:multi-line={actionCount > 2}>
+    <button class="cta primary" on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
 
-    <button class="btn-screen" on:click={() => dispatch('display-settings', { tap })}>
-      Экран
-    </button>
+    {#if tap.keg_id}
+      <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
+        {tap.status === 'active' ? 'Блокировать' : 'Открыть линию'}
+      </button>
+      <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
+      <button class="cta danger" on:click|stopPropagation={() => emit('unassign')}>Снять кегу</button>
+    {:else}
+      <button class="cta" on:click|stopPropagation={() => emit('cleaning')}>Промывка</button>
+      <button class="cta" on:click|stopPropagation={() => emit('assign')}>Назначить кегу</button>
+    {/if}
+
+    {#if tap.status === 'cleaning' || tap.status === 'empty'}
+      <button class="cta success" on:click|stopPropagation={() => emit('mark-ready')}>Вернуть в готовность</button>
+    {/if}
   </div>
 </div>
 
 <style>
   .tap-card {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    transition: transform 0.2s, box-shadow 0.2s;
-    position: relative;
-    overflow: hidden;
-    border: 1px solid #f0f0f0;
-  }
-
-  .tap-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  }
-
-  .card-header {
+    width: 100%;
+    border: 1px solid var(--border-soft, #dde3ea);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,248,251,0.94));
     padding: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #f5f5f5;
-  }
-
-  .tap-name {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: #333;
-  }
-
-  .status-badge {
-    font-size: 0.75rem;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .status-badge.active { background-color: #e6f4ea; color: #1e7e34; }
-  .status-badge.locked { background-color: #fce8e6; color: #c5221f; }
-  .status-badge.cleaning { background-color: #e8f0fe; color: #1967d2; }
-  .status-badge.empty { background-color: #f1f3f4; color: #5f6368; }
-
-  .card-body {
-    padding: 1rem;
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-
-  .beverage-name {
-    margin: 0 0 0.25rem 0;
-    font-size: 1.2rem;
-    color: #202124;
-  }
-
-  .beverage-style {
-    margin: 0 0 1rem 0;
-    font-size: 0.9rem;
-    color: #5f6368;
-  }
-
-  .progress-container {
-    height: 8px;
-    background-color: #f1f3f4;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 0.5rem;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background-color: #34a853;
-    transition: width 0.5s ease;
-  }
-
-  .progress-bar.low {
-    background-color: #fbbc04;
-  }
-
-  .volume-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
-  .text-muted {
-    color: #80868b;
-    font-weight: 400;
-  }
-
-  .empty-state {
     display: grid;
-    gap: 0.45rem;
-    color: #64748b;
-  }
-
-  .empty-state p {
-    margin: 0;
-    font-size: 0.9rem;
-  }
-
-  .empty-icon {
-    font-weight: 700;
-    color: #334155;
-  }
-
-  .card-footer {
-    padding: 0.75rem 1rem 1rem;
-    border-top: 1px solid #f5f5f5;
-    background-color: #fff;
-    display: grid;
-    gap: 0.65rem;
-  }
-
-  .primary-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-  }
-
-  .wide-action {
-    grid-column: 1 / -1;
-  }
-
-  .btn-action,
-  .btn-screen {
-    border-radius: 6px;
-    padding: 0.55rem 0.65rem;
-    font-size: 0.85rem;
-    font-weight: 600;
+    gap: 1rem;
+    text-align: left;
     cursor: pointer;
-    transition: all 0.2s;
   }
-
-  .btn-action {
-    background: transparent;
-    border: 1px solid #dadce0;
-    color: #3c4043;
-  }
-
-  .btn-screen {
-    background: #edf2fb;
-    border: 1px solid #d2dff5;
-    color: #23416b;
-  }
-
-  .btn-action:hover,
-  .btn-screen:hover {
-    background-color: #f8f9fa;
-    border-color: #bdc1c6;
-  }
-
-  .btn-action.primary {
-    background-color: #1a73e8;
-    color: white;
-    border: none;
-  }
-
-  .btn-action.primary:hover {
-    background-color: #1557b0;
-  }
-
-  .btn-action.primary:disabled {
-    background-color: #e8f0fe;
-    color: #aecbfa;
-    cursor: not-allowed;
-  }
-
-  .btn-action.danger {
-    color: #d93025;
-    border-color: #f28b82;
-  }
-
-  .btn-action.danger:hover {
-    background-color: #fce8e6;
-  }
-
-  .overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10;
-  }
-
-  .spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid #e8f0fe;
-    border-top-color: #1a73e8;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+  .tap-card:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
+  .card-header, .hero, .section-title-row, .footer-meta { display: flex; justify-content: space-between; gap: 1rem; }
+  .eyebrow, .meta-label, .section-title, .muted { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+  h3, p, strong { margin: 0; }
+  .hero { align-items: flex-start; }
+  .meta-block { text-align: right; }
+  .state-badge { border-radius: 999px; padding: 0.45rem 0.7rem; font-weight: 700; font-size: 0.8rem; white-space: nowrap; }
+  .state-badge.ok { background: #dcfce7; color: #166534; }
+  .state-badge.live { background: #fee2e2; color: #b91c1c; }
+  .state-badge.warn { background: #fef3c7; color: #b45309; }
+  .state-badge.sync { background: #dbeafe; color: #1d4ed8; }
+  .state-badge.muted { background: #e5e7eb; color: #475569; }
+  .card-body { display: grid; gap: 0.9rem; }
+  .progress-container { height: 9px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); }
+  .progress-bar.low { background: linear-gradient(90deg, #f59e0b, #d97706); }
+  .volume-row { display: flex; justify-content: space-between; gap: 0.8rem; font-size: 0.9rem; }
+  .systems-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+  .system-pill { border-radius: 12px; padding: 0.7rem; border: 1px solid #e2e8f0; background: #fff; display: grid; gap: 0.25rem; }
+  .system-pill.ok { background: #f8fafc; }
+  .system-pill.warning { background: #fffbeb; }
+  .system-pill.busy { background: #eff6ff; }
+  .session-summary { border: 1px solid #f1f5f9; border-radius: 14px; padding: 0.8rem; background: rgba(255,255,255,0.85); display: grid; gap: 0.45rem; }
+  .session-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; color: var(--text-secondary, #64748b); font-size: 0.84rem; }
+  .footer-meta { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+  .card-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+  .cta { border: 1px solid #cbd5e1; background: #fff; color: #0f172a; border-radius: 10px; padding: 0.6rem 0.8rem; font-weight: 600; }
+  .cta.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  .cta.danger { color: #b91c1c; border-color: #fecaca; }
+  .cta.success { color: #166534; border-color: #bbf7d0; }
+  @media (max-width: 900px) {
+    .systems-grid { grid-template-columns: 1fr; }
   }
 </style>
