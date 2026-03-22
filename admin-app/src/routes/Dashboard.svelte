@@ -1,4 +1,5 @@
 <script>
+  export let systemMode = false;
   import { tapStore } from '../stores/tapStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
@@ -174,7 +175,10 @@
 </script>
 
 <div class="page-header">
-  <h1>Дашборд</h1>
+  <div>
+    <h1>{systemMode ? 'System' : 'Today'}</h1>
+    <p class="page-subtitle">{systemMode ? 'Настройки смены, отчёты, API и инженерный контроль рабочего места.' : 'Ключевые показатели текущей смены, состояние системы и оперативный контроль на сегодня.'}</p>
+  </div>
   {#if $roleStore.permissions.emergency}
     <button
       class="emergency-button"
@@ -195,7 +199,7 @@
   {/if}
 </div>
 
-{#if SHOW_API_BASE_URL}
+{#if systemMode && SHOW_API_BASE_URL}
   <section class="ui-card config-diagnostic">
     <strong>Адрес API:</strong> {$serverConfigStore.baseUrl}
   </section>
@@ -278,7 +282,7 @@
   {/if}
 </section>
 
-{#if $roleStore.permissions.investorPanel}
+{#if systemMode && $roleStore.permissions.investorPanel}
   <InvestorValuePanel
     taps={$tapStore.taps}
     kegs={$kegStore.kegs}
@@ -373,6 +377,7 @@
   .emergency-button.active { background-color: #d9534f; }
   .emergency-button:disabled { opacity: 0.6; cursor: not-allowed; }
   .emergency-note { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
+  .page-subtitle { margin: 0.35rem 0 0; color: var(--text-secondary); max-width: 720px; }
   .config-diagnostic { margin-bottom: 1rem; padding: 0.75rem 1rem; }
 
   .shift-panel {

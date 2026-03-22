@@ -1,5 +1,6 @@
 <!-- src/routes/TapsKegs.svelte -->
 <script>
+  export let initialSection = 'taps';
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
 
@@ -15,6 +16,7 @@
   import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
+  import { roleStore } from '../stores/roleStore.js';
 
   let initialLoadAttempted = false;
 
@@ -119,11 +121,19 @@
   }
 </script>
 
+{#if (initialSection === 'inventory' && !$roleStore.permissions.inventory) || (initialSection === 'tapScreens' && !$roleStore.permissions.tapScreens) || (initialSection === 'taps' && !$roleStore.permissions.taps)}
+  <section class="ui-card restricted">
+    <h1>{initialSection === 'inventory' ? 'KegsBeverages' : initialSection === 'tapScreens' ? 'TapScreens' : 'Taps'}</h1>
+    <p>Текущая роль не предусматривает доступ к этому разделу operator workspace.</p>
+  </section>
+{:else}
 <div class="page-header">
-  <h1>Управление кранами и кегами</h1>
+  <h1>{initialSection === 'inventory' ? 'KegsBeverages' : initialSection === 'tapScreens' ? 'TapScreens' : 'Taps'}</h1>
+  <p>{initialSection === 'inventory' ? 'Поставка кег, справочник напитков и готовность запаса на смену.' : initialSection === 'tapScreens' ? 'Настройка контента и параметров экранов на кранах.' : 'Статус линий, назначение кег и контроль готовности к наливу.'}</p>
 </div>
 
 <div class="page-layout">
+  {#if initialSection !== 'inventory'}
   <section class="taps-section">
     <div class="section-header">
       <div>
@@ -140,7 +150,9 @@
       <TapGrid taps={$tapStore.taps} on:assign={handleOpenAssignModal} on:display-settings={handleOpenTapDisplaySettings} />
     {/if}
   </section>
+{/if}
 
+  {#if initialSection !== 'tapScreens'}
   <div class="inventory-grid">
     <section class="kegs-section">
       <div class="section-header">
@@ -185,6 +197,7 @@
       <BeverageManager />
     </section>
   </div>
+  {/if}
 </div>
 
 {#if isKegFormModalOpen}
@@ -212,6 +225,14 @@
   </Modal>
 {/if}
 
+{#if initialSection === 'tapScreens'}
+  <section class="ui-card tap-screen-focus">
+    <h2>Экранные настройки</h2>
+    <p>Откройте карточку крана и выберите "настройки Tap Display" для изменения медиа и конфигурации экрана.</p>
+    <TapGrid taps={$tapStore.taps} on:display-settings={handleOpenTapDisplaySettings} />
+  </section>
+{/if}
+
 {#if isTapDisplayModalOpen && tapForDisplaySettings}
   <Modal on:close={handleCloseTapDisplaySettings}>
     <TapDisplaySettingsModal
@@ -220,6 +241,8 @@
       on:saved={handleCloseTapDisplaySettings}
     />
   </Modal>
+{/if}
+
 {/if}
 
 <style>
@@ -299,4 +322,7 @@
       align-items: stretch;
     }
   }
+.page-header p { margin: 0.25rem 0 0; color: var(--text-secondary); }
+  .tap-screen-focus { padding: 1rem; margin-top: 1rem; }
+  .restricted { padding: 1rem; }
 </style>

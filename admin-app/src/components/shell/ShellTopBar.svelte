@@ -9,7 +9,7 @@
   import DemoModeToggle from '../system/DemoModeToggle.svelte';
   import ServerSettingsModal from '../system/ServerSettingsModal.svelte';
 
-  export let title = 'Рабочее место оператора';
+  export let title = 'Operator workspace';
 
   function changeRole(event) {
     roleStore.setRole(event.target.value);
@@ -36,7 +36,10 @@
 
 <header class="topbar ui-card">
   <div class="left">
-    <h1>{title}</h1>
+    <div>
+      <p class="eyebrow">Beer Tap System · operator workspace</p>
+      <h1>{title}</h1>
+    </div>
     <ShellGuestContextChip
       guestName={$guestContextStore.guestName}
       cardUid={$guestContextStore.cardUid}
@@ -46,19 +49,19 @@
 
   <div class="right">
     <ShellStatusPills />
-    <ServerSettingsModal buttonLabel="Сервер" variant="ghost" />
+    <ServerSettingsModal buttonLabel="Подключение" variant="ghost" />
     {#if $shiftStore.isOpen}
       <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
     {:else}
       <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
     {/if}
     <DemoModeToggle />
-    <select on:change={changeRole} value={$roleStore.key} aria-label="Роль пользователя">
+    <select on:change={changeRole} value={$roleStore.key} aria-label="Рабочая роль">
       {#each Object.entries(roleStore.roles) as [key, role]}
         <option value={key}>{role.label}</option>
       {/each}
     </select>
-    <button class="ghost" on:click={() => sessionStore.logout()}>Выход</button>
+    <button class="ghost" on:click={() => sessionStore.logout()}>Выйти из workspace</button>
   </div>
 </header>
 
@@ -73,8 +76,15 @@
     border-radius: 14px;
   }
   .left { display: flex; gap: 14px; align-items: center; }
+  .eyebrow {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    margin: 0 0 0.2rem;
+  }
   h1 { font-size: 1.1rem; margin: 0; min-width: 150px; }
   .right { display: flex; align-items: center; gap: 10px; }
-  select { min-width: 150px; }
+  select { min-width: 170px; }
   .ghost { background: #edf2fb; color: #23416b; }
 </style>

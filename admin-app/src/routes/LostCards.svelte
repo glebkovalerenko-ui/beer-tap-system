@@ -1,4 +1,5 @@
 <script>
+  export let embedded = false;
   import { onMount } from 'svelte';
   import { lostCardStore } from '../stores/lostCardStore.js';
   import { visitStore } from '../stores/visitStore.js';
@@ -115,14 +116,14 @@
   });
 </script>
 
-{#if !$roleStore.permissions.guests}
+{#if !$roleStore.permissions.cardsGuests}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
-    <p>Текущая роль не предусматривает работу с потерянными картами.</p>
+    <p>Текущая роль не предусматривает сценарии LostCards.</p>
   </section>
 {:else}
   <section class="ui-card panel">
-    <h1>Потерянные карты</h1>
+    <h1>{embedded ? 'LostCards workflow' : 'Incidents · LostCards'}</h1>
 
     <div class="filters">
       <input type="text" bind:value={uidFilter} placeholder="Поиск по UID" />
