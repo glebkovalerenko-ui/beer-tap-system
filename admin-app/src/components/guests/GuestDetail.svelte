@@ -1,147 +1,227 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { formatCardStatus, formatDateTimeRu, formatRubAmount } from '../../lib/formatters.js';
+
   export let guest;
   export let recentActivity = [];
+  export let activeVisit = null;
+  export let cardLookup = null;
+  export let recentEvents = [];
+  export let lastTapLabel = '—';
 
   const dispatch = createEventDispatcher();
+  let showSecondary = false;
 
-  $: transactions = Array.isArray(guest?.transactions) ? guest.transactions.slice(0, 8) : [];
-  $: activity = Array.isArray(recentActivity) ? recentActivity : [];
+  $: cards = Array.isArray(guest?.cards) ? guest.cards : [];
+  $: primaryCard = cardLookup?.card || cards[0] || null;
+  $: cardStatusLabel = cardLookup?.is_lost
+    ? 'Потеряна'
+    : primaryCard?.status
+      ? formatCardStatus(primaryCard.status)
+      : 'Нет карты';
+  $: cardStatusTone = cardLookup?.is_lost || primaryCard?.status === 'lost'
+    ? 'danger'
+    : primaryCard?.status === 'blocked'
+      ? 'warning'
+      : primaryCard?.status === 'active'
+        ? 'ok'
+        : 'muted';
+  $: transactions = Array.isArray(guest?.transactions) ? guest.transactions.slice(0, 4) : [];
+  $: activity = Array.isArray(recentActivity) ? recentActivity.slice(0, 4) : [];
+  $: operatorEvents = Array.isArray(recentEvents) ? recentEvents.slice(0, 5) : [];
 </script>
 
 <div class="detail-container">
   <div class="detail-header">
     <div>
       <h3>{`${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`}</h3>
-      <p>{guest.phone_number}</p>
+      <p>{guest.phone_number || 'Телефон не указан'}</p>
     </div>
     <div class="header-actions">
-      <button class="btn-edit" on:click={() => dispatch('edit')} title="Редактировать гостя">Редактировать</button>
+      <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
+        {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
+      </button>
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
     </div>
   </div>
 
-  <div class="summary ui-card">
+  <section class="hero ui-card">
     <div>
       <span class="label">Баланс</span>
-      <span class="balance">{formatRubAmount(guest.balance)}</span>
+      <strong class="balance">{formatRubAmount(guest.balance)}</strong>
     </div>
     <div>
-      <span class="label">Статус</span>
-      <span class="status" class:active={guest.is_active} class:inactive={!guest.is_active}>
-        {guest.is_active ? 'Активен' : 'Заблокирован'}
+      <span class="label">Статус карты</span>
+      <strong class={`card-status ${cardStatusTone}`}>{cardStatusLabel}</strong>
+      <div class="subtle">{primaryCard?.card_uid || cardLookup?.card_uid || 'Карта не привязана'}</div>
+    </div>
+    <div>
+      <span class="label">Активный визит</span>
+      <strong>{activeVisit?.visit_id || cardLookup?.active_visit?.visit_id || 'Нет активного визита'}</strong>
+      <div class="subtle">
+        {#if activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id}
+          Лок на кране #{activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id}
+        {:else}
+          {lastTapLabel !== '—' ? `Последний кран: ${lastTapLabel}` : 'Кран не выбран'}
+        {/if}
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>
+      <button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>
+      <button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Пометить lost</button>
+      <button on:click={() => dispatch('open-history')}>Открыть историю</button>
+      <button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit}>Открыть активную сессию</button>
+    </div>
+  </section>
+
+  <section class="info-block">
+    <div class="section-head">
+      <h4>Операторская сводка</h4>
+      <span class:active={guest.is_active} class:inactive={!guest.is_active} class="guest-state">
+        {guest.is_active ? 'Гость активен' : 'Гость заблокирован'}
       </span>
     </div>
-    <button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>
-  </div>
-
-  <div class="info-block">
-    <div class="cards-header">
-      <h4>Карты гостя</h4>
-      <button class="btn-action" on:click={() => dispatch('bind-card')}>Привязать карту</button>
+    <div class="summary-grid">
+      <div>
+        <span class="label">Имя</span>
+        <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
+      </div>
+      <div>
+        <span class="label">Последний кран</span>
+        <strong>{lastTapLabel}</strong>
+      </div>
+      <div>
+        <span class="label">Карт у гостя</span>
+        <strong>{cards.length}</strong>
+      </div>
+      <div>
+        <span class="label">Активный визит</span>
+        <strong>{activeVisit?.status || cardLookup?.active_visit ? 'Открыт' : 'Нет'}</strong>
+      </div>
     </div>
-    {#if guest.cards.length > 0}
-      <ul class="card-list">
-        {#each guest.cards as card (card.card_uid)}
-          <li class:active={card.status === 'active'} class:inactive={card.status !== 'active'}>
-            <span class="card-uid">{card.card_uid}</span>
-            <span class="card-status">{formatCardStatus(card.status)}</span>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="hint">Карты не привязаны. Привяжите карту, чтобы проводить операции.</p>
-    {/if}
-  </div>
+  </section>
 
-  <div class="info-block">
-    <h4>Последние операции</h4>
-
-    {#if transactions.length > 0}
-      <ul class="tx-list">
-        {#each transactions as tx (tx.transaction_id)}
+  <section class="info-block">
+    <h4>Последние события</h4>
+    {#if operatorEvents.length > 0}
+      <ul class="event-list">
+        {#each operatorEvents as item, index (`event-${index}`)}
           <li>
             <div>
-              <strong>{tx.type || 'Операция'}</strong>
-              <small>{formatDateTimeRu(tx.created_at)}</small>
+              <strong>{item.title}</strong>
+              <p>{item.description}</p>
             </div>
-            <span>{formatRubAmount(tx.amount || 0)}</span>
+            <small>{formatDateTimeRu(item.timestamp)}</small>
           </li>
         {/each}
       </ul>
     {:else if activity.length > 0}
-      <ul class="tx-list">
+      <ul class="event-list">
         {#each activity as item (item.pour_id)}
           <li>
             <div>
-              <strong>Списание за налив</strong>
-              <small>{formatDateTimeRu(item.poured_at)} · {item.beverage?.name || 'Напиток'}</small>
+              <strong>Налив</strong>
+              <p>{item.beverage?.name || 'Напиток'} · {item.tap?.display_name || `Кран #${item.tap_id || '—'}`}</p>
             </div>
-            <span>-{formatRubAmount(item.amount_charged || 0)}</span>
+            <small>{formatDateTimeRu(item.poured_at)}</small>
+          </li>
+        {/each}
+      </ul>
+    {:else if transactions.length > 0}
+      <ul class="event-list">
+        {#each transactions as tx (tx.transaction_id)}
+          <li>
+            <div>
+              <strong>{tx.type || 'Операция'}</strong>
+              <p>{formatRubAmount(tx.amount || 0)}</p>
+            </div>
+            <small>{formatDateTimeRu(tx.created_at)}</small>
           </li>
         {/each}
       </ul>
     {:else}
-      <p class="hint">История операций недоступна или пока пуста. Можно продолжить работу и обновить данные позже.</p>
+      <p class="hint">Пока нет событий для этого гостя.</p>
     {/if}
-  </div>
+  </section>
 
-  <div class="info-block system-info">
-    <h4>Системная информация</h4>
-    <p><span class="label">Создан:</span> {formatDateTimeRu(guest.created_at)}</p>
-    <p><span class="label">Обновлён:</span> {formatDateTimeRu(guest.updated_at)}</p>
-    <p><span class="label">ID гостя:</span> <span class="uuid">{guest.guest_id}</span></p>
-  </div>
+  {#if showSecondary}
+    <section class="info-block secondary-block">
+      <div class="section-head">
+        <h4>Мастер-данные и редактирование</h4>
+        <button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать гостя</button>
+      </div>
+
+      <div class="secondary-grid">
+        <div>
+          <span class="label">Создан</span>
+          <strong>{formatDateTimeRu(guest.created_at)}</strong>
+        </div>
+        <div>
+          <span class="label">Обновлён</span>
+          <strong>{formatDateTimeRu(guest.updated_at)}</strong>
+        </div>
+        <div>
+          <span class="label">ID гостя</span>
+          <strong class="mono">{guest.guest_id}</strong>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-head compact">
+          <h5>Карты гостя</h5>
+          <button class="ghost-btn" on:click={() => dispatch('bind-card')}>Привязать карту</button>
+        </div>
+        {#if cards.length > 0}
+          <ul class="card-list">
+            {#each cards as card (card.card_uid)}
+              <li>
+                <span class="mono">{card.card_uid}</span>
+                <span>{formatCardStatus(card.status)}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="hint">Карт пока нет.</p>
+        {/if}
+      </div>
+    </section>
+  {/if}
 </div>
 
 <style>
-  .detail-container { padding: 0.5rem; font-size: 0.95rem; display: grid; gap: 1rem; }
-  .detail-header { display: flex; justify-content: space-between; align-items: start; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
-  .detail-header h3 { margin: 0; }
-  .detail-header p { margin: 0.2rem 0 0; color: var(--text-secondary); }
-  h4 { margin: 0; }
-
-  .header-actions { display: flex; align-items: center; gap: 0.5rem; }
-  .btn-edit { background-color: #edf2fb; color: #23416b; }
-  .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #888; }
-
-  .summary {
+  .detail-container { padding: 0.5rem; display: grid; gap: 1rem; }
+  .detail-header, .section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+  .detail-header { border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem; }
+  .detail-header h3, .detail-header p, h4, h5 { margin: 0; }
+  .detail-header p, .subtle, .hint { color: var(--text-secondary); }
+  .header-actions, .hero-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .hero {
     display: grid;
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 1rem;
-    align-items: center;
     padding: 1rem;
   }
-  .label { font-weight: 600; color: #555; display: block; margin-bottom: 0.25rem; font-size: 0.85rem; }
-  .balance { font-size: 1.8rem; font-weight: bold; color: #155e4a; }
-  .status { font-weight: bold; }
-  .status.active { color: #2a9d8f; }
-  .status.inactive { color: #e76f51; }
-  .top-up-btn { min-height: 48px; }
-
-  .info-block { border: 1px solid #edf0f4; border-radius: 10px; padding: 0.9rem; }
-  .cards-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
-
-  .card-list, .tx-list { list-style-type: none; padding-left: 0; margin: 0; display: grid; gap: 0.45rem; }
-  .card-list li, .tx-list li {
-    background: #fafcff;
-    padding: 0.6rem 0.7rem;
-    border-radius: 7px;
-    border: 1px solid #edf0f4;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .hero-actions { grid-column: 1 / -1; }
+  .label { font-size: 0.78rem; color: #64748b; display: block; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .balance { font-size: 1.9rem; color: #155e4a; }
+  .card-status.ok { color: #15803d; }
+  .card-status.warning { color: #b45309; }
+  .card-status.danger { color: #b91c1c; }
+  .card-status.muted { color: #64748b; }
+  .info-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.95rem; display: grid; gap: 0.8rem; }
+  .summary-grid, .secondary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
+  .event-list, .card-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+  .event-list li, .card-list li {
+    display: flex; justify-content: space-between; gap: 1rem; align-items: start;
+    border: 1px solid #edf0f4; border-radius: 10px; padding: 0.7rem 0.8rem; background: #fafcff;
   }
-  .card-list li.active { border-left: 4px solid #2a9d8f; }
-  .card-list li.inactive { border-left: 4px solid #e76f51; }
-  .card-uid { font-family: monospace; font-weight: 700; }
-  .card-status { font-size: 0.85rem; color: #555; }
-
-  .tx-list li strong { display: block; }
-  .tx-list li small { color: var(--text-secondary); }
-
-  .hint { margin: 0; color: var(--text-secondary); }
-  .system-info { font-size: 0.85rem; color: #61718a; }
-  .uuid { font-family: monospace; }
+  .event-list p { margin: 0.2rem 0 0; color: var(--text-secondary); }
+  .guest-state.active { color: #15803d; }
+  .guest-state.inactive { color: #b91c1c; }
+  .mono { font-family: monospace; }
+  .ghost-btn, .close-btn { background: #edf2fb; color: #23416b; }
+  .close-btn { border-radius: 999px; width: 40px; min-width: 40px; padding: 0; font-size: 1.3rem; }
+  .secondary-block { background: #fbfdff; }
+  .compact { align-items: center; }
 </style>
