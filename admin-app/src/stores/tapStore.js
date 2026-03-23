@@ -214,6 +214,43 @@ function buildSubsystemStatus(rawValue, fallbackState, fallbackLabel) {
   };
 }
 
+function normalizeActiveSessionSummary(activeSession) {
+  if (!activeSession) return null;
+
+  const projectedRemainingAllowanceMl = activeSession.projected_remaining_allowance_ml
+    ?? activeSession.projectedRemainingAllowanceMl
+    ?? activeSession.remaining_allowance_ml
+    ?? activeSession.remainingAllowanceMl
+    ?? null;
+
+  const projectedRemainingAllowanceSource = activeSession.projected_remaining_allowance_source
+    ?? activeSession.projectedRemainingAllowanceSource
+    ?? null;
+
+  const allowanceCalculationNote = activeSession.allowance_calculation_note
+    ?? activeSession.allowanceCalculationNote
+    ?? null;
+
+  let allowanceState = 'telemetry_gap';
+  if (projectedRemainingAllowanceMl != null) allowanceState = 'available';
+  else if (['not_applicable', 'not_configured', 'no_limit'].includes(projectedRemainingAllowanceSource)) allowanceState = 'not_configured';
+
+  return {
+    guestName: activeSession.guest_full_name || [activeSession.guest?.first_name, activeSession.guest?.last_name].filter(Boolean).join(' ') || 'Гость без имени',
+    cardUid: activeSession.card_uid || null,
+    visitId: activeSession.visit_id || null,
+    openedAt: activeSession.opened_at || null,
+    lockedAt: activeSession.lock_set_at || null,
+    balance: activeSession.balance || activeSession.guest?.balance || null,
+    sessionAction: buildSessionAction(activeSession),
+    projectedRemainingAllowanceMl,
+    projectedRemainingAllowanceSource,
+    allowanceCalculationNote,
+    allowanceState,
+    pricePerMlCents: activeSession.price_per_ml_cents ?? activeSession.pricePerMlCents ?? null,
+  };
+}
+
 function buildSessionAction(activeSession) {
   const visitId = activeSession?.visit_id || null;
   return visitId
@@ -447,7 +484,6 @@ function buildTapView(rawTap, context = {}) {
   const syncState = rawTap.sync_state || (rawTap.status === 'processing_sync' ? 'syncing' : activeSession ? 'live' : 'idle');
   const currentPourVolumeMl = toNumber(rawTap.current_pour_volume_ml ?? recentEvents[0]?.volume_ml);
   const currentPourAmount = rawTap.current_pour_amount ?? recentEvents[0]?.amount_charged ?? null;
-  const sessionAction = buildSessionAction(activeSession);
 
   const tapView = {
     ...rawTap,
@@ -468,17 +504,7 @@ function buildTapView(rawTap, context = {}) {
       controllerStatus: buildSubsystemStatus(rawTap.controller_status, productState === 'needs_help' ? 'warning' : 'ok', rawTap.controller_status_label || 'Контроллер отвечает'),
       displayStatus: buildSubsystemStatus(rawTap.display_status, rawTap.display_enabled === false ? 'warning' : 'ok', rawTap.display_status_label || (rawTap.display_enabled === false ? 'Экран выключен' : 'Экран на связи')),
       readerStatus: buildSubsystemStatus(rawTap.reader_status, activeSession ? 'busy' : 'ok', rawTap.reader_status_label || (activeSession?.card_uid ? `Карта ${activeSession.card_uid}` : 'Ридер готов')),
-      activeSessionSummary: activeSession
-        ? {
-            guestName: activeSession.guest_full_name || [activeSession.guest?.first_name, activeSession.guest?.last_name].filter(Boolean).join(' ') || 'Гость без имени',
-            cardUid: activeSession.card_uid || null,
-            visitId: activeSession.visit_id || null,
-            openedAt: activeSession.opened_at || null,
-            lockedAt: activeSession.lock_set_at || null,
-            balance: activeSession.balance || activeSession.guest?.balance || null,
-            sessionAction,
-          }
-        : null,
+      activeSessionSummary: normalizeActiveSessionSummary(activeSession),
       heartbeat: {
         at: heartbeatAt,
         minutesAgo: heartbeatMinutes,
