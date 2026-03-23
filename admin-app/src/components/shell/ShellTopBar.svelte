@@ -7,18 +7,9 @@
   import { systemStore } from '../../stores/systemStore.js';
   import { uiStore } from '../../stores/uiStore.js';
   import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
+  import { formatHealthPill, healthStateLabel, healthTone } from '../../lib/healthStatus.js';
 
   let now = new Date();
-
-  const overallLabel = {
-    ok: 'В норме',
-    warning: 'Нужно внимание',
-    degraded: 'Есть деградация',
-    critical: 'Критично',
-    error: 'Ошибка',
-    offline: 'Офлайн',
-    unknown: 'Статус уточняется',
-  };
 
   function navigateTo(path) {
     window.location.hash = path;
@@ -62,9 +53,9 @@
     return () => clearInterval(clockTimer);
   });
 
-  $: primaryHealthPills = ($systemStore.health.primaryPills || []).slice(0, 3);
+  $: primaryHealthPills = $systemStore.health.primaryPills || [];
   $: overallState = $systemStore.health.overall || 'unknown';
-  $: overallStateLabel = overallLabel[overallState] || overallState;
+  $: overallStateLabel = healthStateLabel(overallState, 'overall');
 </script>
 
 <header class="topbar ui-card">
@@ -91,14 +82,14 @@
   <section class="topbar-block health-block" aria-label="Общий health">
     <div class="block-head">
       <p class="eyebrow">Общий health</p>
-      <strong class:ok={overallState === 'ok'} class:warn={['warning', 'degraded', 'unknown'].includes(overallState)} class:error={['critical', 'error', 'offline'].includes(overallState)}>
+      <strong class:ok={healthTone(overallState) === 'ok'} class:warn={healthTone(overallState) === 'warn'} class:error={healthTone(overallState) === 'error'}>
         {overallStateLabel}
       </strong>
     </div>
     <div class="health-pills">
       {#each primaryHealthPills as item (item.key)}
-        <span class="pill" class:ok={item.state === 'ok'} class:warn={['warning', 'degraded', 'unknown'].includes(item.state)} class:error={['critical', 'error', 'offline'].includes(item.state)}>
-          {item.label}: {item.state === 'ok' ? 'норма' : item.detail}
+        <span class="pill" class:ok={healthTone(item.state) === 'ok'} class:warn={healthTone(item.state) === 'warn'} class:error={healthTone(item.state) === 'error'} title={item.detail}>
+          {formatHealthPill(item)}
         </span>
       {/each}
     </div>
@@ -131,9 +122,10 @@
     margin: 12px;
     padding: 12px 14px;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(260px, 0.9fr) minmax(340px, 1.3fr) minmax(260px, 0.9fr);
     gap: 12px;
     border-radius: 14px;
+    align-items: start;
   }
   .topbar-block {
     display: grid;
@@ -171,8 +163,8 @@
     flex-wrap: wrap;
   }
   .health-pills {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 8px;
   }
   .pill {
@@ -182,6 +174,9 @@
     background: #eef2f8;
     color: #29405f;
     border: 1px solid #d7e2f1;
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.3;
   }
   .ok { color: #116d3a; }
   .warn { color: #8d5b00; }
@@ -208,9 +203,23 @@
     background: var(--bg-surface-muted);
     border: 1px solid var(--border-soft);
   }
-  @media (max-width: 1080px) {
+  @media (max-width: 1240px) {
+    .topbar {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .actions-block {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 820px) {
     .topbar {
       grid-template-columns: 1fr;
+    }
+
+    .health-pills {
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     }
   }
 </style>
