@@ -17,22 +17,62 @@
   let initialLoadAttempted = false;
 
   const severityWeight = { critical: 0, warning: 1, info: 2 };
+  const incidentPriorityWeight = { critical: 0, high: 1, medium: 2, low: 3 };
 
   function navigateTo(path) {
     window.location.hash = path;
   }
 
+  function focusTap(tapId) {
+    if (tapId) {
+      sessionStorage.setItem('incidents.focusTapId', String(tapId));
+    }
+    navigateTo('/taps');
+  }
+
+  function focusVisit(visitId) {
+    if (visitId) {
+      sessionStorage.setItem('visits.lookupVisitId', visitId);
+    }
+    navigateTo('/sessions');
+  }
+
+  function focusSystem(source) {
+    if (source) {
+      sessionStorage.setItem('system.focusSource', source);
+    }
+    navigateTo('/system');
+  }
+
   function openTap(item) {
-    navigateTo('#/taps');
+    focusTap(item.tap_id);
     uiStore.notifySuccess(`Переход к крану ${item.tap_name || item.title || item.tap_id || ''}`.trim());
   }
 
   function openSession(item) {
     const visitId = item.visit_id || item.active_session?.visit_id || item.operations?.activeSessionSummary?.visitId || null;
-    if (visitId) {
-      sessionStorage.setItem('visits.lookupVisitId', visitId);
+    focusVisit(visitId);
+  }
+
+  function openActionTarget(item) {
+    if (!item) return;
+
+    if (item.target === 'session') {
+      focusVisit(item.visitId);
+      return;
     }
-    navigateTo('#/sessions');
+
+    if (item.target === 'system') {
+      focusSystem(item.systemSource || item.title || item.label);
+      return;
+    }
+
+    if (item.target === 'tap') {
+      focusTap(item.tapId || item.tap_id);
+      return;
+    }
+
+    navigateTo(item.href || '/today');
   }
 
   function dismissEvent(item) {
@@ -51,6 +91,54 @@
       return `Закрыта ${formatDateTimeRu($shiftStore.shift.closed_at)}`;
     }
     return 'Смена закрыта';
+  }
+
+  function attentionCategory(item) {
+    const labels = {
+      no_keg: 'кега',
+      stale_heartbeat: 'связь с краном',
+      unsynced_flow: 'синхронизация налива',
+      reader_offline: 'считыватель',
+      display_offline: 'экран крана',
+      controller_offline: 'контроллер',
+      backend_offline: 'бэкенд',
+      sync_offline: 'синхронизация',
+      controllers_offline: 'контроллеры',
+      displays_offline: 'экраны',
+      readers_offline: 'считыватели',
+    };
+
+    return labels[item.kind] || String(item.kind || 'операции').replaceAll('_', ' ');
+  }
+
+  function actionTitleForAttention(item) {
+    const tapLabel = item.title || 'кран';
+
+    switch (item.kind) {
+      case 'unsynced_flow':
+        return `Проверить зависший налив на ${tapLabel}`;
+      case 'stale_heartbeat':
+        return `Проверить связь с ${tapLabel}`;
+      case 'reader_offline':
+        return `Проверить считыватель на ${tapLabel}`;
+      case 'display_offline':
+        return `Проверить экран на ${tapLabel}`;
+      case 'controller_offline':
+        return `Проверить контроллер на ${tapLabel}`;
+      case 'no_keg':
+        return `Назначить кегу для ${tapLabel}`;
+      default:
+        return `Проверить ${tapLabel}`;
+    }
+  }
+
+  function describeSyncProblems() {
+    return ($tapStore.summary?.unsyncedFlowCount || 0)
+      + ($tapStore.summary?.readerOfflineCount || 0)
+      + ($tapStore.summary?.displayOfflineCount || 0)
+      + ($tapStore.summary?.controllerOfflineCount || 0)
+      + ($systemStore.health.sections?.accumulatedIssues?.deviceCount || 0)
+      + (['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes($systemStore.health.sync?.state) ? 1 : 0);
   }
 
   onMount(() => {
@@ -74,6 +162,9 @@
   });
 
   $: activeIncidents = ($incidentStore.items || []).filter((item) => item.status !== 'closed');
+  $: criticalIncidents = activeIncidents
+    .filter((item) => ['critical', 'high'].includes(item.priority))
+    .sort((left, right) => (incidentPriorityWeight[left.priority] ?? 9) - (incidentPriorityWeight[right.priority] ?? 9));
   $: visibleFeedItems = ($pourStore.feedItems || []).filter((item) => !dismissedEventIds.has(item.item_id)).slice(0, 12);
   $: poursToday = ($pourStore.pours || []).filter((item) => {
     if (!item.poured_at) return false;
@@ -82,34 +173,92 @@
   });
   $: sessionsToday = new Set(poursToday.map((item) => item.visit_id).filter(Boolean)).size;
   $: volumeTodayMl = poursToday.reduce((sum, item) => sum + Number(item.volume_ml || 0), 0);
+  $: revenueToday = poursToday.reduce((sum, item) => sum + Number(item.amount_charged || 0), 0);
+  $: syncProblemCount = describeSyncProblems();
   $: heroStats = [
-    { label: 'Активные визиты', value: ($visitStore.activeVisits || []).length },
-    { label: 'Наливы сегодня', value: poursToday.length },
-    { label: 'Объём сегодня', value: formatVolumeRu(volumeTodayMl) },
-    { label: 'Открытые инциденты', value: activeIncidents.length },
+    { label: 'Краны льют сейчас', value: $tapStore.summary?.pouringCount || 0, tone: 'neutral' },
+    { label: 'Краны требуют помощи', value: ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'needs_help').length, tone: 'warning' },
+    { label: 'Открытые инциденты', value: activeIncidents.length, tone: activeIncidents.length ? 'warning' : 'neutral' },
+    { label: 'Sync / offline проблемы', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral' },
+    { label: 'Сессии с наливами', value: sessionsToday, tone: 'neutral' },
+    { label: 'Объём за день', value: formatVolumeRu(volumeTodayMl), tone: 'neutral' },
+    { label: 'Выручка за день', value: `${revenueToday.toFixed(2)} ₽`, tone: 'neutral' },
   ];
-  $: healthItems = [
-    { key: 'backend', label: 'Сервер', ...$systemStore.health.backend },
-    { key: 'controller', label: 'Контроллер', ...$systemStore.health.controller },
-    { key: 'display', label: 'Экраны кранов', ...$systemStore.health.displayAgent },
-  ];
+  $: healthItems = $systemStore.health.primaryPills || [];
+  $: systemAttentionItems = healthItems
+    .filter((item) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(item.state))
+    .map((item) => ({
+      key: `system-${item.key}`,
+      kind: `${item.key}_offline`,
+      severity: item.state === 'critical' || item.state === 'error' ? 'critical' : 'warning',
+      title: item.label,
+      description: item.detail,
+      href: '/system',
+      target: 'system',
+      systemSource: item.label,
+      actionLabel: 'Открыть систему',
+      category: 'система',
+    }));
   $: attentionItems = [
-    ...(($tapStore.summary?.attentionItems || []).map((item) => ({ ...item, category: item.kind.replaceAll('_', ' ') }))),
-    ...healthItems
-      .filter((item) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(item.state))
-      .map((item) => ({
-        key: `system-${item.key}`,
-        kind: `${item.key}_offline`,
-        severity: item.state === 'critical' || item.state === 'error' ? 'critical' : 'warning',
-        title: item.label,
-        description: item.detail,
-        href: item.key === 'backend' ? '#/system' : '#/taps',
-        actionLabel: item.key === 'backend' ? 'Открыть систему' : 'Открыть кран',
-        category: item.key,
-      })),
+    ...(($tapStore.summary?.attentionItems || []).map((item) => ({
+      ...item,
+      target: item.href === '#/sessions' ? 'session' : 'tap',
+      tapId: item.tapId || item.tap_id || Number.parseInt(String(item.key).split('-').at(-1), 10) || null,
+      visitId: item.visitId || item.visit_id || null,
+      category: attentionCategory(item),
+      actionTitle: actionTitleForAttention(item),
+      href: item.href?.replace('#', '') || '/taps',
+    }))),
+    ...systemAttentionItems,
   ]
     .filter((item) => !dismissedAttentionKeys.has(item.key))
     .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9));
+
+  $: operatorActionItems = [
+    ...criticalIncidents.slice(0, 3).map((incident) => ({
+      key: `incident-${incident.incident_id}`,
+      severity: incident.priority === 'critical' ? 'critical' : 'warning',
+      title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
+      description: incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент и назначьте ответственного.',
+      target: incident.tap ? 'tap' : 'system',
+      tapId: incident.tap || null,
+      systemSource: `Инцидент #${incident.incident_id}`,
+      href: incident.tap ? '/taps' : '/incidents',
+      actionLabel: incident.tap ? 'Открыть кран' : 'Открыть инциденты',
+    })),
+    ...attentionItems.slice(0, 4).map((item) => ({
+      key: `next-${item.key}`,
+      severity: item.severity,
+      title: item.actionTitle || `Проверить ${item.title}`,
+      description: item.description,
+      target: item.target,
+      tapId: item.tapId || null,
+      visitId: item.visitId || null,
+      systemSource: item.systemSource || item.title,
+      href: item.href,
+      actionLabel: item.actionLabel,
+    })),
+  ]
+    .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9))
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.key === item.key) === index)
+    .slice(0, 6);
+
+  $: priorityCta = criticalIncidents[0]
+    ? {
+        label: criticalIncidents[0].tap ? `Открыть ${criticalIncidents[0].tap}` : `Разобрать инцидент #${criticalIncidents[0].incident_id}`,
+        target: criticalIncidents[0].tap ? 'tap' : 'system',
+        tapId: criticalIncidents[0].tap || null,
+        systemSource: `Инцидент #${criticalIncidents[0].incident_id}`,
+      }
+    : attentionItems[0]
+      ? {
+          label: attentionItems[0].actionLabel || 'Открыть контекст',
+          target: attentionItems[0].target,
+          tapId: attentionItems[0].tapId || null,
+          visitId: attentionItems[0].visitId || null,
+          systemSource: attentionItems[0].systemSource || attentionItems[0].title,
+        }
+      : { label: 'Инциденты', href: '/incidents' };
 </script>
 
 <section class="today-page">
@@ -139,15 +288,15 @@
     <div class="hero-copy">
       <span class="eyebrow">Сегодня</span>
       <h1>Главное за текущую смену</h1>
-      <p>Смотрите ключевые показатели, живые события и задачи, которые требуют действий прямо сейчас.</p>
+      <p>Сначала — живое операционное состояние, затем дневные итоги по продажам и наливам.</p>
     </div>
     <div class="hero-actions">
-      <a class="cta-button" href="#/incidents">Инциденты</a>
+      <button class="cta-button" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
       <a class="cta-button secondary" href="#/taps">Все краны</a>
     </div>
     <div class="stats">
       {#each heroStats as item}
-        <article>
+        <article data-tone={item.tone}>
           <span>{item.label}</span>
           <strong>{item.value}</strong>
         </article>
@@ -189,6 +338,25 @@
         <span class="count">{attentionItems.length}</span>
       </div>
 
+      <section class="next-actions">
+        <div class="next-actions-head">
+          <h3>Что сделать сейчас</h3>
+          <span>{operatorActionItems.length}</span>
+        </div>
+        {#if operatorActionItems.length === 0}
+          <p>Критичных действий сейчас нет — можно работать по обычному регламенту смены.</p>
+        {:else}
+          <div class="next-actions-list">
+            {#each operatorActionItems as item}
+              <button class="next-action" data-severity={item.severity} on:click={() => openActionTarget(item)}>
+                <span>{item.title}</span>
+                <small>{item.description}</small>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
       {#if attentionItems.length === 0}
         <p>Сейчас нет задач, требующих немедленного внимания.</p>
       {:else}
@@ -197,11 +365,11 @@
             <article class="attention-item" data-severity={item.severity}>
               <div>
                 <span class="attention-category">{item.category}</span>
-                <strong>{item.title}</strong>
+                <strong>{item.actionTitle || item.title}</strong>
                 <p>{item.description}</p>
               </div>
               <div class="attention-actions">
-                <button on:click={() => item.href === '#/sessions' ? openSession(item) : navigateTo(item.href)}>{item.actionLabel}</button>
+                <button on:click={() => openActionTarget(item)}>{item.actionLabel}</button>
                 <button class="subtle" on:click={() => dismissAttention(item)}>Скрыть</button>
               </div>
             </article>
@@ -213,5 +381,5 @@
 </section>
 
 <style>
-  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.top-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.top-strip article{display:flex;flex-direction:column;gap:.35rem}.health-pills{display:flex;flex-wrap:wrap;gap:.5rem}.health-pill{padding:.3rem .55rem;border-radius:999px;background:#eef2ff;font-size:.8rem}.health-pill.ok{background:#e8f7ee;color:#166534}.health-pill.warning,.health-pill.unknown,.health-pill.degraded{background:#fff7e6;color:#9a6700}.health-pill.critical,.health-pill.error,.health-pill.offline{background:#fdecec;color:#b42318}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;background:var(--accent-color,#1d4ed8);color:#fff;text-decoration:none;font-weight:600}.cta-button.secondary{background:#eef2ff;color:#1e3a8a}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc)}.stats article span{display:block;color:var(--text-secondary)}.content-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:1rem}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.attention-panel .count{padding:.35rem .65rem;border-radius:999px;background:#eef2ff;font-weight:700}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.attention-item[data-severity='warning']{border-color:#facc15;background:#fffdf2}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:#b42318}@media (max-width: 960px){.top-strip,.hero,.content-grid,.stats{grid-template-columns:1fr}.hero-actions{justify-content:flex-start}}
+  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.top-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.top-strip article{display:flex;flex-direction:column;gap:.35rem}.health-pills{display:flex;flex-wrap:wrap;gap:.5rem}.health-pill{padding:.3rem .55rem;border-radius:999px;background:#eef2ff;font-size:.8rem}.health-pill.ok{background:#e8f7ee;color:#166534}.health-pill.warning,.health-pill.unknown,.health-pill.degraded{background:#fff7e6;color:#9a6700}.health-pill.critical,.health-pill.error,.health-pill.offline{background:#fdecec;color:#b42318}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;background:var(--accent-color,#1d4ed8);color:#fff;text-decoration:none;font-weight:600;border:0}.cta-button.secondary{background:#eef2ff;color:#1e3a8a}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc)}.stats article[data-tone='warning']{background:#fff7e6}.stats article span{display:block;color:var(--text-secondary)}.content-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:1rem}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:#eef2ff;font-weight:700}.next-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head h3{margin:0}.next-actions-list{display:grid;gap:.5rem}.next-action{display:grid;gap:.2rem;text-align:left;padding:.75rem .85rem;border-radius:.8rem;border:1px solid #dbe4ff;background:#fff;cursor:pointer}.next-action[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.next-action[data-severity='warning']{border-color:#facc15;background:#fffdf2}.next-action span{font-weight:700}.next-action small{color:var(--text-secondary)}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.attention-item[data-severity='warning']{border-color:#facc15;background:#fffdf2}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:#b42318}@media (max-width: 960px){.top-strip,.hero,.content-grid{grid-template-columns:1fr}.hero-actions{justify-content:flex-start}}
 </style>
