@@ -20,6 +20,8 @@
   import Incidents from './routes/Incidents.svelte';
   import TapScreens from './routes/TapScreens.svelte';
   import System from './routes/System.svelte';
+  import Settings from './routes/Settings.svelte';
+  import Help from './routes/Help.svelte';
   import Login from './routes/Login.svelte';
 
   import ToastContainer from './components/feedback/ToastContainer.svelte';
@@ -40,6 +42,8 @@
     '/incidents': Incidents,
     '/tap-screens': TapScreens,
     '/system': System,
+    '/settings': Settings,
+    '/help': Help,
     '*': Today,
   };
 
@@ -55,8 +59,8 @@
   ];
 
   const supportNav = [
-    { href: '#/system', label: 'Настройки', visible: (permissions) => permissions.system_view },
-    { href: '#/system', label: 'Справка / регламенты', visible: (permissions) => permissions.system_view },
+    { href: '#/settings', label: 'Настройки', visible: (permissions) => permissions.settings_manage },
+    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_view },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
