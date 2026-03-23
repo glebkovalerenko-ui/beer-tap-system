@@ -39,6 +39,7 @@
   $: canTopUp = Boolean(cardPermissions.cards_top_up);
   $: canToggleBlock = Boolean(cardPermissions.cards_block_manage);
   $: canReissue = Boolean(cardPermissions.cards_reissue_manage);
+  $: hasManagementAccess = canToggleBlock || canReissue;
 
   const fullName = (guest) => [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(' ');
 
@@ -114,33 +115,39 @@
       {
         id: 'check-card',
         title: 'Проверить карту',
-        description: 'Посмотреть статус карты, гостя и последние события без углубления в профиль.',
+        description: 'Быстрый операторский summary: статус, баланс, визит, кран и события.',
         disabled: !lookup,
       },
       {
         id: 'top-up',
         title: 'Пополнить баланс',
-        description: canTopUp ? 'Сразу открыть пополнение после идентификации гостя.' : 'Недоступно для роли оператора без права на пополнение.',
+        description: canTopUp ? 'Операторское действие после успешной идентификации гостя.' : 'Недоступно без права cards_top_up.',
         disabled: !guest || !canTopUp,
       },
       {
-        id: 'open-visit',
-        title: 'Открыть активную сессию',
-        description: canOpenVisit ? 'Перейти в текущий визит, если карта уже участвует в сессии.' : 'Недоступно без права на переход в активную сессию.',
-        disabled: !canOpenVisit || !(visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id),
-      },
-      {
         id: 'toggle-block',
-        title: guest?.is_active ? 'Блокировать гостя' : 'Разблокировать гостя',
-        description: canToggleBlock ? 'Ограничить операции по гостю, не уходя в мастер-данные.' : 'Недоступно без отдельного права на блокировку.',
+        title: guest?.is_active ? 'Заблокировать' : 'Разблокировать',
+        description: canToggleBlock ? 'Management-действие вынесено из lookup-summary, но запускается отсюда.' : 'Недоступно без права cards_block_manage.',
         disabled: !guest || !canToggleBlock,
       },
       {
         id: 'reissue',
         title: lookup?.is_lost ? 'Перевыпустить lost-карту' : 'Lost / перевыпуск',
-        description: canReissue ? 'Отдельный сценарий для lost → перевыпуск → перенос контекста сессии.' : 'Недоступно без права на lost / перевыпуск.',
+        description: canReissue ? 'Management-сценарий перевыпуска после проверки статуса карты.' : 'Недоступно без права cards_reissue_manage.',
         disabled: !canReissue || !(guest && (lookup?.is_lost || visit?.visit_id || lookup?.active_visit?.visit_id)),
         tone: lookup?.is_lost ? 'danger' : 'muted',
+      },
+      {
+        id: 'open-visit',
+        title: 'Открыть активную сессию',
+        description: canOpenVisit ? 'Перейти в действующий визит прямо из lookup-flow.' : 'Недоступно без права перехода в активную сессию.',
+        disabled: !canOpenVisit || !(visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id),
+      },
+      {
+        id: 'open-history',
+        title: 'Открыть историю',
+        description: canViewHistory ? 'Посмотреть историю по текущей карте или гостю.' : 'Недоступно без права cards_history_view.',
+        disabled: !lookup || !canViewHistory,
       },
     ];
   }
@@ -316,6 +323,10 @@
       handleOpenVisit();
       return;
     }
+    if (actionId === 'open-history') {
+      handleOpenHistory();
+      return;
+    }
     if (actionId === 'toggle-block') {
       await handleToggleBlock();
       return;
@@ -365,7 +376,7 @@
   }
 
   async function handleSaveGuest(event) {
-    if (!canReissue && !canToggleBlock) {
+    if (!hasManagementAccess) {
       uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.');
       return;
     }
@@ -394,167 +405,121 @@
     <header class="page-header ui-card">
       <div>
         <h1>Карты и гости</h1>
-        <p>Lookup panel — основной вход для оператора: считайте карту, выберите сценарий и только потом раскрывайте компактный контекст гостя.</p>
+        <p>Default-flow теперь строго operator-first: сначала lookup, затем короткий статусный summary и быстрые действия. Management path открывается только глубже.</p>
       </div>
       <div class="header-actions">
         <button on:click={() => Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()])} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
       </div>
     </header>
 
-    <div class="quick-grid">
-      <CardLookupPanel
-        title="Lookup и решение оператора"
-        description="Сначала идентифицируйте карту, затем выберите доступное для роли действие: проверка, сессия, история или разрешённые management-операции."
-        result={selectedLookup}
-        searchQuery={phoneQuery}
-        searchResults={quickLookupResults}
-        searchPlaceholder="Номер телефона, UID или идентификатор"
-        searchResultLabel="Поиск по номеру / идентификатору"
-        error={lookupError}
-        loading={$lostCardStore.loading || $visitStore.loading}
-        allowRestoreLost={canReissue}
-        allowOpenVisit={canOpenVisit}
-        allowOpenGuest={Boolean(selectedGuest)}
-        allowOpenNewVisit={canOpenVisit}
-        openVisitLabel="Открыть активную сессию"
-        openGuestLabel="Показать контекст гостя"
-        openNewVisitLabel="Открыть новый визит"
-        actions={quickActions}
-        selectedActionId={pendingScenario}
-        on:lookup={handleLookup}
-        on:restore-lost={handleRestoreLost}
-        on:open-visit={handleOpenVisit}
-        on:open-guest={(event) => selectGuest(event.detail.guestId)}
-        on:open-new-visit={handleOpenNewVisit}
-        on:scenario-action={handleScenarioAction}
-        on:search-change={(event) => { phoneQuery = event.detail.value; }}
-      />
-    </div>
+    <CardLookupPanel
+      title="Lookup и решение оператора"
+      description="Приложите карту, введите UID или найдите по номеру — и сразу получите статус карты, баланс, визит, последний кран, события и доступные быстрые действия."
+      result={selectedLookup}
+      searchQuery={phoneQuery}
+      searchResults={quickLookupResults}
+      searchPlaceholder="Номер телефона, UID или идентификатор"
+      searchResultLabel="Поиск по номеру / идентификатору"
+      error={lookupError}
+      loading={$lostCardStore.loading || $visitStore.loading}
+      allowRestoreLost={canReissue}
+      allowOpenVisit={canOpenVisit}
+      allowOpenGuest={Boolean(selectedGuest)}
+      allowOpenNewVisit={canOpenVisit}
+      openVisitLabel="Открыть активную сессию"
+      openGuestLabel="Показать операторский контекст"
+      openNewVisitLabel="Открыть новый визит"
+      actions={quickActions}
+      selectedActionId={pendingScenario}
+      on:lookup={handleLookup}
+      on:restore-lost={handleRestoreLost}
+      on:open-visit={handleOpenVisit}
+      on:open-guest={(event) => selectGuest(event.detail.guestId)}
+      on:open-new-visit={handleOpenNewVisit}
+      on:scenario-action={handleScenarioAction}
+      on:search-change={(event) => { phoneQuery = event.detail.value; }}
+    />
 
-    <div class="operator-layout">
-      <section class="ui-card detail-panel">
-        {#if selectedGuest}
-          <GuestDetail
-            guest={selectedGuest}
-            activeVisit={selectedVisit}
-            cardLookup={selectedLookup}
-            recentActivity={recentGuestPours}
-            recentEvents={recentEvents}
-            lastTapLabel={lastTapLabel}
-            variant="operator"
-            on:close={() => { selectedGuestId = null; selectedLookup = null; phoneQuery = ''; pendingScenario = ''; }}
-            canTopUp={canTopUp}
-            canToggleBlock={canToggleBlock}
-            canMarkLost={canReissue}
-            canOpenHistory={canViewHistory}
-            canOpenVisit={canOpenVisit}
-            canManageProfile={canReissue || canToggleBlock}
-            on:top-up={handleOpenTopUpModal}
-            on:toggle-block={handleToggleBlock}
-            on:mark-lost={handleMarkLost}
-            on:open-history={handleOpenHistory}
-            on:open-visit={handleOpenVisit}
-            on:open-management={() => { if (!(canReissue || canToggleBlock)) { uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.'); return; } formError = ''; isManagementModalOpen = true; }}
-          />
-        {:else}
-          <div class="empty-state">
-            <h3>Lookup — первый шаг</h3>
-            <p>Сначала считайте карту. После успешной идентификации здесь появится компактный операторский контекст: имя, статус карты, баланс, визит, последний кран и события.</p>
-          </div>
+    <section class="ui-card operator-panel">
+      <div class="section-top">
+        <div>
+          <h2>Operator layer</h2>
+          <p>Lookup-result остаётся главным экраном. Здесь показывается только короткий рабочий контекст без master-data и списка всех карт.</p>
+        </div>
+        {#if pendingScenario}
+          <span class="scenario-badge">{pendingScenario}</span>
         {/if}
+      </div>
 
-        {#if pageError || $guestStore.error || $visitStore.error}
-          <p class="error">{pageError || $guestStore.error || $visitStore.error}</p>
-        {/if}
-      </section>
+      {#if selectedGuest}
+        <GuestDetail
+          guest={selectedGuest}
+          activeVisit={selectedVisit}
+          cardLookup={selectedLookup}
+          recentActivity={recentGuestPours}
+          recentEvents={recentEvents}
+          lastTapLabel={lastTapLabel}
+          variant="operator"
+          on:close={() => { selectedGuestId = null; selectedLookup = null; phoneQuery = ''; pendingScenario = ''; }}
+          canTopUp={canTopUp}
+          canToggleBlock={canToggleBlock}
+          canMarkLost={canReissue}
+          canOpenHistory={canViewHistory}
+          canOpenVisit={canOpenVisit}
+          canManageProfile={hasManagementAccess}
+          on:top-up={handleOpenTopUpModal}
+          on:toggle-block={handleToggleBlock}
+          on:mark-lost={handleMarkLost}
+          on:open-history={handleOpenHistory}
+          on:open-visit={handleOpenVisit}
+          on:open-management={() => { if (!hasManagementAccess) { uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.'); return; } formError = ''; isManagementModalOpen = true; }}
+        />
+      {:else}
+        <div class="empty-state">
+          <h3>Lookup — первый и обязательный шаг</h3>
+          <p>После идентификации здесь появится краткий операторский summary: статус карты, баланс, активный визит, последний кран, события и быстрые действия.</p>
+        </div>
+      {/if}
 
-      <section class="ui-card scenario-panel">
+      {#if pageError || $guestStore.error || $visitStore.error}
+        <p class="error">{pageError || $guestStore.error || $visitStore.error}</p>
+      {/if}
+    </section>
+
+    {#if hasLookupTarget && (pendingScenario === 'reissue' || selectedLookup?.is_lost)}
+      <section class="ui-card reissue-panel">
         <div class="section-top">
           <div>
-            <h2>Текущий сценарий</h2>
-            <p>Основное решение принимается сразу после lookup. Детальный профиль гостя остаётся вторичным контекстом справа.</p>
+            <h2>Management layer: Lost / перевыпуск</h2>
+            <p>Этот путь открывается только после lookup и не конкурирует с операторским summary.</p>
           </div>
-          {#if pendingScenario}
-            <span class="scenario-badge">{pendingScenario}</span>
-          {/if}
         </div>
-
-        {#if !hasLookupTarget}
-          <div class="empty-state compact">
-            <h3>Нет идентификации</h3>
-            <p>Сначала выполните lookup по NFC или UID, чтобы активировать сценарии оператора.</p>
-          </div>
-        {:else}
-          <div class="scenario-stack">
-            <section class:active={pendingScenario === 'check-card'} class="scenario-card">
-              <h3>Проверить карту</h3>
-              <p>Только оперативный summary без перехода в guest master-data.</p>
-              <dl>
-                <div><dt>Имя</dt><dd>{lookupGuestName}</dd></div>
-                <div><dt>Статус карты</dt><dd>{selectedLookup?.is_lost ? 'Lost' : (selectedLookup?.card?.status || selectedGuest?.cards?.[0]?.status || 'Неизвестно')}</dd></div>
-                <div><dt>Баланс</dt><dd>{selectedGuest ? formatRubAmount(selectedGuest.balance) : '—'}</dd></div>
-                <div><dt>Активный визит</dt><dd>{selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || 'Нет'}</dd></div>
-                <div><dt>Последний кран</dt><dd>{lastTapLabel}</dd></div>
-              </dl>
-            </section>
-
-            {#if canTopUp}<section class:active={pendingScenario === 'top-up'} class="scenario-card">
-              <h3>Пополнить баланс</h3>
-              <p>Primary CTA уже доступен в lookup. Здесь — только подтверждение текущего контекста.</p>
-              <div class="scenario-note">Гость: <strong>{lookupGuestName}</strong>{selectedGuest ? ` · баланс ${formatRubAmount(selectedGuest.balance)}` : ''}</div>
-            </section>{/if}
-
-            {#if canOpenVisit}<section class:active={pendingScenario === 'open-visit'} class="scenario-card">
-              <h3>Открыть активную сессию</h3>
-              <p>Используйте, когда lookup показал активный визит или lost-карту в рамках действующей сессии.</p>
-              <div class="scenario-note">Визит: <strong>{selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id || '—'}</strong></div>
-            </section>{/if}
-
-            {#if canToggleBlock}<section class:active={pendingScenario === 'toggle-block'} class="scenario-card">
-              <h3>{selectedGuest?.is_active ? 'Блокировать гостя' : 'Разблокировать гостя'}</h3>
-              <p>Используйте, если нужно немедленно остановить работу по гостю без открытия мастер-данных.</p>
-              <div class="scenario-note">Текущий статус гостя: <strong>{selectedGuest?.is_active ? 'активен' : 'заблокирован'}</strong></div>
-            </section>{/if}
-
-            {#if canReissue}<section class:active={pendingScenario === 'reissue'} class="scenario-card reissue-card">
-              <h3>Lost → перевыпуск → перенос контекста</h3>
-              <p>Отдельный операторский flow: потерянную карту можно восстановить, затем привязать новую и перенести на неё активную сессию.</p>
-              {#if canReissue && selectedLookup?.is_lost}
-                <div class="scenario-warning">
-                  <strong>Текущая карта в статусе lost.</strong>
-                  <span>Отмечена {formatDateTimeRu(selectedLookup.lost_card?.reported_at)}.</span>
-                </div>
-              {/if}
-              <div class="reissue-input-row">
-                <input
-                  type="text"
-                  bind:value={reissueUidInput}
-                  placeholder="Считайте или введите UID новой карты"
-                  on:keydown={(event) => event.key === 'Enter' && submitReissue()}
-                />
-                <button on:click={submitReissue} disabled={isReissueBusy || !reissueUidInput.trim() || !selectedGuest}>Завершить перевыпуск</button>
-              </div>
-              <ol class="reissue-steps">
-                <li>Проверить, что перед вами нужный гость: <strong>{lookupGuestName}</strong>.</li>
-                <li>При lost-статусе система снимет отметку и привяжет новую карту к гостю.</li>
-                <li>Если у гостя есть активный визит, контекст сессии будет перенесён на новую карту автоматически.</li>
-              </ol>
-              {#if reissueStatus}
-                <p class="reissue-status">{reissueStatus}</p>
-              {/if}
-              {#if reissueError}
-                <p class="error">{reissueError}</p>
-              {/if}
-            </section>{/if}
+        {#if selectedLookup?.is_lost}
+          <div class="scenario-warning">
+            <strong>Текущая карта в статусе lost.</strong>
+            <span>Отмечена {formatDateTimeRu(selectedLookup.lost_card?.reported_at)}.</span>
           </div>
         {/if}
-      </section>
-    </div>
-
-    {#if canReissue && selectedLookup?.is_lost}
-      <section class="ui-card incident-strip">
-        <strong>Карта в статусе lost.</strong>
-        <span>Оператор может снять отметку, запустить перевыпуск и перенести активную сессию без перехода в глубокий guest profile.</span>
+        <div class="reissue-input-row">
+          <input
+            type="text"
+            bind:value={reissueUidInput}
+            placeholder="Считайте или введите UID новой карты"
+            on:keydown={(event) => event.key === 'Enter' && submitReissue()}
+          />
+          <button on:click={submitReissue} disabled={isReissueBusy || !reissueUidInput.trim() || !selectedGuest}>Завершить перевыпуск</button>
+        </div>
+        <ol class="reissue-steps">
+          <li>Подтвердите гостя: <strong>{lookupGuestName}</strong>.</li>
+          <li>При lost-статусе система снимет отметку и привяжет новую карту.</li>
+          <li>Если визит активен, контекст сессии будет автоматически перенесён на новую карту.</li>
+        </ol>
+        {#if reissueStatus}
+          <p class="reissue-status">{reissueStatus}</p>
+        {/if}
+        {#if reissueError}
+          <p class="error">{reissueError}</p>
+        {/if}
       </section>
     {/if}
   </section>
@@ -574,10 +539,33 @@
       <section class="management-modal">
         <div class="section-top">
           <div>
-            <h2>Управление профилем гостя</h2>
-            <p>Глубокий management path: мастер-данные и редактирование вынесены из основного lookup-flow.</p>
+            <h2>Management path</h2>
+            <p>Редактирование профиля, master-data и вторичные поля вынесены из operator layer в отдельный глубокий режим.</p>
           </div>
         </div>
+        <GuestDetail
+          guest={selectedGuest}
+          activeVisit={selectedVisit}
+          cardLookup={selectedLookup}
+          recentActivity={recentGuestPours}
+          recentEvents={recentEvents}
+          lastTapLabel={lastTapLabel}
+          variant="full"
+          canTopUp={canTopUp}
+          canToggleBlock={canToggleBlock}
+          canMarkLost={canReissue}
+          canOpenHistory={canViewHistory}
+          canOpenVisit={canOpenVisit}
+          canManageProfile={hasManagementAccess}
+          on:top-up={handleOpenTopUpModal}
+          on:toggle-block={handleToggleBlock}
+          on:mark-lost={handleMarkLost}
+          on:open-history={handleOpenHistory}
+          on:open-visit={handleOpenVisit}
+          on:edit={() => { formError = ''; }}
+          on:bind-card={() => { pendingScenario = 'reissue'; isManagementModalOpen = false; }}
+          on:close={() => { isManagementModalOpen = false; }}
+        />
         <GuestForm guest={selectedGuest} on:save={handleSaveGuest} on:cancel={() => { isManagementModalOpen = false; }} isSaving={$guestStore.loading} />
       </section>
       {#if formError}<p class="error">{formError}</p>{/if}
@@ -590,29 +578,15 @@
   .page-header { display: flex; justify-content: space-between; gap: 1rem; align-items: end; }
   .page-header h1, .page-header p { margin: 0; }
   .page-header p { color: var(--text-secondary); }
-  .quick-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
-  .operator-layout { display: grid; gap: 1rem; grid-template-columns: minmax(380px, 1fr) minmax(320px, 0.9fr); }
-  .detail-panel, .scenario-panel, .management-modal { display: grid; gap: 0.8rem; }
+  .operator-panel, .management-modal, .reissue-panel { display: grid; gap: 0.85rem; }
   .section-top { display: flex; justify-content: space-between; gap: 0.75rem; align-items: start; }
   .section-top h2, .section-top p { margin: 0; }
-  .empty-state { min-height: 280px; display: grid; align-content: center; gap: 0.5rem; }
-  .empty-state.compact { min-height: 180px; }
+  .empty-state { min-height: 220px; display: grid; align-content: center; gap: 0.5rem; }
   .empty-state h3, .empty-state p { margin: 0; }
   .scenario-badge {
     border-radius: 999px; padding: 0.35rem 0.7rem; background: #eef2ff; color: #1d4ed8; font-weight: 700;
     text-transform: capitalize;
   }
-  .scenario-stack { display: grid; gap: 0.75rem; }
-  .scenario-card {
-    display: grid; gap: 0.65rem; padding: 0.9rem; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff;
-  }
-  .scenario-card.active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12); }
-  .scenario-card h3, .scenario-card p, .scenario-card dl { margin: 0; }
-  .scenario-card dl { display: grid; gap: 0.45rem; }
-  .scenario-card dl div { display: flex; justify-content: space-between; gap: 0.75rem; }
-  .scenario-card dt { color: var(--text-secondary); }
-  .scenario-note { color: #0f172a; background: #f8fafc; border-radius: 10px; padding: 0.7rem 0.8rem; }
-  .reissue-card { background: #fffaf5; border-color: #fdba74; }
   .scenario-warning {
     display: flex; justify-content: space-between; gap: 0.75rem; align-items: center;
     background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 0.75rem 0.85rem;
@@ -621,11 +595,7 @@
   .reissue-input-row input { flex: 1 1 260px; }
   .reissue-steps { margin: 0; padding-left: 1.15rem; display: grid; gap: 0.35rem; }
   .reissue-status { margin: 0; color: #166534; font-weight: 600; }
-  .incident-strip { display: flex; gap: 0.75rem; align-items: center; background: #fff7ed; border-color: #fed7aa; }
   .error { color: #c61f35; margin: 0; }
-  @media (max-width: 1180px) {
-    .quick-grid, .operator-layout { grid-template-columns: 1fr; }
-  }
   @media (max-width: 1024px) {
     .page-header, .section-top, .scenario-warning { flex-direction: column; align-items: start; }
   }

@@ -54,6 +54,16 @@
 
   $: hasVisitTarget = Boolean(result?.active_visit?.visit_id || result?.lost_card?.visit_id);
   $: primaryAction = actions.find((item) => item.id === selectedActionId && !item.disabled) || actions.find((item) => !item.disabled) || null;
+  $: statusText = result?.is_lost
+    ? 'Карта отмечена как потерянная'
+    : result?.active_visit
+      ? 'Карта участвует в активном визите'
+      : result?.guest
+        ? 'Карта привязана к гостю'
+        : result?.card
+          ? 'Карта зарегистрирована, но не привязана'
+          : 'Карта не зарегистрирована в системе';
+  $: statusClass = result?.is_lost ? statusTone('danger') : result?.active_visit ? statusTone('warning') : result?.guest ? statusTone('info') : statusTone();
 </script>
 
 <section class="lookup-shell ui-card">
@@ -110,8 +120,23 @@
 
   {#if result}
     <div class="lookup-result">
-      <div class="lookup-summary-wrap">
-        <div class="lookup-summary">
+      <div class="operator-first-summary">
+        <div class="summary-head">
+          <div>
+            <span class="eyebrow">Статус карты</span>
+            <p class={`lookup-status ${statusClass}`}>{statusText}</p>
+          </div>
+          {#if primaryAction}
+            <div class="primary-cta-box compact">
+              <span class="eyebrow">Быстрое действие</span>
+              <button class:danger-btn={primaryAction.tone === 'danger'} class="primary-cta" on:click={() => dispatch('scenario-action', { actionId: primaryAction.id })} disabled={primaryAction.disabled || loading}>
+                {primaryAction.title}
+              </button>
+            </div>
+          {/if}
+        </div>
+
+        <div class="summary-grid">
           <div>
             <span class="eyebrow">UID карты</span>
             <strong>{result.card_uid || result.card?.uid || '—'}</strong>
@@ -124,39 +149,23 @@
             <span class="eyebrow">Телефон</span>
             <strong>{result.guest?.phone_number || result.active_visit?.phone_number || '—'}</strong>
           </div>
+          <div>
+            <span class="eyebrow">Активный визит</span>
+            <strong>{result.active_visit?.visit_id || result.lost_card?.visit_id || 'Нет'}</strong>
+          </div>
         </div>
 
-        {#if primaryAction}
-          <div class="primary-cta-box">
-            <span class="eyebrow">Основное действие</span>
-            <button class:danger-btn={primaryAction.tone === 'danger'} class="primary-cta" on:click={() => dispatch('scenario-action', { actionId: primaryAction.id })} disabled={primaryAction.disabled || loading}>
-              {primaryAction.title}
-            </button>
-            <small>{primaryAction.description}</small>
+        {#if result.is_lost}
+          <div class="lookup-meta danger">
+            <div><strong>Дата отметки:</strong> {formatDateTimeRu(result.lost_card?.reported_at)}</div>
+            <div><strong>Комментарий:</strong> {result.lost_card?.comment || '—'}</div>
+          </div>
+        {:else if result.active_visit}
+          <div class="lookup-meta">
+            <div><strong>Лок:</strong> {result.active_visit.active_tap_id ? `Кран #${result.active_visit.active_tap_id}` : 'Нет активного лока'}</div>
           </div>
         {/if}
       </div>
-
-      {#if result.is_lost}
-        <p class={`lookup-status ${statusTone('danger')}`}>Карта отмечена как потерянная</p>
-        <div class="lookup-meta">
-          <div><strong>Дата отметки:</strong> {formatDateTimeRu(result.lost_card?.reported_at)}</div>
-          <div><strong>Комментарий:</strong> {result.lost_card?.comment || '—'}</div>
-          <div><strong>Визит:</strong> {result.lost_card?.visit_id || '—'}</div>
-        </div>
-      {:else if result.active_visit}
-        <p class={`lookup-status ${statusTone('warning')}`}>Карта используется в активном визите</p>
-        <div class="lookup-meta">
-          <div><strong>Визит:</strong> {result.active_visit.visit_id}</div>
-          <div><strong>Лок:</strong> {result.active_visit.active_tap_id ? `Кран #${result.active_visit.active_tap_id}` : 'Нет активного лока'}</div>
-        </div>
-      {:else if result.guest}
-        <p class={`lookup-status ${statusTone('info')}`}>Карта привязана к гостю, активного визита нет</p>
-      {:else if result.card}
-        <p class={`lookup-status ${statusTone()}`}>Карта зарегистрирована, но не привязана к гостю</p>
-      {:else}
-        <p class={`lookup-status ${statusTone()}`}>Карта не зарегистрирована в системе</p>
-      {/if}
 
       {#if actions.length > 0}
         <div class="scenario-rail">
@@ -225,24 +234,11 @@
     display: grid;
     gap: 0.6rem;
   }
-  .search-results-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    align-items: center;
-  }
+  .search-results-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: center; }
   .search-result-list { display: grid; gap: 0.5rem; }
   .search-result-item {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.75rem;
-    align-items: center;
-    text-align: left;
-    width: 100%;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    background: #f8fafc;
-    padding: 0.75rem;
+    display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; text-align: left;
+    width: 100%; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; padding: 0.75rem;
   }
   .search-result-item small, .search-empty { color: var(--text-secondary); }
   .lookup-result {
@@ -251,48 +247,35 @@
     background: var(--bg-surface-muted, #f8fafc);
     padding: 1rem;
     display: grid;
-    gap: 0.75rem;
-  }
-  .lookup-summary-wrap {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
     gap: 0.85rem;
-    align-items: start;
   }
-  .lookup-summary {
+  .operator-first-summary { display: grid; gap: 0.75rem; }
+  .summary-head { display: flex; justify-content: space-between; gap: 0.85rem; align-items: start; }
+  .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 0.75rem;
   }
-  .primary-cta-box {
-    border: 1px solid #bfdbfe;
-    border-radius: 12px;
-    background: #eff6ff;
-    padding: 0.85rem;
-    display: grid;
-    gap: 0.45rem;
-  }
-  .primary-cta { width: 100%; justify-content: center; }
-  .eyebrow { display: block; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.2rem; }
+  .eyebrow { display: block; font-size: 0.75rem; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
   .lookup-status { margin: 0; font-weight: 700; }
   .status-danger { color: #b91c1c; }
-  .status-warning { color: #92400e; }
+  .status-warning { color: #b45309; }
   .status-info { color: #1d4ed8; }
-  .status-muted { color: var(--text-secondary); }
-  .lookup-meta { display: grid; gap: 0.35rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .status-muted { color: #475569; }
+  .primary-cta-box.compact { display: grid; gap: 0.35rem; min-width: 240px; }
+  .lookup-meta { display: flex; flex-wrap: wrap; gap: 1rem; color: #334155; }
+  .lookup-meta.danger { color: #9a3412; }
   .scenario-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6rem; }
   .scenario-chip {
-    text-align: left; display: grid; gap: 0.25rem; border: 1px solid #dbe4f0; border-radius: 12px; background: #fff; padding: 0.75rem;
+    display: grid; gap: 0.25rem; text-align: left; border: 1px solid #dbe4f0; border-radius: 12px;
+    background: #fff; padding: 0.75rem;
   }
-  .scenario-chip.selected { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1); }
+  .scenario-chip.selected { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12); }
   .scenario-chip.warning { border-color: #fdba74; background: #fff7ed; }
-  .scenario-chip small, .primary-cta-box small { color: var(--text-secondary); }
-  .lookup-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .scenario-chip small { color: var(--text-secondary); }
+  .lookup-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
   .error { color: #c61f35; margin: 0; }
-  @media (max-width: 860px) {
-    .lookup-summary-wrap { grid-template-columns: 1fr; }
-  }
   @media (max-width: 720px) {
-    .uid-entry { flex-direction: column; }
+    .summary-head { flex-direction: column; }
   }
 </style>

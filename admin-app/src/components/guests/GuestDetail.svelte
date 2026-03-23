@@ -38,18 +38,22 @@
   $: operatorEvents = Array.isArray(recentEvents) ? recentEvents.slice(0, 5) : [];
   $: isOperatorVariant = variant === 'operator';
   $: guestDisplayName = `${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`.trim();
+  $: visitLabel = activeVisit?.visit_id || cardLookup?.active_visit?.visit_id || 'Нет активного визита';
+  $: visitHint = activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id
+    ? `Лок на кране #${activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id}`
+    : (lastTapLabel !== '—' ? `Последний кран: ${lastTapLabel}` : 'Кран не выбран');
 </script>
 
 <div class="detail-container" class:operator={isOperatorVariant}>
   <div class="detail-header">
     <div>
       <h3>{guestDisplayName}</h3>
-      <p>{isOperatorVariant ? 'Операторский summary после быстрого lookup' : (guest.phone_number || 'Телефон не указан')}</p>
+      <p>{isOperatorVariant ? 'Короткий lookup-summary для оператора' : (guest.phone_number || 'Телефон не указан')}</p>
     </div>
     <div class="header-actions">
       {#if !isOperatorVariant}
         <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
-          {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
+          {showSecondary ? 'Скрыть master-data' : 'Показать master-data'}
         </button>
       {/if}
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
@@ -58,13 +62,9 @@
 
   <section class="hero ui-card" class:operator={isOperatorVariant}>
     <div>
-      <span class="label">Имя</span>
-      <strong>{guestDisplayName}</strong>
-    </div>
-    <div>
       <span class="label">Статус карты</span>
       <strong class={`card-status ${cardStatusTone}`}>{cardStatusLabel}</strong>
-      <div class="subtle">{primaryCard?.card_uid || cardLookup?.card_uid || 'Карта не привязана'}</div>
+      <div class="subtle mono">{primaryCard?.card_uid || cardLookup?.card_uid || 'Карта не привязана'}</div>
     </div>
     <div>
       <span class="label">Баланс</span>
@@ -72,14 +72,8 @@
     </div>
     <div>
       <span class="label">Активный визит</span>
-      <strong>{activeVisit?.visit_id || cardLookup?.active_visit?.visit_id || 'Нет активного визита'}</strong>
-      <div class="subtle">
-        {#if activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id}
-          Лок на кране #{activeVisit?.active_tap_id || cardLookup?.active_visit?.active_tap_id}
-        {:else}
-          {lastTapLabel !== '—' ? `Последний кран: ${lastTapLabel}` : 'Кран не выбран'}
-        {/if}
-      </div>
+      <strong>{visitLabel}</strong>
+      <div class="subtle">{visitHint}</div>
     </div>
     <div>
       <span class="label">Последний кран</span>
@@ -87,7 +81,7 @@
     </div>
     <div class="hero-actions">
       {#if canTopUp}<button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>{/if}
-      {#if canToggleBlock}<button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Блокировать' : 'Разблокировать'}</button>{/if}
+      {#if canToggleBlock}<button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>{/if}
       {#if canMarkLost}<button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Lost / перевыпуск</button>{/if}
       {#if canOpenVisit}<button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id}>Активная сессия</button>{/if}
       {#if canOpenHistory}<button on:click={() => dispatch('open-history')}>История</button>{/if}
@@ -147,9 +141,9 @@
       <div class="section-head">
         <h4>Management path</h4>
       </div>
-      <p class="hint">Редактирование профиля и мастер-данные вынесены глубже и не конкурируют с lookup-flow.</p>
+      <p class="hint">Редактирование профиля, полный список карт, master-data и вторичные поля скрыты из operator layer и доступны только глубже.</p>
       <div class="management-actions">
-        <button class="ghost-btn" on:click={() => dispatch('open-management')}>Открыть управление гостем</button>
+        <button class="ghost-btn" on:click={() => dispatch('open-management')}>Открыть management path</button>
       </div>
     </section>
   {/if}
@@ -162,6 +156,14 @@
       </div>
 
       <div class="secondary-grid">
+        <div>
+          <span class="label">Телефон</span>
+          <strong>{guest.phone_number || '—'}</strong>
+        </div>
+        <div>
+          <span class="label">Документ</span>
+          <strong>{guest.id_document || '—'}</strong>
+        </div>
         <div>
           <span class="label">Создан</span>
           <strong>{formatDateTimeRu(guest.created_at)}</strong>
