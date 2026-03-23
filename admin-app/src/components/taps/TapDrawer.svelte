@@ -6,6 +6,7 @@
   export let tap;
   export let canDisplayOverride = false;
   export let canControl = false;
+  export let canMaintain = false;
 
   const dispatch = createEventDispatcher();
   const HISTORY_LIMIT = 12;
@@ -52,6 +53,30 @@
   $: chronologyGroups = groupChronology(recentHistory);
   $: titleId = 'tap-drawer-title';
   $: descriptionId = 'tap-drawer-description';
+  $: canShowServiceReady = tap?.status === 'cleaning' || tap?.status === 'empty' || isLocked;
+  $: serviceActions = [
+    {
+      key: 'cleaning',
+      label: 'Промывка',
+      tone: 'secondary',
+      visible: canMaintain,
+      description: 'Переводит кран в сервисный режим для промывки линии.',
+    },
+    {
+      key: 'mark-ready',
+      label: 'Перевести в готовность',
+      tone: 'success',
+      visible: canMaintain && canShowServiceReady,
+      description: 'Возвращает кран в рабочий статус после обслуживания или блокировки.',
+    },
+    {
+      key: tap?.keg_id ? 'unassign' : 'assign',
+      label: tap?.keg_id ? 'Снять кегу' : 'Назначить кегу',
+      tone: 'secondary',
+      visible: canControl,
+      description: tap?.keg_id ? 'Отключает текущую кегу от линии.' : 'Открывает назначение новой кеги на кран.',
+    },
+  ].filter((action) => action.visible);
 
   function emit(name) {
     dispatch(name, { tap });
@@ -246,17 +271,6 @@
               </dl>
             </div>
 
-            <div class="action-stack">
-              {#if canControl && session}
-                <button class="primary danger" type="button" on:click={() => emit('stop-pour')}>Остановить налив</button>
-              {/if}
-              <button class="primary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
-              {#if canControl}
-                <button class="secondary" type="button" on:click={() => emit('toggle-lock')}>
-                  {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
-                </button>
-              {/if}
-            </div>
           </div>
         </article>
       </section>
@@ -267,9 +281,6 @@
             <h3>Напиток и кега</h3>
             <p>Контекст напитка, установленной кеги и того, что оператор ожидает увидеть на экране.</p>
           </div>
-          {#if canDisplayOverride}
-            <button class="secondary-btn" type="button" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
-          {/if}
         </div>
 
         <dl class="split-details">
@@ -285,6 +296,63 @@
             </div>
           {/each}
         </dl>
+      </section>
+
+      <section class="drawer-section">
+        <div class="section-head">
+          <div>
+            <h3>Действия по крану</h3>
+            <p>Оперативные команды отделены от сервисных, чтобы первый слой оставался фокусом для оператора.</p>
+          </div>
+        </div>
+
+        <div class="actions-layout">
+          <article class="actions-panel">
+            <div class="section-head compact">
+              <div>
+                <h4>Operator actions</h4>
+                <p>Команды для текущей смены и реакции на ситуацию по крану.</p>
+              </div>
+            </div>
+            <div class="action-list">
+              {#if canControl && session}
+                <button class="primary danger" type="button" on:click={() => emit('stop-pour')}>Остановить налив</button>
+              {/if}
+              {#if canControl}
+                <button class="secondary" type="button" on:click={() => emit('toggle-lock')}>
+                  {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
+                </button>
+              {/if}
+              {#if canDisplayOverride}
+                <button class="secondary" type="button" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
+              {/if}
+              <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
+            </div>
+          </article>
+
+          {#if serviceActions.length}
+            <article class="actions-panel service-panel">
+              <div class="section-head compact">
+                <div>
+                  <h4>Service actions</h4>
+                  <p>Maintenance/service операции доступны только после открытия деталей.</p>
+                </div>
+              </div>
+              <div class="action-list">
+                {#each serviceActions as action}
+                  <button
+                    class={action.tone === 'success' ? 'secondary success' : 'secondary'}
+                    type="button"
+                    on:click={() => emit(action.key)}
+                  >
+                    {action.label}
+                  </button>
+                  <p class="action-note">{action.description}</p>
+                {/each}
+              </div>
+            </article>
+          {/if}
+        </div>
       </section>
 
       <section class="drawer-section">
@@ -425,7 +493,6 @@
     color: var(--text-secondary, #64748b);
   }
   .close-btn,
-  .secondary-btn,
   .primary,
   .secondary {
     border-radius: 10px;
@@ -484,10 +551,31 @@
   .split-details {
     margin-top: 0.25rem;
   }
-  .action-stack {
+  .actions-layout {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .actions-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+    padding: 0.9rem;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .service-panel {
+    background: #f8fafc;
+    border-style: dashed;
+  }
+  .action-list {
     display: grid;
     gap: 0.65rem;
-    min-width: 220px;
+  }
+  .action-note {
+    margin: -0.3rem 0 0;
+    color: var(--text-secondary, #64748b);
+    font-size: 0.88rem;
   }
   .primary {
     background: #1d4ed8;
@@ -500,6 +588,11 @@
   }
   .secondary {
     color: #0f172a;
+  }
+  .secondary.success {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #166534;
   }
   dl {
     display: grid;
@@ -573,3 +666,4 @@
     }
   }
 </style>
+

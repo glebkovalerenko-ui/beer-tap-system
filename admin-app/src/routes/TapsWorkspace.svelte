@@ -226,7 +226,6 @@
       <TapGrid
         taps={$tapStore.taps}
         canControl={$roleStore.permissions.taps_control}
-        canMaintain={$roleStore.permissions.maintenance_actions}
         canDisplayOverride={$roleStore.permissions.display_override}
         on:open-detail={(event) => selectTap(event.detail.tap)}
         on:assign={handleOpenAssignModal}
@@ -270,11 +269,21 @@
       tap={selectedTap}
       canDisplayOverride={$roleStore.permissions.display_override}
       canControl={$roleStore.permissions.taps_control}
+      canMaintain={$roleStore.permissions.maintenance_actions}
       on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
       on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}
       on:stop-pour={(event) => handleStopPour(event.detail.tap)}
       on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
+      on:assign={handleOpenAssignModal}
+      on:unassign={(event) => handleUnassignTap(event.detail.tap)}
+      on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}
+      on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'Вернуть кран в готовность', {
+        permissionKey: 'maintenance_actions',
+        message: `Перевести ${event.detail.tap.display_name} в статус "active" после сервисных работ?`,
+        confirmText: 'Вернуть в готовность',
+        danger: false,
+      })}
     />
   </SideDrawer>
 {/if}
