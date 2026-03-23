@@ -79,10 +79,14 @@
 
   function openSessionFromTap(event) {
     const visitId = event.detail.visitId || event.detail.tap?.operations?.activeSessionSummary?.visitId || null;
+    const tapId = event.detail.tap?.tap_id || event.detail.tapId || null;
     if (visitId) {
       sessionStorage.setItem('visits.lookupVisitId', visitId);
     }
-    window.location.hash = '#/sessions';
+    if (tapId) {
+      sessionStorage.setItem('sessions.history.tapId', String(tapId));
+    }
+    window.location.hash = '#/sessions/history';
   }
 
   function requirePermission(permissionKey, message) {
