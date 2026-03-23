@@ -201,6 +201,20 @@ pub struct FlowSummaryResponse {
     pub by_tap: Vec<TapFlowSummaryItem>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TodaySummaryResponse {
+    pub period: String,
+    pub summary_complete: bool,
+    pub fallback_copy: Option<String>,
+    pub shift_id: Option<String>,
+    pub opened_at: Option<String>,
+    pub closed_at: Option<String>,
+    pub generated_at: String,
+    pub sessions_count: i32,
+    pub volume_ml: i32,
+    pub revenue: f64,
+}
+
 // --- Guests ---
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Guest {
@@ -337,8 +351,6 @@ pub struct LostCard {
     pub visit_id: Option<String>,
     pub guest_id: Option<String>,
 }
-
-
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SessionLifecycleTimestamps {
@@ -901,7 +913,10 @@ pub async fn get_kegs(token: &str) -> Result<Vec<Keg>, String> {
     }
 }
 
-pub async fn get_keg_suggestion(token: &str, beer_type_id: &str) -> Result<KegSuggestionResponse, String> {
+pub async fn get_keg_suggestion(
+    token: &str,
+    beer_type_id: &str,
+) -> Result<KegSuggestionResponse, String> {
     let url = build_api_url(&format!("kegs/suggest?beer_type_id={}", beer_type_id));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
@@ -1004,6 +1019,18 @@ pub async fn get_flow_summary(token: &str) -> Result<FlowSummaryResponse, String
     }
 }
 
+pub async fn get_today_summary(token: &str) -> Result<TodaySummaryResponse, String> {
+    let url = build_api_url("pours/today-summary");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<TodaySummaryResponse>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
 
 pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListItem>, String> {
     let url = build_api_url(&format!("incidents/?limit={}", limit));
@@ -1018,41 +1045,69 @@ pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListIt
     }
 }
 
-pub async fn claim_incident(token: &str, incident_id: &str, payload: &IncidentClaimPayload) -> Result<IncidentListItem, String> {
+pub async fn claim_incident(
+    token: &str,
+    incident_id: &str,
+    payload: &IncidentClaimPayload,
+) -> Result<IncidentListItem, String> {
     let url = build_api_url(&format!("incidents/{}/claim", incident_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
-        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<IncidentListItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn add_incident_note(token: &str, incident_id: &str, payload: &IncidentNotePayload) -> Result<IncidentListItem, String> {
+pub async fn add_incident_note(
+    token: &str,
+    incident_id: &str,
+    payload: &IncidentNotePayload,
+) -> Result<IncidentListItem, String> {
     let url = build_api_url(&format!("incidents/{}/notes", incident_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
-        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<IncidentListItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn escalate_incident(token: &str, incident_id: &str, payload: &IncidentEscalationPayload) -> Result<IncidentListItem, String> {
+pub async fn escalate_incident(
+    token: &str,
+    incident_id: &str,
+    payload: &IncidentEscalationPayload,
+) -> Result<IncidentListItem, String> {
     let url = build_api_url(&format!("incidents/{}/escalate", incident_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
-        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<IncidentListItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn close_incident(token: &str, incident_id: &str, payload: &IncidentClosePayload) -> Result<IncidentListItem, String> {
+pub async fn close_incident(
+    token: &str,
+    incident_id: &str,
+    payload: &IncidentClosePayload,
+) -> Result<IncidentListItem, String> {
     let url = build_api_url(&format!("incidents/{}/close", incident_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
-        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+        response
+            .json::<IncidentListItem>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
@@ -1458,7 +1513,6 @@ pub async fn resolve_card(token: &str, card_uid: &str) -> Result<CardResolveResp
     }
 }
 
-
 pub async fn get_session_history(
     token: &str,
     date_from: Option<&str>,
@@ -1471,26 +1525,57 @@ pub async fn get_session_history(
 ) -> Result<Vec<SessionHistoryListItem>, String> {
     let url = build_api_url("visits/history");
     let mut query: Vec<(&str, String)> = Vec::new();
-    if let Some(value) = date_from { if !value.is_empty() { query.push(("dateFrom", value.to_string())); } }
-    if let Some(value) = date_to { if !value.is_empty() { query.push(("dateTo", value.to_string())); } }
-    if let Some(value) = tap_id { query.push(("tapId", value.to_string())); }
-    if let Some(value) = status { if !value.is_empty() { query.push(("status", value.to_string())); } }
-    if let Some(value) = card_uid { if !value.is_empty() { query.push(("cardUid", value.to_string())); } }
-    if incident_only { query.push(("incidentOnly", "true".to_string())); }
-    if unsynced_only { query.push(("unsyncedOnly", "true".to_string())); }
+    if let Some(value) = date_from {
+        if !value.is_empty() {
+            query.push(("dateFrom", value.to_string()));
+        }
+    }
+    if let Some(value) = date_to {
+        if !value.is_empty() {
+            query.push(("dateTo", value.to_string()));
+        }
+    }
+    if let Some(value) = tap_id {
+        query.push(("tapId", value.to_string()));
+    }
+    if let Some(value) = status {
+        if !value.is_empty() {
+            query.push(("status", value.to_string()));
+        }
+    }
+    if let Some(value) = card_uid {
+        if !value.is_empty() {
+            query.push(("cardUid", value.to_string()));
+        }
+    }
+    if incident_only {
+        query.push(("incidentOnly", "true".to_string()));
+    }
+    if unsynced_only {
+        query.push(("unsyncedOnly", "true".to_string()));
+    }
     let response = send(CLIENT.get(&url).query(&query).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<Vec<SessionHistoryListItem>>().await.map_err(|e| e.to_string())
+        response
+            .json::<Vec<SessionHistoryListItem>>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }
 }
 
-pub async fn get_session_history_detail(token: &str, visit_id: &str) -> Result<SessionHistoryDetail, String> {
+pub async fn get_session_history_detail(
+    token: &str,
+    visit_id: &str,
+) -> Result<SessionHistoryDetail, String> {
     let url = build_api_url(&format!("visits/history/{}", visit_id));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
-        response.json::<SessionHistoryDetail>().await.map_err(|e| e.to_string())
+        response
+            .json::<SessionHistoryDetail>()
+            .await
+            .map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

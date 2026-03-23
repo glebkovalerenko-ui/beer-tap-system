@@ -1,9 +1,10 @@
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import json
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -14,17 +15,6 @@ from pos_adapter import get_pos_adapter
 
 def _result(status: str, outcome: str, reason: str) -> dict:
     return {"status": status, "outcome": outcome, "reason": reason}
-
-
-def _resolve_duration_ms(pour_data: schemas.PourData) -> int:
-    if pour_data.duration_ms is not None:
-        return int(pour_data.duration_ms)
-
-    if pour_data.start_ts is not None and pour_data.end_ts is not None:
-        delta_ms = int((pour_data.end_ts - pour_data.start_ts).total_seconds() * 1000)
-        return max(delta_ms, 0)
-
-    return 0
 
 
 def _add_audit_log(
@@ -476,6 +466,103 @@ def get_pours(db: Session, skip: int = 0, limit: int = 20):
         .offset(skip)
         .limit(limit)
         .all()
+    )
+
+
+FINAL_KPI_SYNC_STATUSES = ("synced", "reconciled")
+
+
+def _is_sqlite(db: Session) -> bool:
+    bind = db.get_bind()
+    return bind is not None and bind.dialect.name == "sqlite"
+
+
+def _start_of_current_day_utc() -> datetime:
+    now = datetime.now(timezone.utc)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def get_today_summary(db: Session) -> schemas.TodaySummaryResponse:
+    generated_at = datetime.now(timezone.utc)
+
+    open_shift = (
+        db.query(models.Shift)
+        .filter(models.Shift.status == "open")
+        .order_by(models.Shift.opened_at.desc())
+        .first()
+    )
+
+    if open_shift is not None:
+        period = "shift"
+        window_start = open_shift.opened_at
+        window_end = generated_at
+        shift_id = open_shift.id
+        opened_at = open_shift.opened_at
+        closed_at = open_shift.closed_at
+        fallback_copy = None
+    else:
+        period = "day"
+        window_start = _start_of_current_day_utc()
+        window_end = generated_at
+        shift_id = None
+        opened_at = None
+        closed_at = None
+        fallback_copy = "Смена сейчас закрыта, поэтому KPI показаны только за текущий календарный день (UTC)."
+
+    timestamp_column = func.coalesce(
+        models.Pour.synced_at,
+        models.Pour.reconciled_at,
+        models.Pour.poured_at,
+        models.Pour.created_at,
+    )
+
+    if _is_sqlite(db):
+        window_start_text = window_start.astimezone(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        window_end_text = window_end.astimezone(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        filters = [
+            func.strftime("%Y-%m-%d %H:%M:%S", timestamp_column) >= window_start_text,
+            func.strftime("%Y-%m-%d %H:%M:%S", timestamp_column) <= window_end_text,
+        ]
+    else:
+        filters = [timestamp_column >= window_start, timestamp_column <= window_end]
+
+    totals = (
+        db.query(
+            func.count(func.distinct(models.Pour.visit_id)).label("sessions_count"),
+            func.coalesce(func.sum(models.Pour.volume_ml), 0).label("volume_ml"),
+            func.coalesce(func.sum(models.Pour.amount_charged), 0).label("revenue"),
+            func.coalesce(
+                func.sum(case((models.Pour.sync_status == "pending_sync", 1), else_=0)),
+                0,
+            ).label("pending_sync_count"),
+        )
+        .filter(*filters)
+        .filter(models.Pour.sync_status.in_(FINAL_KPI_SYNC_STATUSES))
+        .one()
+    )
+
+    pending_sync_count = (
+        db.query(func.count(models.Pour.pour_id))
+        .filter(*filters)
+        .filter(models.Pour.sync_status == "pending_sync")
+        .scalar()
+    )
+
+    if pending_sync_count:
+        pending_copy = f"Есть {int(pending_sync_count)} налив(ов) в ожидании синхронизации, поэтому KPI обновятся после подтверждения backend."
+        fallback_copy = f"{fallback_copy} {pending_copy}".strip() if fallback_copy else pending_copy
+
+    return schemas.TodaySummaryResponse(
+        period=period,
+        summary_complete=pending_sync_count == 0 and open_shift is not None,
+        fallback_copy=fallback_copy,
+        shift_id=shift_id,
+        opened_at=opened_at,
+        closed_at=closed_at,
+        generated_at=generated_at,
+        sessions_count=int(totals.sessions_count or 0),
+        volume_ml=int(totals.volume_ml or 0),
+        revenue=totals.revenue or 0,
     )
 
 

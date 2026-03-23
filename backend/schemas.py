@@ -779,6 +779,19 @@ class FlowSummaryResponse(BaseModel):
     by_tap: list[TapFlowSummaryItem] = []
 
 
+class TodaySummaryResponse(BaseModel):
+    period: Literal["day", "shift"]
+    summary_complete: bool
+    fallback_copy: Optional[str] = None
+    shift_id: Optional[uuid.UUID] = None
+    opened_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    generated_at: datetime
+    sessions_count: int
+    volume_ml: int
+    revenue: Decimal
+
+
 class GuestBase(BaseModel):
     last_name: str = Field(..., json_schema_extra={'example': "Иванов"})
     first_name: str = Field(..., json_schema_extra={'example': "Иван"})

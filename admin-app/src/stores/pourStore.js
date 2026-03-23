@@ -18,6 +18,8 @@ function createPourStore() {
     pours: [],
     feedItems: [],
     flowSummary: null,
+    todaySummary: null,
+    todaySummaryError: null,
     loading: false,
     error: null,
   };
@@ -38,12 +40,23 @@ function createPourStore() {
     });
 
     try {
-      const [pours, feedItems, flowSummary] = await Promise.all([
+      const [pours, feedItems, flowSummary, todaySummaryResult] = await Promise.all([
         invoke('get_pours', { token, limit: 20 }),
         invoke('get_live_pour_feed', { token, limit: 20 }),
         invoke('get_flow_summary', { token }),
+        invoke('get_today_summary', { token })
+          .then((summary) => ({ summary, error: null }))
+          .catch((error) => ({ summary: null, error: toErrorMessage('pourStore.fetchTodaySummary', error) })),
       ]);
-      set({ pours, feedItems, flowSummary, loading: false, error: null });
+      set({
+        pours,
+        feedItems,
+        flowSummary,
+        todaySummary: todaySummaryResult.summary,
+        todaySummaryError: todaySummaryResult.error,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       const errorMessage = toErrorMessage('pourStore.fetchPours', error);
       update((s) => ({ ...s, loading: false, error: errorMessage }));
