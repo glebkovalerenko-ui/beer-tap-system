@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
 
   import Modal from '../components/common/Modal.svelte';
+  import SideDrawer from '../components/common/SideDrawer.svelte';
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
   import TapDrawer from '../components/taps/TapDrawer.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
@@ -258,7 +259,13 @@
 {/if}
 
 {#if isTapDrawerOpen && selectedTap}
-  <Modal on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}>
+  <SideDrawer
+    showHeader={false}
+    width="min(760px, 100vw)"
+    labelledBy="tap-drawer-title"
+    describedBy="tap-drawer-description"
+    on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
+  >
     <TapDrawer
       tap={selectedTap}
       canDisplayOverride={$roleStore.permissions.display_override}
@@ -269,7 +276,7 @@
       on:stop-pour={(event) => handleStopPour(event.detail.tap)}
       on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
     />
-  </Modal>
+  </SideDrawer>
 {/if}
 
 <style>
@@ -283,7 +290,7 @@
   .page-header { margin-bottom: 1rem; }
   .page-header h1, .section-header h2 { margin: 0; }
   .page-header p, .section-hint { margin: 0.3rem 0 0; color: var(--text-secondary, #64748b); }
-  .operator-layout { display: grid; gap: 1rem; }
+  .operator-layout { display: grid; gap: 1rem; position: relative; }
   .error { margin: 0; color: #b91c1c; }
   .restricted { padding: 1rem; }
   @media (max-width: 980px) {
