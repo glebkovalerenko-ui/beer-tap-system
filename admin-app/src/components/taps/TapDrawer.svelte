@@ -18,9 +18,10 @@
   $: isLocked = tap?.status === 'locked';
   $: keg = tap?.keg || null;
   $: beverage = keg?.beverage || {};
-  $: operatorMeta = operations.operatorStateMeta || { tone: 'muted', icon: '?', shortLabel: 'Нет данных', headline: 'Состояние не определено' };
+  $: operatorMeta = operations.operatorStateMeta || { key: 'needs_help', tone: 'muted', icon: '?', shortLabel: 'Нет данных', eyebrow: 'Статус не определён', headline: 'Состояние не определено', badgeStyle: 'callout', iconShape: 'alert', containerStyle: 'alert' };
+  $: stateKey = operatorMeta.key || operations.operatorState || operations.productState || 'needs_help';
   $: stateExplanationRows = [
-    { label: 'Канонический статус', value: operations.productStateLabel || 'Нет данных', note: `${operatorMeta.icon} · ${operatorMeta.headline || 'Без пояснения'}` },
+    { label: 'Канонический статус', value: operations.productStateLabel || 'Нет данных', note: `${operatorMeta.eyebrow || 'Статус'} · ${operatorMeta.icon} · ${operatorMeta.headline || 'Без пояснения'}` },
     { label: 'Почему этот статус', value: operations.operatorStateReason || 'Причина не передана', note: operations.operatorStateTelemetry || 'Дополнительной телеметрии нет' },
     { label: TAP_COPY.liveSignals, value: operations.liveStatus || 'Нет данных', note: operations.syncState?.label || null },
   ];
@@ -140,7 +141,16 @@
       <div>
         <div class="eyebrow">Карточка крана</div>
         <h2 id={titleId}>{tap.display_name}</h2>
-        <p id={descriptionId}>{operations.productStateLabel} — {operations.operatorStateReason || operations.liveStatus}</p>
+        <div class={`drawer-status tone-${operatorMeta.tone || 'muted'} badge-${operatorMeta.badgeStyle || 'callout'} icon-${operatorMeta.iconShape || 'alert'}`} data-state={stateKey}>
+          <span class="drawer-status-badge">
+            <span class="drawer-status-icon" aria-hidden="true">{operatorMeta.icon}</span>
+            <span>{operations.productStateLabel}</span>
+          </span>
+          <div class="drawer-status-copy">
+            <strong>{operatorMeta.headline}</strong>
+            <p id={descriptionId}>{operations.operatorStateReason || operations.liveStatus}</p>
+          </div>
+        </div>
       </div>
       <button class="close-btn" type="button" on:click={() => dispatch('close')}>✕</button>
     </header>
@@ -369,6 +379,42 @@
     min-height: 0;
     display: grid;
     gap: 1rem;
+  }
+
+  .drawer-status {
+    margin-top: 0.75rem;
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.8rem;
+    border: 1px solid var(--tap-status-hero-border, #e2e8f0);
+    border-radius: var(--tap-status-hero-radius, 14px);
+    background: var(--tap-status-hero-bg, rgba(255,255,255,0.88));
+  }
+  .drawer-status-badge {
+    width: fit-content;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: var(--tap-status-badge-padding, 0.45rem 0.7rem);
+    border-radius: var(--tap-status-badge-radius, 999px);
+    border: 1px solid var(--tap-status-badge-border, transparent);
+    background: var(--tap-status-badge-bg, #e5e7eb);
+    color: var(--tap-status-badge-text, #475569);
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+  .drawer-status-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    display: inline-grid;
+    place-items: center;
+    border-radius: var(--tap-status-icon-radius, 999px);
+    border: 1px solid var(--tap-status-icon-border, transparent);
+    background: var(--tap-status-icon-bg, rgba(255,255,255,0.6));
+  }
+  .drawer-status-copy {
+    display: grid;
+    gap: 0.2rem;
   }
   .eyebrow,
   .muted,
