@@ -60,7 +60,8 @@
   ];
 
   const supportNav = [
-    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_health_view },
+    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_health_view, tone: 'support' },
+    { href: '#/settings', label: 'Настройки', visible: (permissions) => permissions.settings_manage, tone: 'muted' },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -149,7 +150,7 @@
             <div class="nav-title">Поддержка</div>
             <nav aria-label="Дополнительные разделы">
               {#each visibleSupportNav as item}
-                <a href={item.href}>{item.label}</a>
+                <a href={item.href} class:muted-link={item.tone === 'muted'}>{item.label}</a>
               {/each}
             </nav>
           </div>
@@ -240,9 +241,29 @@
     border-radius: 10px;
     padding: 10px;
     font-weight: 600;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
   }
 
-  nav a:hover { background: #eaf1ff; }
+  nav a:hover,
+  nav a:focus-visible { background: #eaf1ff; }
+
+  .secondary nav a {
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-surface-muted) 82%, transparent);
+    border-color: color-mix(in srgb, var(--border-soft) 88%, transparent);
+  }
+
+  .secondary nav a.muted-link {
+    background: color-mix(in srgb, var(--bg-surface-muted) 58%, transparent);
+    border-style: dashed;
+    opacity: 0.9;
+  }
+
+  .secondary nav a:hover,
+  .secondary nav a:focus-visible {
+    color: var(--text-primary);
+    opacity: 1;
+  }
 
   .main-content { overflow: hidden; }
 
