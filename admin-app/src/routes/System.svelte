@@ -16,12 +16,12 @@
 </script>
 
 {#if !$roleStore.permissions.system_view}
-  <section class="ui-card restricted"><h1>Система</h1><p>Раздел настроек и инженерных инструментов доступен только инженерным ролям.</p></section>
+  <section class="ui-card restricted"><h1>Система</h1><p>Раздел для health, устройств и проблем синхронизации доступен только инженерным ролям.</p></section>
 {:else}
   <section class="page">
     <div class="page-header">
       <h1>Система</h1>
-      <p>Панель для старшего смены и инженера: видно, что работает штатно, какие устройства требуют внимания и где замедлилась синхронизация.</p>
+      <p>Панель для старшего смены и инженера: здесь разбирают только health, устройства и проблемы синхронизации, не смешивая их с конфигурацией и SOP.</p>
     </div>
     <div class="ui-card panel">
       {#if incidentFocusSource}
