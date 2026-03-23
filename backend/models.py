@@ -424,3 +424,24 @@ class SystemState(Base):
     # Значение настройки, хранится как строка, e.g., 'true', 'false'
     value = Column(String(255), nullable=False)
 
+
+
+class IncidentState(Base):
+    """
+    DURABLE INCIDENT OVERLAY.
+    Stores server-confirmed operator workflow state for aggregated incidents.
+    """
+    __tablename__ = "incident_states"
+
+    incident_id = Column(String(255), primary_key=True)
+    status = Column(String(20), nullable=False, default="new", index=True)
+    owner = Column(String(100), nullable=True)
+    last_action = Column(String(64), nullable=True)
+    last_action_at = Column(DateTime(timezone=True), nullable=True)
+    last_note = Column(Text, nullable=True)
+    escalated_at = Column(DateTime(timezone=True), nullable=True)
+    escalation_reason = Column(Text, nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    closure_summary = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

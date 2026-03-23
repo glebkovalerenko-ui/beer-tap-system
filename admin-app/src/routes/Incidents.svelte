@@ -164,9 +164,9 @@
   }
 
   function deriveAccountability(incident, sessionMatch) {
-    const owner = incident.operator || sessionMatch?.operator_name || null;
-    const lastEscalatedAt = incident.source === 'system_state' ? incident.created_at : null;
-    const lastActionLabel = incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
+    const owner = incident.owner || incident.operator || sessionMatch?.operator_name || null;
+    const lastEscalatedAt = incident.escalated_at || (incident.source === 'system_state' ? incident.created_at : null);
+    const lastActionLabel = incident.last_action || incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
     const nextStep = incident.status === 'new'
       ? 'Назначить ответственного и перевести инцидент в работу.'
       : incident.status === 'in_progress'
@@ -178,9 +178,9 @@
       ownerLabel: owner || 'Не назначен',
       ownerBadge: owner ? `Owner: ${owner}` : 'Owner не назначен',
       ownerState: owner ? 'assigned' : 'unassigned',
-      acknowledgedAt: incident.status !== 'new' ? incident.created_at : null,
+      acknowledgedAt: incident.last_action_at || (incident.status !== 'new' ? incident.created_at : null),
       lastEscalatedAt,
-      closedAt: incident.status === 'closed' ? incident.created_at : null,
+      closedAt: incident.closed_at || (incident.status === 'closed' ? incident.created_at : null),
       lastActionLabel,
       nextStep,
       stateFlow: [
@@ -231,12 +231,12 @@
         time: accountability.lastEscalatedAt,
       });
     }
-    if (incident.note_action) {
+    if (incident.note_action || incident.last_action) {
       actions.push({
         kind: 'note',
-        title: 'Последняя заметка / действие из источника',
-        detail: incident.note_action,
-        time: incident.created_at,
+        title: 'Последнее подтверждённое действие',
+        detail: incident.note_action || incident.last_action,
+        time: incident.last_action_at || incident.created_at,
       });
     }
     if (tapMatch?.operations?.heartbeat?.isStale) {
@@ -401,8 +401,10 @@
       }
 
       uiStore.notifySuccess('Incident action отправлен.');
+      if (selectedIncidentId !== item.incident_id) {
+        selectedIncidentId = item.incident_id;
+      }
       closeActionForm();
-      incidentStore.fetchIncidents();
     } catch (error) {
       uiStore.notifyWarning(error.message || 'Incident action сейчас недоступен.');
     }
@@ -527,9 +529,9 @@
               <small>{selectedIncident.backendStatusIsAuthoritative ? 'Источник: backend incident feed' : 'Источник: временный client-side draft'}</small>
             </article>
             <article>
-              <span>Эскалация</span>
-              <strong>{selectedIncident.accountability.lastEscalatedAt ? formatDateTimeRu(selectedIncident.accountability.lastEscalatedAt) : 'Не зафиксирована'}</strong>
-              <small>Формальная эскалация требует backend action.</small>
+              <span>Закрыт в</span>
+              <strong>{selectedIncident.accountability.closedAt ? formatDateTimeRu(selectedIncident.accountability.closedAt) : 'Ещё открыт'}</strong>
+              <small>{selectedIncident.closed_at ? 'Server-confirmed closure timestamp.' : 'Ожидает server-confirmed closure.'}</small>
             </article>
           </section>
 
@@ -558,7 +560,7 @@
 
           <section class="detail-section meta-grid">
             <article><span>Кран</span><strong>{selectedIncident.tapLabel}</strong></article>
-            <article><span>Оператор</span><strong>{selectedIncident.accountability.ownerLabel}</strong></article>
+            <article><span>Owner (server)</span><strong>{selectedIncident.owner || selectedIncident.accountability.ownerLabel}</strong></article>
             <article><span>Источник</span><strong>{selectedIncident.sourceLabel}</strong></article>
             <article><span>Связанная сессия</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найдена'}</strong></article>
           </section>
@@ -617,7 +619,7 @@
     <Modal on:close={closeActionForm}>
       <div slot="header">
         <h2>Action form · #{actionModalIncident.incident_id}</h2>
-        <p class="modal-subtitle">Форма отражает целевой workflow ownership / escalation / closure. Пока backend не поддерживает mutation endpoints, submit отключён.</p>
+        <p class="modal-subtitle">Форма пишет реальные incident mutations в backend и ждёт server-confirmed ответ перед обновлением выбранного incident.</p>
       </div>
 
       <div class="incident-action-form">
@@ -637,7 +639,7 @@
               <input bind:value={actionForm.owner} placeholder="Имя оператора" disabled={$incidentStore.readOnly} />
             </label>
           </div>
-          <p class="muted">Текущий backend-статус: <strong>{actionModalIncident.statusLabel}</strong>. Пока не появится server-side команда, экран не будет подменять его client-side значением.</p>
+          <p class="muted">Текущий backend-статус: <strong>{actionModalIncident.statusLabel}</strong>. После submit карточка обновится server-confirmed данными без сброса выбранного incident.</p>
         </section>
 
         <section class="detail-section compact-panel">
@@ -663,8 +665,8 @@
           <h3>Прозрачность статуса</h3>
           <ul class="modal-checklist">
             <li>Новый → в работе → закрыт отображаются только по данным backend feed.</li>
-            <li>Owner, escalation и closure без API не считаются завершёнными действиями.</li>
-            <li>Form оставлена на экране как контракт для будущего durable action layer.</li>
+            <li>Owner, escalation и closure сохраняются в backend overlay и audit log.</li>
+            <li>UI показывает owner / last action / closed at только из server-confirmed полей.</li>
           </ul>
         </section>
       </div>

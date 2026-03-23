@@ -908,6 +908,32 @@ class IncidentListItem(BaseModel):
     operator: Optional[str] = None
     note_action: Optional[str] = None
     source: Optional[str] = None
+    owner: Optional[str] = None
+    last_action: Optional[str] = None
+    last_action_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    escalation_reason: Optional[str] = None
+    closed_at: Optional[datetime] = None
+    closure_summary: Optional[str] = None
+
+
+class IncidentClaimPayload(BaseModel):
+    owner: str = Field(..., min_length=1, max_length=100)
+    note: Optional[str] = Field(default=None, max_length=4000)
+
+
+class IncidentNotePayload(BaseModel):
+    note: str = Field(..., min_length=1, max_length=4000)
+
+
+class IncidentEscalationPayload(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=4000)
+    note: Optional[str] = Field(default=None, max_length=4000)
+
+
+class IncidentClosePayload(BaseModel):
+    resolution_summary: str = Field(..., min_length=1, max_length=4000)
+    note: Optional[str] = Field(default=None, max_length=4000)
 
 
 class SystemDeviceHealth(BaseModel):

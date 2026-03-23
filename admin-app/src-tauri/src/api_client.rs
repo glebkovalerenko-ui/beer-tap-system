@@ -683,6 +683,36 @@ pub struct IncidentListItem {
     pub operator: Option<String>,
     pub note_action: Option<String>,
     pub source: Option<String>,
+    pub owner: Option<String>,
+    pub last_action: Option<String>,
+    pub last_action_at: Option<String>,
+    pub escalated_at: Option<String>,
+    pub escalation_reason: Option<String>,
+    pub closed_at: Option<String>,
+    pub closure_summary: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IncidentClaimPayload {
+    pub owner: String,
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IncidentNotePayload {
+    pub note: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IncidentEscalationPayload {
+    pub reason: String,
+    pub note: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct IncidentClosePayload {
+    pub resolution_summary: String,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -983,6 +1013,46 @@ pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListIt
             .json::<Vec<IncidentListItem>>()
             .await
             .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn claim_incident(token: &str, incident_id: &str, payload: &IncidentClaimPayload) -> Result<IncidentListItem, String> {
+    let url = build_api_url(&format!("incidents/{}/claim", incident_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn add_incident_note(token: &str, incident_id: &str, payload: &IncidentNotePayload) -> Result<IncidentListItem, String> {
+    let url = build_api_url(&format!("incidents/{}/notes", incident_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn escalate_incident(token: &str, incident_id: &str, payload: &IncidentEscalationPayload) -> Result<IncidentListItem, String> {
+    let url = build_api_url(&format!("incidents/{}/escalate", incident_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn close_incident(token: &str, incident_id: &str, payload: &IncidentClosePayload) -> Result<IncidentListItem, String> {
+    let url = build_api_url(&format!("incidents/{}/close", incident_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<IncidentListItem>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

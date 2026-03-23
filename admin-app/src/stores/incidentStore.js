@@ -5,14 +5,12 @@ import { logError, normalizeError } from '../lib/errorUtils.js';
 
 const POLL_INTERVAL_MS = 10000;
 
-const ACTION_CAPABILITIES = Object.freeze({
-  claim: false,
-  escalate: false,
-  close: false,
-  note: false,
+const MUTATION_CAPABILITIES = Object.freeze({
+  claim: true,
+  escalate: true,
+  close: true,
+  note: true,
 });
-
-const READ_ONLY_REASON = 'Backend incident API currently exposes only listing. Claim/escalation/closure/note actions are shown as operator workflow requirements until durable endpoints are implemented.';
 
 function toErrorMessage(context, error) {
   logError(context, error);
@@ -26,9 +24,9 @@ function createIncidentStore() {
     error: null,
     actionLoading: false,
     actionError: null,
-    capabilities: ACTION_CAPABILITIES,
-    readOnly: true,
-    readOnlyReason: READ_ONLY_REASON,
+    capabilities: { ...MUTATION_CAPABILITIES },
+    readOnly: !Object.values(MUTATION_CAPABILITIES).some(Boolean),
+    readOnlyReason: !Object.values(MUTATION_CAPABILITIES).some(Boolean) ? 'Incident mutation endpoints недоступны.' : null,
   };
   const { subscribe, set, update } = writable(initialState);
   let timer = null;
@@ -39,23 +37,50 @@ function createIncidentStore() {
     return token;
   }
 
+  function mergeIncident(updatedItem) {
+    if (!updatedItem?.incident_id) return;
+    update((state) => ({
+      ...state,
+      items: state.items.some((item) => item.incident_id === updatedItem.incident_id)
+        ? state.items.map((item) => item.incident_id === updatedItem.incident_id ? updatedItem : item)
+        : [updatedItem, ...state.items],
+      actionLoading: false,
+      actionError: null,
+    }));
+  }
+
   async function fetchIncidents() {
     const token = get(sessionStore).token;
     if (!token) return;
     update((state) => ({ ...state, loading: state.items.length === 0, error: null, actionError: null }));
     try {
       const items = await invoke('get_incidents', { token, limit: 100 });
-      update((state) => ({ ...state, items, loading: false, error: null, capabilities: ACTION_CAPABILITIES, readOnly: true, readOnlyReason: READ_ONLY_REASON }));
+      update((state) => ({
+        ...state,
+        items,
+        loading: false,
+        error: null,
+        capabilities: { ...MUTATION_CAPABILITIES },
+        readOnly: !Object.values(MUTATION_CAPABILITIES).some(Boolean),
+        readOnlyReason: !Object.values(MUTATION_CAPABILITIES).some(Boolean) ? 'Incident mutation endpoints недоступны.' : null,
+      }));
     } catch (error) {
       update((state) => ({ ...state, loading: false, error: toErrorMessage('incidentStore.fetchIncidents', error) }));
     }
   }
 
-  async function runUnsupportedAction(actionLabel) {
-    withAuth();
-    const message = `${actionLabel} пока недоступно: backend incident API работает в read-only режиме.`;
-    update((state) => ({ ...state, actionLoading: false, actionError: message }));
-    throw new Error(message);
+  async function submitAction(command, incidentId, payload, context) {
+    const token = withAuth();
+    update((state) => ({ ...state, actionLoading: true, actionError: null }));
+    try {
+      const item = await invoke(command, { token, incidentId, payload });
+      mergeIncident(item);
+      return item;
+    } catch (error) {
+      const message = toErrorMessage(context, error);
+      update((state) => ({ ...state, actionLoading: false, actionError: message }));
+      throw new Error(message);
+    }
   }
 
   function clearActionError() {
@@ -88,10 +113,10 @@ function createIncidentStore() {
     startPolling,
     stopPolling,
     clearActionError,
-    claimIncident: () => runUnsupportedAction('Взятие инцидента в работу'),
-    escalateIncident: () => runUnsupportedAction('Эскалация инцидента'),
-    closeIncident: () => runUnsupportedAction('Закрытие инцидента'),
-    addIncidentNote: () => runUnsupportedAction('Добавление заметки к инциденту'),
+    claimIncident: ({ incidentId, owner, note }) => submitAction('claim_incident', incidentId, { owner, note }, 'incidentStore.claimIncident'),
+    escalateIncident: ({ incidentId, reason, note }) => submitAction('escalate_incident', incidentId, { reason, note }, 'incidentStore.escalateIncident'),
+    closeIncident: ({ incidentId, resolutionSummary, note }) => submitAction('close_incident', incidentId, { resolution_summary: resolutionSummary, note }, 'incidentStore.closeIncident'),
+    addIncidentNote: ({ incidentId, note }) => submitAction('add_incident_note', incidentId, { note }, 'incidentStore.addIncidentNote'),
   };
 }
 
