@@ -10,20 +10,12 @@
 
   const dispatch = createEventDispatcher();
 
-  const productStateTheme = {
-    ready: 'ok',
-    pouring: 'live',
-    needs_help: 'warn',
-    unavailable: 'muted',
-    syncing: 'sync',
-    no_keg: 'muted',
-  };
-
   $: operations = tap.operations || {};
   $: keg = tap.keg;
   $: session = operations.activeSessionSummary;
-  $: productState = operations.productState || 'needs_help';
-  $: stateTheme = productStateTheme[productState] || 'muted';
+  $: operatorState = operations.operatorState || operations.productState || 'needs_help';
+  $: operatorMeta = operations.operatorStateMeta || { tone: 'muted', icon: '?', shortLabel: 'Нет данных', layout: 'stacked', headline: 'Состояние не определено' };
+  $: stateTheme = operatorMeta.tone || 'muted';
   $: isLocked = tap.status === 'locked';
   $: canShowStop = canControl && session;
   $: canShowLockToggle = canControl && tap.keg_id;
@@ -47,29 +39,46 @@
   function emit(name) {
     dispatch(name, { tap });
   }
-
 </script>
 
-<div class="tap-card" role="button" tabindex="0" on:click={() => emit('open-detail')} on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}>
+<div class={`tap-card layout-${operatorMeta.layout || 'stacked'}`} role="button" tabindex="0" on:click={() => emit('open-detail')} on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}>
   <div class="card-header">
     <div>
       <div class="eyebrow">Tap #{tap.tap_id}</div>
       <h3>{tap.display_name}</h3>
     </div>
-    <div class="state-badge {stateTheme}">
+    <div class="state-badge {stateTheme}" aria-label={`Статус: ${operations.productStateLabel}`}>
+      <span class="badge-icon" aria-hidden="true">{operatorMeta.icon}</span>
       <span>{operations.productStateLabel}</span>
     </div>
   </div>
 
   <div class="card-body">
-    <section class="hero">
+    <section class="hero status-hero">
+      <div class="status-copy">
+        <span class="hero-label">Операторский статус</span>
+        <strong>{operatorMeta.headline}</strong>
+        <p>{operations.operatorStateReason || 'Причина не указана.'}</p>
+      </div>
+      <div class="meta-block live-telemetry">
+        <span class="meta-label">Поддерживающая телеметрия</span>
+        <strong>{operations.liveStatus}</strong>
+        {#if operations.operatorStateTelemetry}
+          <p>{operations.operatorStateTelemetry}</p>
+        {/if}
+      </div>
+    </section>
+
+    <section class="hero beverage-hero">
       <div>
+        <span class="hero-label">Напиток</span>
         <strong>{operations.beverageName}</strong>
         <p>{operations.beverageStyle || 'Без стиля / контента'}</p>
       </div>
-      <div class="meta-block">
-        <span class="meta-label">Live status</span>
-        <strong>{operations.liveStatus}</strong>
+      <div class="meta-block telemetry-chip">
+        <span class="meta-label">Ключевая cue</span>
+        <strong>{operatorMeta.shortLabel}</strong>
+        <p>{operatorState}</p>
       </div>
     </section>
 
@@ -171,12 +180,18 @@
     cursor: pointer;
   }
   .tap-card:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
+  .tap-card.layout-live { border-width: 2px; }
+  .tap-card.layout-empty .keg-section { opacity: 0.72; }
   .card-header, .hero, .section-title-row, .footer-meta { display: flex; justify-content: space-between; gap: 1rem; }
-  .eyebrow, .meta-label, .section-title, .muted { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+  .eyebrow, .meta-label, .section-title, .muted, .hero-label { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
   h3, p, strong { margin: 0; }
   .hero { align-items: flex-start; }
+  .status-hero { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem; background: rgba(255,255,255,0.88); }
+  .status-copy, .live-telemetry, .telemetry-chip { display: grid; gap: 0.2rem; }
+  .status-copy { max-width: 65%; }
   .meta-block { text-align: right; }
-  .state-badge { border-radius: 999px; padding: 0.45rem 0.7rem; font-weight: 700; font-size: 0.8rem; white-space: nowrap; }
+  .state-badge { border-radius: 999px; padding: 0.45rem 0.7rem; font-weight: 700; font-size: 0.8rem; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.45rem; }
+  .badge-icon { width: 1.1rem; height: 1.1rem; display: inline-grid; place-items: center; border-radius: 999px; background: rgba(255,255,255,0.6); }
   .state-badge.ok { background: #dcfce7; color: #166534; }
   .state-badge.live { background: #fee2e2; color: #b91c1c; }
   .state-badge.warn { background: #fef3c7; color: #b45309; }
@@ -204,5 +219,8 @@
   .cta.success { color: #166534; border-color: #bbf7d0; }
   @media (max-width: 900px) {
     .systems-grid { grid-template-columns: 1fr; }
+    .status-copy { max-width: none; }
+    .hero { flex-direction: column; }
+    .meta-block { text-align: left; }
   }
 </style>

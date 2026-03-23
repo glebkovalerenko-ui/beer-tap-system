@@ -17,6 +17,12 @@
   $: isLocked = tap?.status === 'locked';
   $: keg = tap?.keg || null;
   $: beverage = keg?.beverage || {};
+  $: operatorMeta = operations.operatorStateMeta || { tone: 'muted', icon: '?', shortLabel: 'Нет данных', headline: 'Состояние не определено' };
+  $: stateExplanationRows = [
+    { label: 'Канонический статус', value: operations.productStateLabel || 'Нет данных', note: `${operatorMeta.icon} · ${operatorMeta.headline || 'Без пояснения'}` },
+    { label: 'Почему этот статус', value: operations.operatorStateReason || 'Причина не передана', note: operations.operatorStateTelemetry || 'Дополнительной телеметрии нет' },
+    { label: 'Live telemetry', value: operations.liveStatus || 'Нет данных', note: operations.syncState?.label || null },
+  ];
   $: liveStateRows = [
     { label: 'Подключение', value: operations.heartbeat?.isStale ? 'offline' : 'online', note: operations.liveStatus || null },
     { label: 'Ридер', value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.state || null },
@@ -133,17 +139,39 @@
       <div>
         <div class="eyebrow">Карточка крана</div>
         <h2>{tap.display_name}</h2>
-        <p>{operations.productStateLabel} · {operations.liveStatus}</p>
+        <p>{operations.productStateLabel} — {operations.operatorStateReason || operations.liveStatus}</p>
       </div>
       <button class="close-btn" on:click={() => dispatch('close')}>✕</button>
     </div>
 
     <section class="drawer-section info-grid">
+      <article class="status-explainer">
+        <div class="section-head compact">
+          <div>
+            <h3>Почему кран в этом статусе</h3>
+            <p>Сначала объясняем операторский статус, потом уже показываем сырую телеметрию устройств.</p>
+          </div>
+        </div>
+        <dl>
+          {#each stateExplanationRows as row}
+            <div>
+              <dt>{row.label}</dt>
+              <dd>
+                <strong>{row.value}</strong>
+                {#if row.note}
+                  <small>{row.note}</small>
+                {/if}
+              </dd>
+            </div>
+          {/each}
+        </dl>
+      </article>
+
       <article>
         <div class="section-head compact">
           <div>
             <h3>Живое состояние</h3>
-            <p>Срез по устройствам и локальному состоянию крана в текущий момент.</p>
+            <p>Поддерживающая телеметрия: помогает подтвердить статус, но не заменяет его.</p>
           </div>
         </div>
         <dl>
