@@ -5,6 +5,7 @@
   import { visitStore } from '../../stores/visitStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
   import { formatDateTimeRu } from '../../lib/formatters.js';
+  import { SESSION_COPY } from '../../lib/operatorLabels.js';
 
   const DEFAULT_FILTERS = {
     periodPreset: 'today',
@@ -40,10 +41,10 @@
     timeout: 'Таймаут / автоостановка',
     blocked: 'Заблокировано',
     denied: 'Отказано',
-    no_sale_flow: 'Non-sale flow',
-    guest_checkout: 'Обычное завершение: checkout гостя',
-    checkout: 'Обычное завершение: checkout',
-    demo_checkout: 'Обычное завершение: demo checkout',
+    no_sale_flow: 'Служебный налив без продажи',
+    guest_checkout: 'Обычное завершение: расчёт гостя',
+    checkout: 'Обычное завершение: расчёт',
+    demo_checkout: 'Обычное завершение: демонстрационный расчёт',
     operator_close: 'Обычное завершение: оператор закрыл сессию',
     manual_close: 'Обычное завершение: ручное закрытие',
     card_removed_close: 'Завершена после извлечения карты',
@@ -375,12 +376,12 @@
     const timeline = source.map((event) => ({
       ...event,
       title: event.title || narrativeKindLabels[event.kind] || 'Событие сессии',
-      description: event.description || 'Подробности по событию не переданы backend.',
+      description: event.description || 'Подробности по событию система не передала.',
     }));
     const operatorObservations = [];
     if (detailPayload.summary.has_incident) operatorObservations.push({ title: 'В сессии были инциденты', description: `Количество инцидентов: ${detailPayload.summary.incident_count || 1}.` });
     if (detailPayload.summary.contains_tail_pour) operatorObservations.push({ title: 'Есть долив хвоста', description: 'Сессия включает хвостовой долив и требует внимательной проверки итогов.' });
-    if (detailPayload.summary.contains_non_sale_flow) operatorObservations.push({ title: 'Есть служебный налив', description: 'Часть действий прошла как non-sale и не должна трактоваться как обычная продажа.' });
+    if (detailPayload.summary.contains_non_sale_flow) operatorObservations.push({ title: 'Есть служебный налив', description: 'Часть действий прошла как служебный налив и не должна трактоваться как обычная продажа.' });
     if (detailPayload.summary.has_unsynced) operatorObservations.push({ title: 'Есть риск несинхронизированных данных', description: syncLabels[detailPayload.summary.sync_state] || detailPayload.summary.sync_state });
 
     const lifecycle = detailPayload.summary.lifecycle || {};
@@ -388,8 +389,8 @@
       { label: 'Старт сессии', value: formatMaybeDate(lifecycle.opened_at), note: 'Источник: открытие визита / старт workflow' },
       { label: 'Источник завершения', value: describeCompletionSource(detailPayload.summary.completion_source), note: 'Окончание сессии или причина прерывания' },
       { label: 'Синхронизация', value: syncLabels[detailPayload.summary.sync_state] || detailPayload.summary.sync_state, note: formatMaybeDate(lifecycle.last_sync_at) },
-      { label: 'Tail pour', value: detailPayload.summary.contains_tail_pour ? 'Да' : 'Нет', note: detailPayload.summary.contains_tail_pour ? 'Нужна проверка хвостового долива' : 'Хвостовой долив не найден' },
-      { label: 'Non-sale flow', value: detailPayload.summary.contains_non_sale_flow ? 'Да' : 'Нет', note: detailPayload.summary.contains_non_sale_flow ? 'Был служебный налив без продажи' : 'Служебных наливов нет' },
+      { label: 'Хвостовой долив', value: detailPayload.summary.contains_tail_pour ? 'Да' : 'Нет', note: detailPayload.summary.contains_tail_pour ? 'Нужна проверка хвостового долива' : 'Хвостовой долив не найден' },
+      { label: 'Служебный налив', value: detailPayload.summary.contains_non_sale_flow ? 'Да' : 'Нет', note: detailPayload.summary.contains_non_sale_flow ? 'Был служебный налив без продажи' : 'Служебных наливов нет' },
       { label: 'Финиш сессии', value: formatMaybeDate(lifecycle.closed_at), note: `Последний налив: ${formatMaybeDate(lifecycle.last_pour_ended_at)}` },
     ];
 
@@ -401,7 +402,7 @@
       return summary.operator_actions.map((action) => ({
         ...action,
         label: action.label || actionLabels[action.action] || action.action?.replaceAll('_', ' ') || 'Действие оператора',
-        details: action.details || 'Backend не передал дополнительный комментарий.',
+        details: action.details || 'Система не передала дополнительный комментарий.',
       }));
     }
     if (summary.completion_source || summary.contains_tail_pour || summary.contains_non_sale_flow) {
@@ -446,22 +447,22 @@
           <option value="aborted">Прервана</option>
         </select>
       </label>
-      <label><span>Карта / UID / Visit ID</span><input bind:value={filters.cardUid} placeholder="UID карты или visit" /></label>
+      <label><span>{SESSION_COPY.cardUidVisitId}</span><input bind:value={filters.cardUid} placeholder={SESSION_COPY.cardUidVisitPlaceholder} /></label>
       <label>
-        <span>Причина завершения</span>
+        <span>{SESSION_COPY.completionReason}</span>
         <select bind:value={filters.completionSource}>
           <option value="">Все</option>
-          <option value="normal">normal</option>
-          <option value="card_removed">card_removed</option>
-          <option value="timeout">timeout</option>
-          <option value="blocked">blocked</option>
-          <option value="denied">denied</option>
-          <option value="no_sale_flow">no_sale_flow</option>
+          <option value="normal">{completionSourceLabels.normal}</option>
+          <option value="card_removed">{completionSourceLabels.card_removed}</option>
+          <option value="timeout">{completionSourceLabels.timeout}</option>
+          <option value="blocked">{completionSourceLabels.blocked}</option>
+          <option value="denied">{completionSourceLabels.denied}</option>
+          <option value="no_sale_flow">{completionSourceLabels.no_sale_flow}</option>
         </select>
       </label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.incidentOnly} /> Только с инцидентами</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только с несинхронизированными данными</label>
-      <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> Только нулевые прерывания без налива</label>
+      <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> {SESSION_COPY.zeroVolumeAbortOnly}</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.activeOnly} /> Только активные</label>
     </div>
     <div class="actions"><button on:click={applyFilters}>Применить</button><button class="secondary" on:click={resetFilters}>Сбросить</button></div>
@@ -483,7 +484,7 @@
         </div>
 
         {#if pinnedActiveItems.length === 0}
-          <p class="muted">По текущим фильтрам активных сессий нет.</p>
+          <p class="muted">{SESSION_COPY.emptyActive}</p>
         {:else}
           <div class="session-list compact-list">
             {#each pinnedActiveItems as item}
@@ -506,13 +507,13 @@
         <div class="list-head">
           <div>
             <h3>{filters.activeOnly ? 'Отфильтрованные активные сессии' : 'История и завершённые сессии'}</h3>
-            <p>Открывайте любую строку справа в detail panel без переключения режимов.</p>
+            <p>{SESSION_COPY.openDetailsHint}</p>
           </div>
           <span class="counter">{journalItems.length}</span>
         </div>
 
         {#if journalItems.length === 0}
-          <p class="muted">Нет сессий по выбранным фильтрам.</p>
+          <p class="muted">{SESSION_COPY.emptyList}</p>
         {:else}
           <div class="session-list">
             {#each journalItems as item}
@@ -525,7 +526,7 @@
                 <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
                 <div class="chips">
                   <span>{syncLabels[item.sync_state] || item.sync_state}</span>
-                  {#if item.completion_source}<span>Raw completion_source: {item.completion_source}</span>{/if}
+                  {#if item.completion_source}<span>Код причины: {item.completion_source}</span>{/if}
                   {#if item.contains_tail_pour}<span>Есть долив хвоста</span>{/if}
                   {#if item.contains_non_sale_flow}<span>Есть служебный налив</span>{/if}
                   {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
@@ -542,7 +543,7 @@
       {#if detail}
         <div class="drawer-head">
           <div>
-            <div class="eyebrow">Detail panel</div>
+            <div class="eyebrow">{SESSION_COPY.detailsPanel}</div>
             <h2>{detail.summary.guest_full_name}</h2>
             <p>{detail.summary.card_uid || 'Без карты'} · {detail.summary.operator_status}</p>
           </div>
@@ -567,7 +568,7 @@
         </section>
 
         <section class="timeline-section">
-          <h3>Lifecycle события</h3>
+          <h3>{SESSION_COPY.lifecycleSummary}</h3>
           <dl>
             <div><dt>Открытие</dt><dd>{formatMaybeDate(detail.summary.lifecycle.opened_at)}</dd></div>
             <div><dt>Авторизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
@@ -595,7 +596,7 @@
         </section>
 
         <section class="timeline-section">
-          <h3>Sync / tail / non-sale / incidents</h3>
+          <h3>{SESSION_COPY.operatorContext}</h3>
           {#if detailNarrativeGroups.operatorObservations.length}
             <ul class="timeline compact">
               {#each detailNarrativeGroups.operatorObservations as observation}
@@ -603,12 +604,12 @@
               {/each}
             </ul>
           {:else}
-            <p class="muted">Дополнительных операторских наблюдений backend не передал.</p>
+            <p class="muted">Дополнительных операторских наблюдений система не передала.</p>
           {/if}
         </section>
 
         <section class="timeline-section">
-          <h3>Operator actions</h3>
+          <h3>{SESSION_COPY.operatorActions}</h3>
           {#if detailOperatorActions.length}
             <ul class="timeline compact">
               {#each detailOperatorActions as action}
@@ -621,9 +622,9 @@
         </section>
       {:else}
         <div class="empty-drawer">
-          <div class="eyebrow">Detail panel</div>
+          <div class="eyebrow">{SESSION_COPY.detailsPanel}</div>
           <h2>Выберите сессию</h2>
-          <p>Откройте любую строку в активном блоке или журнале, чтобы увидеть lifecycle, синхронизацию и действия оператора.</p>
+          <p>{SESSION_COPY.emptyDetailsText}</p>
         </div>
       {/if}
     </aside>

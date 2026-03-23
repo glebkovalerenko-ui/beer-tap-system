@@ -2,6 +2,7 @@
   // @ts-nocheck
   import { createEventDispatcher } from 'svelte';
   import { formatDateTimeRu } from '../../lib/formatters.js';
+  import { INCIDENT_COPY } from '../../lib/operatorLabels.js';
 
   export let groupedItems = [];
   export let selectedIncidentId = null;
@@ -23,7 +24,7 @@
 
 <div class="incident-list">
   {#if groupedItems.every((group) => group.items.length === 0)}
-    <p class="empty">Нет инцидентов по выбранным фильтрам.</p>
+    <p class="empty">{INCIDENT_COPY.noIncidentsFiltered}</p>
   {:else}
     {#each groupedItems as group (group.key)}
       <section class="incident-group">
@@ -35,7 +36,7 @@
         </div>
 
         {#if group.items.length === 0}
-          <p class="empty small">В этой колонке сейчас пусто.</p>
+          <p class="empty small">{INCIDENT_COPY.noIncidentsColumn}</p>
         {:else}
           <div class="incident-cards">
             {#each group.items as item (item.incident_id)}
@@ -65,15 +66,15 @@
                     <span class="signal-badge">Эскалация {formatDateTimeRu(item.accountability.lastEscalatedAt)}</span>
                   {/if}
                   {#if readOnly}
-                    <span class="signal-badge warning">Read-only</span>
+                    <span class="signal-badge warning">{INCIDENT_COPY.readOnly}</span>
                   {/if}
                 </div>
 
                 <div class="card-links">
-                  <button class="link" on:click|stopPropagation={() => emit('select', item)}>Открыть детали</button>
-                  <button class="link" on:click|stopPropagation={() => emit('openTap', item)}>Открыть кран</button>
-                  <button class="link" on:click|stopPropagation={() => emit('openSession', item)}>Открыть сессию</button>
-                  <button class="link" on:click|stopPropagation={() => emit('openSystem', item)}>System</button>
+                  <button class="link" on:click|stopPropagation={() => emit('select', item)}>{INCIDENT_COPY.openDetails}</button>
+                  <button class="link" on:click|stopPropagation={() => emit('openTap', item)}>{INCIDENT_COPY.openTap}</button>
+                  <button class="link" on:click|stopPropagation={() => emit('openSession', item)}>{INCIDENT_COPY.openSession}</button>
+                  <button class="link" on:click|stopPropagation={() => emit('openSystem', item)}>{INCIDENT_COPY.openSystem}</button>
                 </div>
 
                 <div class="card-actions">
@@ -94,7 +95,7 @@
                     >Эскалировать</button>
                   {/if}
                   {#if actionCapabilities.note || actionCapabilities.close}
-                    <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>Action form</button>
+                    <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>{INCIDENT_COPY.actionForm}</button>
                   {/if}
                 </div>
               </article>

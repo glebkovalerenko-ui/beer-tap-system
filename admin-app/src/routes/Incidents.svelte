@@ -5,6 +5,7 @@
   import Modal from '../components/common/Modal.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
   import { formatDateTimeRu } from '../lib/formatters.js';
+  import { INCIDENT_COPY } from '../lib/operatorLabels.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
@@ -95,22 +96,22 @@
 
   function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
     const happened = incident.status === 'closed'
-      ? 'закрыт и подтверждён в backend-источнике.'
+      ? 'закрыт и подтверждён системой.'
       : incident.status === 'in_progress'
-        ? 'находится в работе и требует фиксированного результата.'
-        : 'ещё ждёт назначения ответственного.';
+        ? 'в работе и требует подтверждённого результата.'
+        : 'ещё ждёт назначения ответственного оператора.';
 
     return [
       `${titleCase(incident.type)} на ${tapMatch?.display_name || incident.tap || 'непривязанном кране'} ${happened}`,
       accountability.owner
         ? `Ответственный оператор: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
-        : 'Ответственный оператор не зафиксирован — это gap для operator accountability и его нужно закрыть backend-действием.',
+        : 'Ответственный оператор не назначен — это нужно исправить следующим действием в системе.',
       tapMatch?.operations?.productStateLabel
-        ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без live-описания'}.`
-        : 'По крану нет расширенной telemetry, поэтому narrative собран из incident/tap/session данных клиента.',
+        ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без уточнения от системы'}.`
+        : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и сессии.',
       sessionMatch
         ? `Связанная сессия #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
-        : 'Активная связанная сессия не найдена — стоит проверить журнал сессий и системные события.',
+        : 'Связанная сессия не найдена — стоит проверить журнал сессий и сигналы системы.',
     ];
   }
 
@@ -120,7 +121,7 @@
     if (incident.priority === 'high') impact.push('требует быстрого вмешательства смены');
     if (tapMatch?.operations?.currentPour?.isActive) impact.push('по крану прямо сейчас фиксируется поток');
     if (tapMatch?.operations?.heartbeat?.isStale) impact.push('heartbeat устарел');
-    if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории сессии уже есть incident (${sessionMatch.incident_count || 1})`);
+    if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории сессии уже есть инцидент (${sessionMatch.incident_count || 1})`);
     if (impact.length === 0) impact.push('локальное влияние ограничено одним краном и требует подтверждения оператором');
     return impact;
   }
@@ -134,7 +135,7 @@
         title: item.title,
         description: item.description,
         href: item.sessionAction?.href || '#/taps',
-        label: item.sessionAction?.label || 'Открыть кран',
+        label: item.sessionAction?.label || INCIDENT_COPY.openTap,
       });
     }
 
@@ -153,10 +154,10 @@
       events.push({
         id: `incident-${incident.incident_id}`,
         time: incident.created_at,
-        title: 'Incident зарегистрирован',
-        description: 'Пока доступны только агрегированные данные incident API.',
+        title: 'Инцидент зарегистрирован',
+        description: 'Пока доступны только сводные данные системы по инциденту.',
         href: '#/system',
-        label: 'Открыть системный контекст',
+        label: INCIDENT_COPY.openSystem,
       });
     }
 
@@ -170,13 +171,13 @@
     const nextStep = incident.status === 'new'
       ? 'Назначить ответственного и перевести инцидент в работу.'
       : incident.status === 'in_progress'
-        ? 'Зафиксировать действие, при необходимости эскалировать и закрыть только после подтверждения backend.'
+        ? 'Зафиксировать действие, при необходимости передать на разбор и закрыть только после подтверждения системы.'
         : 'Проверить, что closure note и таймлайн содержат итог разбора.';
 
     return {
       owner,
       ownerLabel: owner || 'Не назначен',
-      ownerBadge: owner ? `Owner: ${owner}` : 'Owner не назначен',
+      ownerBadge: owner ? `Ответственный: ${owner}` : 'Ответственный не назначен',
       ownerState: owner ? 'assigned' : 'unassigned',
       acknowledgedAt: incident.last_action_at || (incident.status !== 'new' ? incident.created_at : null),
       lastEscalatedAt,
@@ -187,7 +188,7 @@
         {
           key: 'new',
           label: 'Новый',
-          description: 'Incident появился в backend и ждёт triage.',
+          description: 'Инцидент поступил из системы и ждёт первичной обработки.',
           active: incident.status === 'new',
           done: incident.status !== 'new',
         },
@@ -196,7 +197,7 @@
           label: 'В работе',
           description: owner
             ? `Ответственный ${owner} ведёт разбор.`
-            : 'Нужно назначить owner, чтобы зафиксировать accountability.',
+            : 'Нужно назначить ответственного, чтобы зафиксировать работу по инциденту.',
           active: incident.status === 'in_progress',
           done: incident.status === 'closed',
         },
@@ -204,8 +205,8 @@
           key: 'closed',
           label: 'Закрыт',
           description: incident.status === 'closed'
-            ? 'Источник уже вернул closed — статус считается устойчивым.'
-            : 'Закрытие допустимо только после backend-подтверждения.',
+            ? 'Система уже подтвердила закрытие — статус считается итоговым.'
+            : 'Закрытие допустимо только после подтверждения системы.',
           active: incident.status === 'closed',
           done: incident.status === 'closed',
         },
@@ -227,7 +228,7 @@
       actions.push({
         kind: 'escalation',
         title: 'Эскалация в system context',
-        detail: 'Эскалация видна как системный сигнал; без backend action нельзя считать её подтверждённой оператором.',
+        detail: 'Передача на разбор видна как сигнал системы; без подтверждённого действия её нельзя считать завершённой.',
         time: accountability.lastEscalatedAt,
       });
     }
@@ -251,7 +252,7 @@
       actions.push({
         kind: 'history',
         title: 'Есть след в истории сессий',
-        detail: `В связанной сессии отмечено incident: ${sessionMatch.incident_count}.`,
+        detail: `В связанной сессии отмечен инцидент: ${sessionMatch.incident_count}.`,
         time: sessionMatch.last_event_at || sessionMatch.opened_at,
       });
     }
@@ -281,7 +282,7 @@
       sessionMatch,
       sessionHref: sessionMatch ? '#/sessions/history' : '#/sessions',
       systemHref: '#/system',
-      sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'incident-api',
+      sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
       typeLabel: titleCase(incident.type),
       priorityLabel: PRIORITY_LABELS[incident.priority] || titleCase(incident.priority),
       statusLabel: STATUS_LABELS[incident.status] || titleCase(incident.status),
@@ -400,13 +401,13 @@
         await incidentStore.addIncidentNote({ incidentId: item.incident_id, note: actionForm.note.trim() });
       }
 
-      uiStore.notifySuccess('Incident action отправлен.');
+      uiStore.notifySuccess('Действие по инциденту зафиксировано.');
       if (selectedIncidentId !== item.incident_id) {
         selectedIncidentId = item.incident_id;
       }
       closeActionForm();
     } catch (error) {
-      uiStore.notifyWarning(error.message || 'Incident action сейчас недоступен.');
+      uiStore.notifyWarning(error.message || 'Фиксация действия по инциденту сейчас недоступна.');
     }
   }
 </script>
@@ -418,20 +419,20 @@
     <div class="page-header">
       <div>
         <h1>Инциденты</h1>
-        <p>Operator accountability board: backend-авторитетный статус, ownership flow и явная разница между подтверждённым состоянием и недоступными действиями.</p>
+        <p>Оператор видит подтверждённый статус инцидента, ответственного и разницу между доступными действиями и только информацией для просмотра.</p>
       </div>
       <div class="header-stats">
         <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
         <article><span>Открытые</span><strong>{enrichedItems.filter((item) => item.status !== 'closed').length}</strong></article>
-        <article><span>System state</span><strong>{$systemStore.overallState}</strong></article>
+        <article><span>{INCIDENT_COPY.systemLabel}</span><strong>{$systemStore.overallState}</strong></article>
       </div>
     </div>
 
     <section class="ui-card banner-panel" data-tone={$incidentStore.readOnly ? 'warning' : 'ok'}>
       <div>
-        <div class="eyebrow">Incident action layer</div>
-        <strong>{$incidentStore.readOnly ? 'Read-only mode' : 'Backend actions active'}</strong>
-        <p>{$incidentStore.readOnly ? $incidentStore.readOnlyReason : 'Все action-изменения записываются через backend и обновляют очередь инцидентов.'}</p>
+        <div class="eyebrow">{INCIDENT_COPY.actionLayer}</div>
+        <strong>{$incidentStore.readOnly ? INCIDENT_COPY.readOnlyMode : INCIDENT_COPY.backendActionsActive}</strong>
+        <p>{$incidentStore.readOnly ? $incidentStore.readOnlyReason : 'Все действия оператора записываются в систему и сразу обновляют очередь инцидентов.'}</p>
       </div>
       {#if $incidentStore.actionError}
         <p class="banner-error">{$incidentStore.actionError}</p>
@@ -481,7 +482,7 @@
       </div>
       <div class="filters-actions">
         <button class="secondary" on:click={resetFilters}>Сбросить</button>
-        <button on:click={() => incidentStore.fetchIncidents()} disabled={$incidentStore.loading}>Обновить incidents</button>
+        <button on:click={() => incidentStore.fetchIncidents()} disabled={$incidentStore.loading}>{INCIDENT_COPY.refreshQueue}</button>
       </div>
     </section>
 
@@ -510,7 +511,7 @@
         {#if selectedIncident}
           <div class="detail-head">
             <div>
-              <div class="eyebrow">Incident detail</div>
+              <div class="eyebrow">{INCIDENT_COPY.detailsPanel}</div>
               <h2>#{selectedIncident.incident_id}</h2>
               <p>{selectedIncident.typeLabel} · {selectedIncident.priorityLabel} · {selectedIncident.statusLabel}</p>
             </div>
@@ -519,26 +520,26 @@
 
           <section class="detail-section accountability-strip">
             <article>
-              <span>Owner</span>
+              <span>{INCIDENT_COPY.owner}</span>
               <strong>{selectedIncident.accountability.ownerLabel}</strong>
               <small>{selectedIncident.accountability.nextStep}</small>
             </article>
             <article>
               <span>Последнее действие</span>
               <strong>{selectedIncident.accountability.lastActionLabel}</strong>
-              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Источник: backend incident feed' : 'Источник: временный client-side draft'}</small>
+              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Источник: лента инцидентов системы' : 'Источник: временная локальная запись'}</small>
             </article>
             <article>
               <span>Закрыт в</span>
               <strong>{selectedIncident.accountability.closedAt ? formatDateTimeRu(selectedIncident.accountability.closedAt) : 'Ещё открыт'}</strong>
-              <small>{selectedIncident.closed_at ? 'Server-confirmed closure timestamp.' : 'Ожидает server-confirmed closure.'}</small>
+              <small>{selectedIncident.closed_at ? 'Время закрытия подтверждено системой.' : 'Ожидает подтверждения закрытия от системы.'}</small>
             </article>
           </section>
 
           <section class="detail-section">
             <div class="section-head">
-              <h3>State flow</h3>
-              <button class="link" on:click={() => openActionForm(selectedIncident, selectedIncident.status === 'new' ? 'claim' : 'note')}>Открыть action form</button>
+              <h3>{INCIDENT_COPY.stateFlow}</h3>
+              <button class="link" on:click={() => openActionForm(selectedIncident, selectedIncident.status === 'new' ? 'claim' : 'note')}>{INCIDENT_COPY.actionForm}</button>
             </div>
             <ol class="state-flow">
               {#each selectedIncident.accountability.stateFlow as step}
@@ -560,20 +561,20 @@
 
           <section class="detail-section meta-grid">
             <article><span>Кран</span><strong>{selectedIncident.tapLabel}</strong></article>
-            <article><span>Owner (server)</span><strong>{selectedIncident.owner || selectedIncident.accountability.ownerLabel}</strong></article>
+            <article><span>{INCIDENT_COPY.ownerServer}</span><strong>{selectedIncident.owner || selectedIncident.accountability.ownerLabel}</strong></article>
             <article><span>Источник</span><strong>{selectedIncident.sourceLabel}</strong></article>
             <article><span>Связанная сессия</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найдена'}</strong></article>
           </section>
 
           <section class="detail-section">
-            <div class="section-head"><h3>Impact</h3><button class="link" on:click={() => openSystem({ detail: { item: selectedIncident } })}>Открыть System</button></div>
+            <div class="section-head"><h3>{INCIDENT_COPY.impact}</h3><button class="link" on:click={() => openSystem({ detail: { item: selectedIncident } })}>{INCIDENT_COPY.openSystem}</button></div>
             <ul class="chip-list">
               {#each selectedIncident.impact as item}<li>{item}</li>{/each}
             </ul>
           </section>
 
           <section class="detail-section">
-            <div class="section-head"><h3>Связанные события</h3><button class="link" on:click={() => openSession({ detail: { item: selectedIncident } })}>Открыть Session</button></div>
+            <div class="section-head"><h3>{INCIDENT_COPY.relatedEvents}</h3><button class="link" on:click={() => openSession({ detail: { item: selectedIncident } })}>{INCIDENT_COPY.openSession}</button></div>
             <ul class="timeline">
               {#each selectedIncident.relatedEvents as event}
                 <li>
@@ -591,7 +592,7 @@
           </section>
 
           <section class="detail-section">
-            <div class="section-head"><h3>Что уже предпринималось</h3><button class="link" on:click={() => openActionForm(selectedIncident, 'note')}>Открыть action form</button></div>
+            <div class="section-head"><h3>{INCIDENT_COPY.actionsTaken}</h3><button class="link" on:click={() => openActionForm(selectedIncident, 'note')}>{INCIDENT_COPY.actionForm}</button></div>
             {#if selectedIncident.actionsTaken.length}
               <ul class="timeline compact">
                 {#each selectedIncident.actionsTaken as action}
@@ -605,11 +606,11 @@
                 {/each}
               </ul>
             {:else}
-              <p class="muted">Явных backend-действий пока нет. Экран не будет имитировать их локально.</p>
+              <p class="muted">{INCIDENT_COPY.noActionsYet}</p>
             {/if}
           </section>
         {:else}
-          <p class="muted">По текущим фильтрам инциденты не найдены.</p>
+          <p class="muted">{INCIDENT_COPY.noIncidentsFiltered}</p>
         {/if}
       </aside>
     </div>
@@ -618,8 +619,8 @@
   {#if isActionModalOpen && actionModalIncident}
     <Modal on:close={closeActionForm}>
       <div slot="header">
-        <h2>Action form · #{actionModalIncident.incident_id}</h2>
-        <p class="modal-subtitle">Форма пишет реальные incident mutations в backend и ждёт server-confirmed ответ перед обновлением выбранного incident.</p>
+        <h2>{INCIDENT_COPY.actionFormTitle} · #{actionModalIncident.incident_id}</h2>
+        <p class="modal-subtitle">Форма записывает реальное действие по инциденту в систему и ждёт подтверждения перед обновлением карточки.</p>
       </div>
 
       <div class="incident-action-form">
@@ -639,24 +640,24 @@
               <input bind:value={actionForm.owner} placeholder="Имя оператора" disabled={$incidentStore.readOnly} />
             </label>
           </div>
-          <p class="muted">Текущий backend-статус: <strong>{actionModalIncident.statusLabel}</strong>. После submit карточка обновится server-confirmed данными без сброса выбранного incident.</p>
+          <p class="muted">Текущий статус в системе: <strong>{actionModalIncident.statusLabel}</strong>. После сохранения карточка обновится подтверждёнными данными без сброса выбранного инцидента.</p>
         </section>
 
         <section class="detail-section compact-panel">
-          <h3>Operator note</h3>
+          <h3>{INCIDENT_COPY.operatorNote}</h3>
           <textarea bind:value={actionForm.note} rows="5" placeholder="Что сделал оператор, что проверил, какие данные увидел" disabled={$incidentStore.readOnly}></textarea>
         </section>
 
         {#if actionForm.action === 'escalate'}
           <section class="detail-section compact-panel">
-            <h3>Escalation handoff</h3>
-            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder="Кому и зачем эскалируете, какой сигнал требует engineering/system review" disabled={$incidentStore.readOnly}></textarea>
+            <h3>{INCIDENT_COPY.escalationHandoff}</h3>
+            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder="Кому передаёте инцидент, почему нужен дополнительный разбор и какой сигнал это подтвердил" disabled={$incidentStore.readOnly}></textarea>
           </section>
         {/if}
 
         {#if actionForm.action === 'close'}
           <section class="detail-section compact-panel">
-            <h3>Closure summary</h3>
+            <h3>{INCIDENT_COPY.closureSummary}</h3>
             <textarea bind:value={actionForm.resolutionSummary} rows="4" placeholder="Как устранено, чем подтверждено, когда можно считать кейс закрытым" disabled={$incidentStore.readOnly}></textarea>
           </section>
         {/if}
@@ -664,9 +665,9 @@
         <section class="detail-section compact-panel">
           <h3>Прозрачность статуса</h3>
           <ul class="modal-checklist">
-            <li>Новый → в работе → закрыт отображаются только по данным backend feed.</li>
-            <li>Owner, escalation и closure сохраняются в backend overlay и audit log.</li>
-            <li>UI показывает owner / last action / closed at только из server-confirmed полей.</li>
+            <li>Новый → в работе → закрыт отображаются только по данным системы.</li>
+            <li>Ответственный, передача на разбор и закрытие сохраняются в журнале системы.</li>
+            <li>Экран показывает ответственного, последнее действие и время закрытия только из подтверждённых полей.</li>
           </ul>
         </section>
       </div>
@@ -674,7 +675,7 @@
       <div slot="footer" class="modal-actions">
         <button class="secondary" type="button" on:click={closeActionForm}>Закрыть</button>
         <button type="button" on:click={submitActionForm} disabled={$incidentStore.readOnly || $incidentStore.actionLoading}>
-          {$incidentStore.readOnly ? 'Backend read-only' : 'Сохранить action'}
+          {$incidentStore.readOnly ? INCIDENT_COPY.readOnlyCta : INCIDENT_COPY.saveAction}
         </button>
       </div>
     </Modal>

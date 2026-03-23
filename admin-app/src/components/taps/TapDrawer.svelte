@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
+  import { TAP_COPY } from '../../lib/operatorLabels.js';
 
   export let tap;
   export let canDisplayOverride = false;
@@ -21,17 +22,17 @@
   $: stateExplanationRows = [
     { label: 'Канонический статус', value: operations.productStateLabel || 'Нет данных', note: `${operatorMeta.icon} · ${operatorMeta.headline || 'Без пояснения'}` },
     { label: 'Почему этот статус', value: operations.operatorStateReason || 'Причина не передана', note: operations.operatorStateTelemetry || 'Дополнительной телеметрии нет' },
-    { label: 'Live telemetry', value: operations.liveStatus || 'Нет данных', note: operations.syncState?.label || null },
+    { label: TAP_COPY.liveSignals, value: operations.liveStatus || 'Нет данных', note: operations.syncState?.label || null },
   ];
   $: liveStateRows = [
-    { label: 'Подключение', value: operations.heartbeat?.isStale ? 'offline' : 'online', note: operations.liveStatus || null },
-    { label: 'Ридер', value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.state || null },
+    { label: 'Подключение', value: operations.heartbeat?.isStale ? TAP_COPY.connectivityOffline : TAP_COPY.connectivityOnline, note: operations.liveStatus || null },
+    { label: TAP_COPY.reader, value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.state || null },
     { label: 'Клапан', value: valveStatusLabel(tap, operations, currentPour), note: null },
     { label: 'Поток', value: currentPour.isActive ? 'Идёт налив' : 'Поток не зафиксирован', note: currentPour.volumeMl ? formatVolumeRu(currentPour.volumeMl) : null },
-    { label: 'Экран', value: operations.displayStatus?.label || 'Нет данных', note: displaySummary },
+    { label: TAP_COPY.screen, value: operations.displayStatus?.label || 'Нет данных', note: displaySummary },
     { label: 'Последний heartbeat', value: operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных', note: operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал heartbeat' },
     { label: 'Синхронизация', value: operations.syncState?.label || 'Нет данных', note: tap?.status || null },
-    { label: 'Активный визит / карта', value: activeVisitCardLabel(session), note: session?.guestName || null },
+    { label: TAP_COPY.activeSessionCard, value: activeVisitCardLabel(session), note: session?.guestName || null },
   ];
   $: beveragePrice = beverage.sell_price_per_liter ?? tap?.sell_price_per_liter ?? null;
   $: projectedRemainingBalance = session?.projectedRemainingBalance ?? session?.projected_remaining_balance ?? computeProjectedRemaining(session, currentPour);
@@ -221,14 +222,14 @@
                   {:else if projectedRemainingAllowanceState === 'not_configured'}
                     Лимит не задан
                   {:else}
-                    Нет данных от backend
+                    {TAP_COPY.backendNoData}
                   {/if}
                   {#if projectedRemainingAllowanceNote}
                     <small>{projectedRemainingAllowanceNote}</small>
                   {/if}
                 </dd>
               </div>
-              <div><dt>Активный визит / карта</dt><dd>{activeVisitCardLabel(session)}</dd></div>
+              <div><dt>{TAP_COPY.activeSessionCard}</dt><dd>{activeVisitCardLabel(session)}</dd></div>
             </dl>
           </div>
 
@@ -236,7 +237,7 @@
             {#if canControl && session}
               <button class="primary danger" on:click={() => emit('stop-pour')}>Остановить налив</button>
             {/if}
-            <button class="primary" on:click={() => openLinkedSession(session?.visitId)}>Открыть сессию</button>
+            <button class="primary" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
             {#if canControl}
               <button class="secondary" on:click={() => emit('toggle-lock')}>
                 {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
@@ -318,7 +319,7 @@
           {/each}
         </div>
       {:else}
-        <p class="muted">Нет недавних событий по этому крану.</p>
+        <p class="muted">{TAP_COPY.noRecentEvents}</p>
       {/if}
     </section>
   </aside>
