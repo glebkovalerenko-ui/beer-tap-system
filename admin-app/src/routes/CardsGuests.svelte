@@ -23,7 +23,7 @@
   let pageError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
-  let isEditModalOpen = false;
+  let isManagementModalOpen = false;
   let formError = '';
   let initialLoadAttempted = false;
   let pendingScenario = '';
@@ -55,8 +55,20 @@
   $: phoneCandidates = guests.filter((guest) => {
     const q = phoneQuery.trim().toLowerCase();
     if (!q) return false;
-    return (guest.phone_number || '').toLowerCase().includes(q);
+    return [
+      guest.phone_number,
+      guest.id_document,
+      guest.guest_id,
+      fullName(guest),
+      ...(guest.cards || []).map((card) => card.card_uid),
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(q));
   }).slice(0, 12);
+  $: quickLookupResults = phoneCandidates.map((guest) => ({
+    guest_id: guest.guest_id,
+    label: fullName(guest),
+    meta: [guest.phone_number, guest.id_document].filter(Boolean).join(' · ') || 'Без контактов',
+    trailing: activeVisits.some((visit) => visit.guest_id === guest.guest_id) ? 'Активный визит' : formatRubAmount(guest.balance),
+  }));
   $: selectedGuest = selectedGuestId ? guests.find((guest) => guest.guest_id === selectedGuestId) : null;
   $: selectedGuest = !selectedGuest && selectedLookup?.guest?.guest_id
     ? guests.find((guest) => guest.guest_id === selectedLookup.guest.guest_id) || null
@@ -349,7 +361,7 @@
     formError = '';
     try {
       await guestStore.updateGuest(selectedGuest.guest_id, event.detail);
-      isEditModalOpen = false;
+      isManagementModalOpen = false;
       uiStore.notifySuccess('Данные гостя обновлены');
     } catch (error) {
       formError = normalizeError(error);
@@ -383,6 +395,10 @@
         title="Lookup и решение оператора"
         description="Сначала идентифицируйте карту, затем выберите доступное для роли действие: проверка, сессия, история или разрешённые management-операции."
         result={selectedLookup}
+        searchQuery={phoneQuery}
+        searchResults={quickLookupResults}
+        searchPlaceholder="Номер телефона, UID или идентификатор"
+        searchResultLabel="Поиск по номеру / идентификатору"
         error={lookupError}
         loading={$lostCardStore.loading || $visitStore.loading}
         allowRestoreLost={canReissue}
@@ -400,38 +416,8 @@
         on:open-guest={(event) => selectGuest(event.detail.guestId)}
         on:open-new-visit={handleOpenNewVisit}
         on:scenario-action={handleScenarioAction}
+        on:search-change={(event) => { phoneQuery = event.detail.value; }}
       />
-
-      <section class="ui-card phone-panel">
-        <div class="section-top">
-          <div>
-            <h2>Найти по номеру</h2>
-            <p>Телефон нужен как fallback, если карту не удалось считать или guest уже назвал себя.</p>
-          </div>
-        </div>
-        <input type="text" bind:value={phoneQuery} placeholder="+7 / последние цифры телефона" />
-
-        {#if phoneQuery.trim() && phoneCandidates.length === 0}
-          <p class="hint">По номеру ничего не найдено.</p>
-        {:else if phoneCandidates.length > 0}
-          <div class="phone-list">
-            {#each phoneCandidates as guest}
-              <button class:selected={selectedGuest?.guest_id === guest.guest_id} class="phone-item" on:click={() => selectGuest(guest.guest_id)}>
-                <div>
-                  <strong>{fullName(guest)}</strong>
-                  <div>{guest.phone_number}</div>
-                </div>
-                <div>
-                  <strong>{formatRubAmount(guest.balance)}</strong>
-                  <div>{activeVisits.some((visit) => visit.guest_id === guest.guest_id) ? 'Есть активный визит' : 'Без активного визита'}</div>
-                </div>
-              </button>
-            {/each}
-          </div>
-        {:else}
-          <p class="hint">Поиск по телефону покажет здесь до 12 совпадений.</p>
-        {/if}
-      </section>
     </div>
 
     <div class="operator-layout">
@@ -451,13 +437,13 @@
             canMarkLost={canReissue}
             canOpenHistory={canViewHistory}
             canOpenVisit={canOpenVisit}
-            canEdit={canReissue || canToggleBlock}
+            canManageProfile={canReissue || canToggleBlock}
             on:top-up={handleOpenTopUpModal}
             on:toggle-block={handleToggleBlock}
             on:mark-lost={handleMarkLost}
             on:open-history={handleOpenHistory}
             on:open-visit={handleOpenVisit}
-            on:edit={() => { if (!(canReissue || canToggleBlock)) { uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.'); return; } formError = ''; isEditModalOpen = true; }}
+            on:open-management={() => { if (!(canReissue || canToggleBlock)) { uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.'); return; } formError = ''; isManagementModalOpen = true; }}
           />
         {:else}
           <div class="empty-state">
@@ -491,11 +477,13 @@
           <div class="scenario-stack">
             <section class:active={pendingScenario === 'check-card'} class="scenario-card">
               <h3>Проверить карту</h3>
-              <p>Базовая операторская проверка без углубления в профиль.</p>
+              <p>Только оперативный summary без перехода в guest master-data.</p>
               <dl>
                 <div><dt>Имя</dt><dd>{lookupGuestName}</dd></div>
                 <div><dt>Статус карты</dt><dd>{selectedLookup?.is_lost ? 'Lost' : (selectedLookup?.card?.status || selectedGuest?.cards?.[0]?.status || 'Неизвестно')}</dd></div>
                 <div><dt>Баланс</dt><dd>{selectedGuest ? formatRubAmount(selectedGuest.balance) : '—'}</dd></div>
+                <div><dt>Активный визит</dt><dd>{selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || 'Нет'}</dd></div>
+                <div><dt>Последний кран</dt><dd>{lastTapLabel}</dd></div>
               </dl>
             </section>
 
@@ -570,9 +558,17 @@
     {#if topUpError}<p class="error">{topUpError}</p>{/if}
   {/if}
 
-  {#if isEditModalOpen && selectedGuest}
-    <Modal on:close={() => { isEditModalOpen = false; }}>
-      <GuestForm guest={selectedGuest} on:save={handleSaveGuest} on:cancel={() => { isEditModalOpen = false; }} isSaving={$guestStore.loading} />
+  {#if isManagementModalOpen && selectedGuest}
+    <Modal on:close={() => { isManagementModalOpen = false; }}>
+      <section class="management-modal">
+        <div class="section-top">
+          <div>
+            <h2>Управление профилем гостя</h2>
+            <p>Глубокий management path: мастер-данные и редактирование вынесены из основного lookup-flow.</p>
+          </div>
+        </div>
+        <GuestForm guest={selectedGuest} on:save={handleSaveGuest} on:cancel={() => { isManagementModalOpen = false; }} isSaving={$guestStore.loading} />
+      </section>
       {#if formError}<p class="error">{formError}</p>{/if}
     </Modal>
   {/if}
@@ -582,18 +578,12 @@
   .cards-guests-page { display: grid; gap: 1rem; }
   .page-header { display: flex; justify-content: space-between; gap: 1rem; align-items: end; }
   .page-header h1, .page-header p { margin: 0; }
-  .page-header p, .hint { color: var(--text-secondary); }
-  .quick-grid { display: grid; gap: 1rem; grid-template-columns: minmax(520px, 1.45fr) minmax(300px, 0.85fr); }
+  .page-header p { color: var(--text-secondary); }
+  .quick-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
   .operator-layout { display: grid; gap: 1rem; grid-template-columns: minmax(380px, 1fr) minmax(320px, 0.9fr); }
-  .phone-panel, .detail-panel, .scenario-panel { display: grid; gap: 0.8rem; }
+  .detail-panel, .scenario-panel, .management-modal { display: grid; gap: 0.8rem; }
   .section-top { display: flex; justify-content: space-between; gap: 0.75rem; align-items: start; }
   .section-top h2, .section-top p { margin: 0; }
-  .phone-list { display: grid; gap: 0.6rem; }
-  .phone-item {
-    width: 100%; display: flex; justify-content: space-between; gap: 1rem; text-align: left;
-    border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; padding: 0.85rem;
-  }
-  .phone-item.selected { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12); }
   .empty-state { min-height: 280px; display: grid; align-content: center; gap: 0.5rem; }
   .empty-state.compact { min-height: 180px; }
   .empty-state h3, .empty-state p { margin: 0; }
