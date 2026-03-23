@@ -59,18 +59,59 @@
     isKegFormModalOpen = true;
   }
 
+  function closeKegFormModal() {
+    isKegFormModalOpen = false;
+    kegToEdit = null;
+    kegFormError = '';
+  }
+
   async function handleSaveKeg(event) {
     const payload = event.detail;
+    const isEditing = Boolean(kegToEdit);
     kegFormError = '';
+
     try {
-      await kegStore.createKeg(payload);
-      isKegFormModalOpen = false;
-      kegToEdit = null;
+      if (isEditing) {
+        await kegStore.updateKeg(kegToEdit.keg_id, payload);
+      } else {
+        await kegStore.createKeg(payload);
+      }
+
+      closeKegFormModal();
       activeMode = VIEW_MODES.KEGS;
-      uiStore.notifySuccess('Кега успешно добавлена.');
+      uiStore.notifySuccess(isEditing ? 'Кега успешно обновлена.' : 'Кега успешно добавлена.');
     } catch (error) {
       const message = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Неизвестная ошибка';
       kegFormError = `Ошибка при сохранении кеги: ${message}`;
+    }
+  }
+
+  async function handleDeleteKeg(event) {
+    const { keg } = event.detail;
+    const isConfirmed = await uiStore.confirm({
+      title: 'Удалить кегу?',
+      message: `Кега «${keg.beverage.name}» будет удалена без возможности восстановления.`,
+      confirmText: 'Удалить',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+
+    if (!isConfirmed) {
+      return;
+    }
+
+    try {
+      await kegStore.deleteKeg(keg.keg_id);
+
+      if (kegToEdit?.keg_id === keg.keg_id) {
+        closeKegFormModal();
+      }
+
+      activeMode = VIEW_MODES.KEGS;
+      uiStore.notifySuccess('Кега успешно удалена.');
+    } catch (error) {
+      const message = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Неизвестная ошибка';
+      uiStore.notifyError(`Ошибка при удалении кеги: ${message}`);
     }
   }
 </script>
@@ -177,10 +218,11 @@
           kegs={$kegStore.kegs}
           on:edit={(event) => {
             kegToEdit = event.detail.keg;
+            kegFormError = '';
             activeMode = VIEW_MODES.KEGS;
             isKegFormModalOpen = true;
           }}
-          on:delete={() => {}}
+          on:delete={handleDeleteKeg}
         />
       {/if}
     </section>
@@ -188,12 +230,12 @@
 {/if}
 
 {#if isKegFormModalOpen}
-  <Modal on:close={() => { isKegFormModalOpen = false; kegToEdit = null; }}>
+  <Modal on:close={closeKegFormModal}>
     <KegForm
       keg={kegToEdit}
       isSaving={$kegStore.loading}
       on:save={handleSaveKeg}
-      on:cancel={() => { isKegFormModalOpen = false; kegToEdit = null; }}
+      on:cancel={closeKegFormModal}
     />
     {#if kegFormError}
       <p class="error modal-error">{kegFormError}</p>

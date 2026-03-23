@@ -13,17 +13,32 @@
   // --- ИЗМЕНЕНИЕ: Убираем хардкод. `availableBeverages` теперь реактивная переменная.
   $: availableBeverages = $beverageStore.beverages;
 
-  let formData = {
-    // Реактивно устанавливаем beverage_id, если список доступен
-    beverage_id: keg?.beverage.beverage_id || ($beverageStore.beverages[0]?.beverage_id || ''),
-    initial_volume_ml: keg?.initial_volume_ml || 50000, 
-    purchase_price: keg?.purchase_price || '3500.00',
-  };
-  
+  function createFormData(currentKeg) {
+    return {
+      beverage_id: currentKeg?.beverage?.beverage_id || currentKeg?.beverage_id || ($beverageStore.beverages[0]?.beverage_id || ''),
+      initial_volume_ml: currentKeg?.initial_volume_ml ?? 50000,
+      purchase_price: currentKeg?.purchase_price != null ? String(currentKeg.purchase_price) : '3500.00',
+    };
+  }
+
+  let formData = createFormData(keg);
+  let previousKegId = keg?.keg_id ?? null;
+
+  $: {
+    const nextKegId = keg?.keg_id ?? null;
+    if (nextKegId !== previousKegId) {
+      formData = createFormData(keg);
+      previousKegId = nextKegId;
+    }
+  }
+
   // Если список напитков изменится (например, после загрузки), 
   // а у нас не выбран ID, выберем первый доступный.
   $: if (!$beverageStore.loading && availableBeverages.length > 0 && !formData.beverage_id) {
-    formData.beverage_id = availableBeverages[0].beverage_id;
+    formData = {
+      ...formData,
+      beverage_id: availableBeverages[0].beverage_id,
+    };
   }
 
   function handleSubmit() {
