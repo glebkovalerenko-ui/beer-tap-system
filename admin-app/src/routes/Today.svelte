@@ -72,6 +72,11 @@
       return;
     }
 
+    if (item.target === 'incident') {
+      navigateTo(item.href || '/incidents');
+      return;
+    }
+
     navigateTo(item.href || '/today');
   }
 
@@ -132,6 +137,31 @@
     }
   }
 
+
+  function actionLabelForTarget(target) {
+    switch (target) {
+      case 'tap':
+        return 'Открыть кран';
+      case 'session':
+        return 'Открыть сессию';
+      case 'system':
+        return 'Открыть систему';
+      case 'incident':
+        return 'Закрыть / эскалировать';
+      default:
+        return 'Открыть контекст';
+    }
+  }
+
+  function buildActionItem(item) {
+    const target = item.target || 'system';
+    return {
+      ...item,
+      target,
+      actionLabel: actionLabelForTarget(target),
+    };
+  }
+
   function describeSyncProblems() {
     return ($tapStore.summary?.unsyncedFlowCount || 0)
       + ($tapStore.summary?.readerOfflineCount || 0)
@@ -175,14 +205,17 @@
   $: volumeTodayMl = poursToday.reduce((sum, item) => sum + Number(item.volume_ml || 0), 0);
   $: revenueToday = poursToday.reduce((sum, item) => sum + Number(item.amount_charged || 0), 0);
   $: syncProblemCount = describeSyncProblems();
+  $: needsHelpCount = ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'needs_help').length;
+  $: hasCriticalTapAttention = attentionItems?.some((item) => item.target === 'tap' && item.severity === 'critical') || false;
+  $: hasCriticalIncident = criticalIncidents.length > 0;
+  $: deEmphasizeSecondaryStats = hasCriticalIncident || hasCriticalTapAttention;
   $: heroStats = [
-    { label: 'Краны льют сейчас', value: $tapStore.summary?.pouringCount || 0, tone: 'neutral' },
-    { label: 'Краны требуют помощи', value: ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'needs_help').length, tone: 'warning' },
-    { label: 'Открытые инциденты', value: activeIncidents.length, tone: activeIncidents.length ? 'warning' : 'neutral' },
-    { label: 'Sync / offline проблемы', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral' },
-    { label: 'Сессии с наливами', value: sessionsToday, tone: 'neutral' },
-    { label: 'Объём за день', value: formatVolumeRu(volumeTodayMl), tone: 'neutral' },
-    { label: 'Выручка за день', value: `${revenueToday.toFixed(2)} ₽`, tone: 'neutral' },
+    { label: 'Льют сейчас', value: $tapStore.summary?.pouringCount || 0, tone: 'neutral', emphasis: 'primary' },
+    { label: 'Требуют помощи', value: needsHelpCount, tone: needsHelpCount ? 'warning' : 'neutral', emphasis: 'primary' },
+    { label: 'Открытые инциденты', value: activeIncidents.length, tone: activeIncidents.length ? 'warning' : 'neutral', emphasis: 'primary' },
+    { label: 'Sync / offline', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral', emphasis: 'primary' },
+    { label: 'Сессии сегодня', value: sessionsToday, tone: 'neutral', emphasis: 'secondary' },
+    { label: 'Объём / выручка', value: `${formatVolumeRu(volumeTodayMl)} · ${revenueToday.toFixed(2)} ₽`, tone: 'neutral', emphasis: 'secondary' },
   ];
   $: healthItems = $systemStore.health.primaryPills || [];
   $: systemAttentionItems = healthItems
@@ -196,11 +229,11 @@
       href: '/system',
       target: 'system',
       systemSource: item.label,
-      actionLabel: 'Открыть систему',
+      actionLabel: actionLabelForTarget('system'),
       category: 'система',
     }));
   $: attentionItems = [
-    ...(($tapStore.summary?.attentionItems || []).map((item) => ({
+    ...(($tapStore.summary?.attentionItems || []).map((item) => buildActionItem({
       ...item,
       target: item.href === '#/sessions' ? 'session' : 'tap',
       tapId: item.tapId || item.tap_id || Number.parseInt(String(item.key).split('-').at(-1), 10) || null,
@@ -209,24 +242,23 @@
       actionTitle: actionTitleForAttention(item),
       href: item.href?.replace('#', '') || '/taps',
     }))),
-    ...systemAttentionItems,
+    ...systemAttentionItems.map((item) => buildActionItem(item)),
   ]
     .filter((item) => !dismissedAttentionKeys.has(item.key))
     .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9));
 
   $: operatorActionItems = [
-    ...criticalIncidents.slice(0, 3).map((incident) => ({
+    ...criticalIncidents.slice(0, 3).map((incident) => buildActionItem({
       key: `incident-${incident.incident_id}`,
       severity: incident.priority === 'critical' ? 'critical' : 'warning',
       title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
-      description: incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент и назначьте ответственного.',
-      target: incident.tap ? 'tap' : 'system',
+      description: incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.',
+      target: 'incident',
       tapId: incident.tap || null,
       systemSource: `Инцидент #${incident.incident_id}`,
-      href: incident.tap ? '/taps' : '/incidents',
-      actionLabel: incident.tap ? 'Открыть кран' : 'Открыть инциденты',
+      href: '/incidents',
     })),
-    ...attentionItems.slice(0, 4).map((item) => ({
+    ...attentionItems.slice(0, 4).map((item) => buildActionItem({
       key: `next-${item.key}`,
       severity: item.severity,
       title: item.actionTitle || `Проверить ${item.title}`,
@@ -236,29 +268,24 @@
       visitId: item.visitId || null,
       systemSource: item.systemSource || item.title,
       href: item.href,
-      actionLabel: item.actionLabel,
     })),
   ]
     .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9))
     .filter((item, index, items) => items.findIndex((candidate) => candidate.key === item.key) === index)
-    .slice(0, 6);
+    .slice(0, 5);
+  $: primaryActionItem = operatorActionItems[0] || null;
+  $: secondaryActionItems = operatorActionItems.slice(1, 5);
 
-  $: priorityCta = criticalIncidents[0]
+  $: priorityCta = primaryActionItem
     ? {
-        label: criticalIncidents[0].tap ? `Открыть ${criticalIncidents[0].tap}` : `Разобрать инцидент #${criticalIncidents[0].incident_id}`,
-        target: criticalIncidents[0].tap ? 'tap' : 'system',
-        tapId: criticalIncidents[0].tap || null,
-        systemSource: `Инцидент #${criticalIncidents[0].incident_id}`,
+        label: primaryActionItem.actionLabel,
+        target: primaryActionItem.target,
+        tapId: primaryActionItem.tapId || null,
+        visitId: primaryActionItem.visitId || null,
+        systemSource: primaryActionItem.systemSource || primaryActionItem.title,
+        href: primaryActionItem.href,
       }
-    : attentionItems[0]
-      ? {
-          label: attentionItems[0].actionLabel || 'Открыть контекст',
-          target: attentionItems[0].target,
-          tapId: attentionItems[0].tapId || null,
-          visitId: attentionItems[0].visitId || null,
-          systemSource: attentionItems[0].systemSource || attentionItems[0].title,
-        }
-      : { label: 'Инциденты', href: '/incidents' };
+    : { label: 'Открыть систему', target: 'system', systemSource: 'Today overview', href: '/system' };
 </script>
 
 <section class="today-page">
@@ -294,9 +321,9 @@
       <button class="cta-button" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
       <a class="cta-button secondary" href="#/taps">Все краны</a>
     </div>
-    <div class="stats">
+    <div class="stats" data-muted={deEmphasizeSecondaryStats}>
       {#each heroStats as item}
-        <article data-tone={item.tone}>
+        <article data-tone={item.tone} data-emphasis={item.emphasis}>
           <span>{item.label}</span>
           <strong>{item.value}</strong>
         </article>
@@ -305,57 +332,50 @@
   </section>
 
   <div class="content-grid">
-    <section class="ui-card panel feed-panel">
+    <aside class="ui-card panel attention-panel priority-panel">
       <div class="section-head">
         <div>
-          <h2>Живая лента событий</h2>
-          <p>{sessionsToday} сессий с наливами сегодня · {$tapStore.summary?.pouringCount || 0} кранов льют прямо сейчас</p>
-        </div>
-      </div>
-
-      {#if $pourStore.loading && visibleFeedItems.length === 0}
-        <p>Загрузка ленты событий...</p>
-      {:else if $pourStore.error}
-        <p class="error">Ошибка загрузки ленты: {$pourStore.error}</p>
-      {:else}
-        <EventFeed
-          items={visibleFeedItems}
-          title="Живая лента событий"
-          emptyMessage="Нет событий, требующих показа в ленте."
-          onOpenTap={openTap}
-          onOpenSession={openSession}
-          onDismiss={dismissEvent}
-        />
-      {/if}
-    </section>
-
-    <aside class="ui-card panel attention-panel">
-      <div class="section-head">
-        <div>
-          <h2>Требует внимания</h2>
-          <p>Показываем только задачи, которые оператор может проверить или обработать прямо сейчас.</p>
+          <h2>Что требует действия сейчас</h2>
+          <p>Один главный шаг для оператора сверху, ниже — короткий список вторичных задач без конкуренции с обзорной лентой.</p>
         </div>
         <span class="count">{attentionItems.length}</span>
       </div>
 
       <section class="next-actions">
         <div class="next-actions-head">
-          <h3>Что сделать сейчас</h3>
-          <span>{operatorActionItems.length}</span>
+          <h3>Приоритетное действие</h3>
+          <span>{primaryActionItem ? 1 : 0}</span>
         </div>
-        {#if operatorActionItems.length === 0}
+        {#if !primaryActionItem}
           <p>Критичных действий сейчас нет — можно работать по обычному регламенту смены.</p>
         {:else}
-          <div class="next-actions-list">
-            {#each operatorActionItems as item}
-              <button class="next-action" data-severity={item.severity} on:click={() => openActionTarget(item)}>
-                <span>{item.title}</span>
-                <small>{item.description}</small>
+          <button class="next-action primary" data-severity={primaryActionItem.severity} on:click={() => openActionTarget(primaryActionItem)}>
+            <span>{primaryActionItem.title}</span>
+            <small>{primaryActionItem.description}</small>
+            <strong>{primaryActionItem.actionLabel}</strong>
+          </button>
+        {/if}
+      </section>
+
+      {#if secondaryActionItems.length > 0}
+        <section class="secondary-actions">
+          <div class="next-actions-head compact">
+            <h3>Следом проверить</h3>
+            <span>{secondaryActionItems.length}</span>
+          </div>
+          <div class="secondary-actions-list">
+            {#each secondaryActionItems as item}
+              <button class="secondary-action" data-severity={item.severity} on:click={() => openActionTarget(item)}>
+                <div>
+                  <span>{item.title}</span>
+                  <small>{item.description}</small>
+                </div>
+                <strong>{item.actionLabel}</strong>
               </button>
             {/each}
           </div>
-        {/if}
-      </section>
+        </section>
+      {/if}
 
       {#if attentionItems.length === 0}
         <p>Сейчас нет задач, требующих немедленного внимания.</p>
@@ -377,9 +397,33 @@
         </div>
       {/if}
     </aside>
+
+    <section class="ui-card panel feed-panel">
+      <div class="section-head">
+        <div>
+          <h2>Обзорная лента событий</h2>
+          <p>{sessionsToday} сессий с наливами сегодня · {$tapStore.summary?.pouringCount || 0} кранов льют прямо сейчас</p>
+        </div>
+      </div>
+
+      {#if $pourStore.loading && visibleFeedItems.length === 0}
+        <p>Загрузка ленты событий...</p>
+      {:else if $pourStore.error}
+        <p class="error">Ошибка загрузки ленты: {$pourStore.error}</p>
+      {:else}
+        <EventFeed
+          items={visibleFeedItems}
+          title="Обзорная лента событий"
+          emptyMessage="Нет событий, требующих показа в ленте."
+          onOpenTap={openTap}
+          onOpenSession={openSession}
+          onDismiss={dismissEvent}
+        />
+      {/if}
+    </section>
   </div>
 </section>
 
 <style>
-  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.top-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.top-strip article{display:flex;flex-direction:column;gap:.35rem}.health-pills{display:flex;flex-wrap:wrap;gap:.5rem}.health-pill{padding:.3rem .55rem;border-radius:999px;background:#eef2ff;font-size:.8rem}.health-pill.ok{background:#e8f7ee;color:#166534}.health-pill.warning,.health-pill.unknown,.health-pill.degraded{background:#fff7e6;color:#9a6700}.health-pill.critical,.health-pill.error,.health-pill.offline{background:#fdecec;color:#b42318}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;background:var(--accent-color,#1d4ed8);color:#fff;text-decoration:none;font-weight:600;border:0}.cta-button.secondary{background:#eef2ff;color:#1e3a8a}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc)}.stats article[data-tone='warning']{background:#fff7e6}.stats article span{display:block;color:var(--text-secondary)}.content-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:1rem}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:#eef2ff;font-weight:700}.next-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head h3{margin:0}.next-actions-list{display:grid;gap:.5rem}.next-action{display:grid;gap:.2rem;text-align:left;padding:.75rem .85rem;border-radius:.8rem;border:1px solid #dbe4ff;background:#fff;cursor:pointer}.next-action[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.next-action[data-severity='warning']{border-color:#facc15;background:#fffdf2}.next-action span{font-weight:700}.next-action small{color:var(--text-secondary)}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.attention-item[data-severity='warning']{border-color:#facc15;background:#fffdf2}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:#b42318}@media (max-width: 960px){.top-strip,.hero,.content-grid{grid-template-columns:1fr}.hero-actions{justify-content:flex-start}}
+  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.top-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.top-strip article{display:flex;flex-direction:column;gap:.35rem}.health-pills{display:flex;flex-wrap:wrap;gap:.5rem}.health-pill{padding:.3rem .55rem;border-radius:999px;background:#eef2ff;font-size:.8rem}.health-pill.ok{background:#e8f7ee;color:#166534}.health-pill.warning,.health-pill.unknown,.health-pill.degraded{background:#fff7e6;color:#9a6700}.health-pill.critical,.health-pill.error,.health-pill.offline{background:#fdecec;color:#b42318}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;background:var(--accent-color,#1d4ed8);color:#fff;text-decoration:none;font-weight:600;border:0}.cta-button.secondary{background:#eef2ff;color:#1e3a8a}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.85rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc);transition:opacity .2s ease,transform .2s ease}.stats article[data-tone='warning']{background:#fff7e6}.stats[data-muted='true'] article[data-emphasis='secondary']{opacity:.62;transform:scale(.98)}.stats article span{display:block;color:var(--text-secondary);margin-bottom:.2rem}.stats article strong{display:block}.content-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.45fr);gap:1rem;align-items:start}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.priority-panel{position:sticky;top:1rem}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:#eef2ff;font-weight:700}.next-actions,.secondary-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions{border:1px solid #dbe4ff}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head.compact h3{font-size:1rem}.next-actions-head h3{margin:0}.next-action,.secondary-action{display:grid;gap:.35rem;text-align:left;padding:.8rem .9rem;border-radius:.8rem;border:1px solid #dbe4ff;background:#fff;cursor:pointer}.next-action.primary{gap:.4rem;padding:1rem}.next-action.primary strong,.secondary-action strong{font-size:.85rem;color:#1d4ed8}.next-action[data-severity='critical'],.secondary-action[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.next-action[data-severity='warning'],.secondary-action[data-severity='warning']{border-color:#facc15;background:#fffdf2}.next-action span,.secondary-action span{font-weight:700}.next-action small,.secondary-action small{color:var(--text-secondary)}.secondary-actions-list{display:grid;gap:.5rem}.secondary-action{grid-template-columns:minmax(0,1fr) auto;align-items:center}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:#fda29b;background:#fff5f5}.attention-item[data-severity='warning']{border-color:#facc15;background:#fffdf2}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:#b42318}@media (max-width: 960px){.top-strip,.hero,.content-grid,.secondary-action{grid-template-columns:1fr}.hero-actions{justify-content:flex-start}.priority-panel{position:static}}
 </style>
