@@ -10,6 +10,7 @@
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { formatDateTimeRu, formatTimeRu, formatVolumeRu } from '../lib/formatters.js';
   import { uiStore } from '../stores/uiStore.js';
+  import { roleStore } from '../stores/roleStore.js';
 
   let now = new Date();
   let dismissedEventIds = new Set();
@@ -147,7 +148,7 @@
       case 'system':
         return 'Открыть систему';
       case 'incident':
-        return 'Закрыть / эскалировать';
+        return $roleStore.permissions.incidents_manage ? 'Открыть и обработать' : 'Открыть инцидент';
       default:
         return 'Открыть контекст';
     }
@@ -247,16 +248,18 @@
     .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9));
 
   $: operatorActionItems = [
-    ...criticalIncidents.slice(0, 3).map((incident) => buildActionItem({
+    ...($roleStore.permissions.incidents_view ? criticalIncidents.slice(0, 3).map((incident) => buildActionItem({
       key: `incident-${incident.incident_id}`,
       severity: incident.priority === 'critical' ? 'critical' : 'warning',
       title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
-      description: incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.',
+      description: $roleStore.permissions.incidents_manage
+        ? (incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.')
+        : (incident.tap ? `Проверьте ${incident.tap}, сверяйте связанную сессию и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
       target: 'incident',
       tapId: incident.tap || null,
       systemSource: `Инцидент #${incident.incident_id}`,
       href: '/incidents',
-    })),
+    })) : []),
     ...attentionItems.slice(0, 4).map((item) => buildActionItem({
       key: `next-${item.key}`,
       severity: item.severity,
