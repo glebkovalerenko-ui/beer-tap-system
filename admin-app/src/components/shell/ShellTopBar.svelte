@@ -7,6 +7,7 @@
   import { systemStore } from '../../stores/systemStore.js';
   import { uiStore } from '../../stores/uiStore.js';
   import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
+  import { confirmShiftAction } from '../../lib/shiftActionConfirm.js';
   import { formatHealthPill, healthStateLabel, healthTone } from '../../lib/healthStatus.js';
 
   let now = new Date();
@@ -28,6 +29,9 @@
   }
 
   async function handleOpenShift() {
+    const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'open' });
+    if (!confirmed) return;
+
     try {
       await shiftStore.openShift();
       uiStore.notifySuccess('Смена открыта');
@@ -37,6 +41,9 @@
   }
 
   async function handleCloseShift() {
+    const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'close' });
+    if (!confirmed) return;
+
     try {
       await shiftStore.closeShift();
       uiStore.notifySuccess('Смена закрыта');
