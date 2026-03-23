@@ -40,7 +40,7 @@
     <div>
       <p class="eyebrow">Beer Tap System</p>
       <h1>{title}</h1>
-      <p class="mode-label">{modeLabel}: {$roleStore.roles[$roleStore.key]?.label || 'Не выбран'}</p>
+      <p class="mode-label">{modeLabel}: {roleStore.roles[$roleStore.key]?.label || 'Не выбран'}</p>
     </div>
     <ShellGuestContextChip
       guestName={$guestContextStore.guestName}
