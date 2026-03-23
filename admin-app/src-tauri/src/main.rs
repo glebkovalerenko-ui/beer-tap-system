@@ -379,7 +379,18 @@ async fn get_flow_summary(token: String) -> Result<api_client::FlowSummaryRespon
 }
 
 #[tauri::command]
-async fn get_incidents(token: String, limit: u32) -> Result<Vec<api_client::IncidentListItem>, AppError> {
+async fn get_today_summary(token: String) -> Result<api_client::TodaySummaryResponse, AppError> {
+    info!("[COMMAND]     today summary API...");
+    api_client::get_today_summary(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_incidents(
+    token: String,
+    limit: u32,
+) -> Result<Vec<api_client::IncidentListItem>, AppError> {
     info!("[COMMAND]     incidents API...");
     api_client::get_incidents(&token, limit)
         .await
@@ -387,27 +398,51 @@ async fn get_incidents(token: String, limit: u32) -> Result<Vec<api_client::Inci
 }
 
 #[tauri::command]
-async fn claim_incident(token: String, incident_id: String, payload: api_client::IncidentClaimPayload) -> Result<api_client::IncidentListItem, AppError> {
+async fn claim_incident(
+    token: String,
+    incident_id: String,
+    payload: api_client::IncidentClaimPayload,
+) -> Result<api_client::IncidentListItem, AppError> {
     info!("[COMMAND]     incident claim {}", incident_id);
-    api_client::claim_incident(&token, &incident_id, &payload).await.map_err(AppError::from)
+    api_client::claim_incident(&token, &incident_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn add_incident_note(token: String, incident_id: String, payload: api_client::IncidentNotePayload) -> Result<api_client::IncidentListItem, AppError> {
+async fn add_incident_note(
+    token: String,
+    incident_id: String,
+    payload: api_client::IncidentNotePayload,
+) -> Result<api_client::IncidentListItem, AppError> {
     info!("[COMMAND]     incident note {}", incident_id);
-    api_client::add_incident_note(&token, &incident_id, &payload).await.map_err(AppError::from)
+    api_client::add_incident_note(&token, &incident_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn escalate_incident(token: String, incident_id: String, payload: api_client::IncidentEscalationPayload) -> Result<api_client::IncidentListItem, AppError> {
+async fn escalate_incident(
+    token: String,
+    incident_id: String,
+    payload: api_client::IncidentEscalationPayload,
+) -> Result<api_client::IncidentListItem, AppError> {
     info!("[COMMAND]     incident escalate {}", incident_id);
-    api_client::escalate_incident(&token, &incident_id, &payload).await.map_err(AppError::from)
+    api_client::escalate_incident(&token, &incident_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-async fn close_incident(token: String, incident_id: String, payload: api_client::IncidentClosePayload) -> Result<api_client::IncidentListItem, AppError> {
+async fn close_incident(
+    token: String,
+    incident_id: String,
+    payload: api_client::IncidentClosePayload,
+) -> Result<api_client::IncidentListItem, AppError> {
     info!("[COMMAND]     incident close {}", incident_id);
-    api_client::close_incident(&token, &incident_id, &payload).await.map_err(AppError::from)
+    api_client::close_incident(&token, &incident_id, &payload)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -462,7 +497,9 @@ async fn update_tap(
 }
 
 #[tauri::command]
-async fn get_system_status(token: String) -> Result<api_client::SystemOperationalSummary, AppError> {
+async fn get_system_status(
+    token: String,
+) -> Result<api_client::SystemOperationalSummary, AppError> {
     info!("[COMMAND]   ...");
     api_client::get_system_status(&token)
         .await
@@ -571,7 +608,9 @@ async fn get_session_history(
         card_uid.as_deref(),
         incident_only,
         unsynced_only,
-    ).await.map_err(AppError::from)
+    )
+    .await
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -579,7 +618,9 @@ async fn get_session_history_detail(
     token: String,
     visit_id: String,
 ) -> Result<api_client::SessionHistoryDetail, AppError> {
-    api_client::get_session_history_detail(&token, &visit_id).await.map_err(AppError::from)
+    api_client::get_session_history_detail(&token, &visit_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -782,6 +823,7 @@ fn main() {
             get_pours,
             get_live_pour_feed,
             get_flow_summary,
+            get_today_summary,
             get_incidents,
             claim_incident,
             add_incident_note,
