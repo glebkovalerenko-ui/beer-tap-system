@@ -14,8 +14,9 @@
   $: keg = tap.keg;
   $: session = operations.activeSessionSummary;
   $: operatorState = operations.operatorState || operations.productState || 'needs_help';
-  $: operatorMeta = operations.operatorStateMeta || { tone: 'muted', icon: '?', shortLabel: 'Нет данных', layout: 'stacked', headline: 'Состояние не определено' };
+  $: operatorMeta = operations.operatorStateMeta || { key: 'needs_help', tone: 'muted', icon: '?', shortLabel: 'Нет данных', eyebrow: 'Статус не определён', layout: 'stacked', headline: 'Состояние не определено', badgeStyle: 'callout', iconShape: 'alert', containerStyle: 'alert' };
   $: stateTheme = operatorMeta.tone || 'muted';
+  $: stateKey = operatorMeta.key || operatorState || 'needs_help';
   $: isLocked = tap.status === 'locked';
   $: canShowStop = canControl && session;
   $: canShowLockToggle = canControl && tap.keg_id;
@@ -41,13 +42,20 @@
   }
 </script>
 
-<div class={`tap-card layout-${operatorMeta.layout || 'stacked'}`} role="button" tabindex="0" on:click={() => emit('open-detail')} on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}>
+<div
+  class={`tap-card layout-${operatorMeta.layout || 'stacked'} tone-${stateTheme} container-${operatorMeta.containerStyle || 'alert'} badge-${operatorMeta.badgeStyle || 'callout'} icon-${operatorMeta.iconShape || 'alert'}`}
+  data-state={stateKey}
+  role="button"
+  tabindex="0"
+  on:click={() => emit('open-detail')}
+  on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}
+>
   <div class="card-header">
     <div>
       <div class="eyebrow">Tap #{tap.tap_id}</div>
       <h3>{tap.display_name}</h3>
     </div>
-    <div class="state-badge {stateTheme}" aria-label={`Статус: ${operations.productStateLabel}`}>
+    <div class="state-badge" aria-label={`Статус: ${operations.productStateLabel}`}>
       <span class="badge-icon" aria-hidden="true">{operatorMeta.icon}</span>
       <span>{operations.productStateLabel}</span>
     </div>
@@ -56,7 +64,7 @@
   <div class="card-body">
     <section class="hero status-hero">
       <div class="status-copy">
-        <span class="hero-label">Операторский статус</span>
+        <span class="hero-label">{operatorMeta.eyebrow || 'Операторский статус'}</span>
         <strong>{operatorMeta.headline}</strong>
         <p>{operations.operatorStateReason || 'Причина не указана.'}</p>
       </div>
@@ -78,7 +86,7 @@
       <div class="meta-block telemetry-chip">
         <span class="meta-label">Ключевая cue</span>
         <strong>{operatorMeta.shortLabel}</strong>
-        <p>{operatorState}</p>
+        <p>{operatorMeta.eyebrow || operatorState}</p>
       </div>
     </section>
 
@@ -172,9 +180,10 @@
 <style>
   .tap-card {
     width: 100%;
-    border: 1px solid var(--border-soft, #dde3ea);
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,248,251,0.94));
+    border: 1px solid var(--tap-status-card-border, var(--border-soft, #dde3ea));
+    border-radius: var(--tap-status-card-radius, 18px);
+    background: var(--tap-status-card-bg, linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,248,251,0.94)));
+    box-shadow: var(--tap-status-card-shadow, none);
     padding: 1rem;
     display: grid;
     gap: 1rem;
@@ -188,17 +197,37 @@
   .eyebrow, .meta-label, .section-title, .muted, .hero-label { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
   h3, p, strong { margin: 0; }
   .hero { align-items: flex-start; }
-  .status-hero { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem; background: rgba(255,255,255,0.88); }
+  .status-hero {
+    border: 1px solid var(--tap-status-hero-border, #e2e8f0);
+    border-radius: var(--tap-status-hero-radius, 14px);
+    padding: 0.8rem;
+    background: var(--tap-status-hero-bg, rgba(255,255,255,0.88));
+  }
   .status-copy, .live-telemetry, .telemetry-chip { display: grid; gap: 0.2rem; }
   .status-copy { max-width: 65%; }
   .meta-block { text-align: right; }
-  .state-badge { border-radius: 999px; padding: 0.45rem 0.7rem; font-weight: 700; font-size: 0.8rem; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.45rem; }
-  .badge-icon { width: 1.1rem; height: 1.1rem; display: inline-grid; place-items: center; border-radius: 999px; background: rgba(255,255,255,0.6); }
-  .state-badge.ok { background: #dcfce7; color: #166534; }
-  .state-badge.live { background: #fee2e2; color: #b91c1c; }
-  .state-badge.warn { background: #fef3c7; color: #b45309; }
-  .state-badge.sync { background: #dbeafe; color: #1d4ed8; }
-  .state-badge.muted { background: #e5e7eb; color: #475569; }
+  .state-badge {
+    border-radius: var(--tap-status-badge-radius, 999px);
+    padding: var(--tap-status-badge-padding, 0.45rem 0.7rem);
+    border: 1px solid var(--tap-status-badge-border, transparent);
+    background: var(--tap-status-badge-bg, #e5e7eb);
+    color: var(--tap-status-badge-text, #475569);
+    font-weight: 700;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .badge-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    display: inline-grid;
+    place-items: center;
+    border-radius: var(--tap-status-icon-radius, 999px);
+    background: var(--tap-status-icon-bg, rgba(255,255,255,0.6));
+    border: 1px solid var(--tap-status-icon-border, transparent);
+  }
   .card-body { display: grid; gap: 0.9rem; }
   .progress-container { height: 9px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
   .progress-bar { height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a); }
