@@ -185,17 +185,57 @@ def get_active_visits_list(db: Session):
     for visit in visits:
         guest = visit.guest
         full_name = " ".join([part for part in [guest.last_name, guest.first_name, guest.patronymic] if part]) if guest else "—"
+        balance = guest.balance if guest else Decimal("0.00")
+        projected_remaining_allowance_ml = None
+        projected_remaining_allowance_source = None
+        allowance_calculation_note = None
+        price_per_ml_cents = None
+
+        if visit.active_tap_id is not None:
+            tap = (
+                db.query(models.Tap)
+                .join(models.Keg, models.Tap.keg_id == models.Keg.keg_id)
+                .join(models.Beverage, models.Keg.beverage_id == models.Beverage.beverage_id)
+                .filter(models.Tap.tap_id == visit.active_tap_id)
+                .first()
+            )
+            beverage = tap.keg.beverage if tap and tap.keg and tap.keg.beverage else None
+            if beverage and beverage.sell_price_per_liter is not None:
+                policy = system_crud.get_pour_policy(db)
+                balance_cents = pour_policy.balance_to_cents(balance)
+                price_per_ml_cents = pour_policy.sell_price_per_liter_to_price_per_ml_cents(beverage.sell_price_per_liter)
+                projected_remaining_allowance_ml = pour_policy.calculate_max_volume_ml(
+                    balance_cents=balance_cents,
+                    allowed_overdraft_cents=policy["allowed_overdraft_cents"],
+                    price_per_ml_cents=price_per_ml_cents,
+                    safety_ml=policy["safety_ml"],
+                )
+                projected_remaining_allowance_source = "balance_price_policy"
+                allowance_calculation_note = (
+                    "Лимит рассчитан backend из баланса гостя, цены напитка на активном кране, allowed overdraft и safety_ml."
+                )
+            else:
+                projected_remaining_allowance_source = "not_configured"
+                allowance_calculation_note = "Для активного крана не настроена цена напитка, поэтому лимит не вычисляется."
+        else:
+            projected_remaining_allowance_source = "not_applicable"
+            allowance_calculation_note = "Пока визит не привязан к активному крану, backend не рассчитывает лимит в мл."
+
         result.append({
             "visit_id": visit.visit_id,
             "guest_id": visit.guest_id,
             "guest_full_name": full_name,
             "phone_number": guest.phone_number if guest else "",
-            "balance": guest.balance if guest else 0,
+            "balance": balance,
             "status": visit.status,
             "card_uid": visit.card_uid,
             "active_tap_id": visit.active_tap_id,
             "lock_set_at": visit.lock_set_at,
             "opened_at": visit.opened_at,
+            "projected_remaining_allowance_ml": projected_remaining_allowance_ml,
+            "projected_remaining_allowance_source": projected_remaining_allowance_source,
+            "allowance_calculation_note": allowance_calculation_note,
+            "price_per_ml_cents": price_per_ml_cents,
         })
     return result
 

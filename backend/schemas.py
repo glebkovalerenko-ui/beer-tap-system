@@ -478,6 +478,10 @@ class VisitActiveListItem(BaseModel):
     active_tap_id: Optional[int] = None
     lock_set_at: Optional[datetime] = None
     opened_at: datetime
+    projected_remaining_allowance_ml: Optional[int] = None
+    projected_remaining_allowance_source: Optional[str] = None
+    allowance_calculation_note: Optional[str] = None
+    price_per_ml_cents: Optional[int] = None
 
 class VisitPourAuthorizeRequest(BaseModel):
     card_uid: str = Field(..., json_schema_extra={'example': "04AB7815CD6B80"})

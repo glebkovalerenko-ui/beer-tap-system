@@ -157,6 +157,66 @@ def test_active_visits_list_includes_cardless_visit(client):
     assert any(v["guest_id"] == guest_id for v in list_resp.json())
 
 
+def test_active_visits_list_returns_projected_remaining_allowance_for_locked_tap(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="810071")
+    card_uid = "CARD-M2-ALLOWANCE"
+    _bind_card(client, headers, guest_id, card_uid)
+
+    topup_resp = client.post(
+        f"/api/guests/{guest_id}/topup",
+        headers=headers,
+        json={"amount": 100, "payment_method": "cash"},
+    )
+    assert topup_resp.status_code == 200
+
+    beverage_resp = client.post(
+        "/api/beverages/",
+        headers=headers,
+        json={"name": "Allowance Lager", "sell_price_per_liter": 500},
+    )
+    assert beverage_resp.status_code == 201
+    beverage_id = beverage_resp.json()["beverage_id"]
+
+    keg_resp = client.post(
+        "/api/kegs/",
+        headers=headers,
+        json={"beverage_id": beverage_id, "initial_volume_ml": 30000, "purchase_price": 5000},
+    )
+    assert keg_resp.status_code == 201
+    keg_id = keg_resp.json()["keg_id"]
+
+    tap_resp = client.post("/api/taps/", headers=headers, json={"display_name": "Tap Allowance"})
+    assert tap_resp.status_code == 201
+    tap_id = tap_resp.json()["tap_id"]
+
+    assign_resp = client.put(f"/api/taps/{tap_id}/keg", headers=headers, json={"keg_id": keg_id})
+    assert assign_resp.status_code == 200
+
+    open_resp = client.post(
+        "/api/visits/open",
+        headers=headers,
+        json={"guest_id": guest_id, "card_uid": card_uid},
+    )
+    assert open_resp.status_code == 200
+
+    authorize_resp = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": card_uid, "tap_id": tap_id},
+    )
+    assert authorize_resp.status_code == 200
+
+    list_resp = client.get("/api/visits/active", headers=headers)
+    assert list_resp.status_code == 200
+    visit_item = next(v for v in list_resp.json() if v["guest_id"] == guest_id)
+    assert visit_item["active_tap_id"] == tap_id
+    assert visit_item["projected_remaining_allowance_ml"] == 198
+    assert visit_item["projected_remaining_allowance_source"] == "balance_price_policy"
+    assert visit_item["price_per_ml_cents"] == 50
+    assert "цены напитка" in visit_item["allowance_calculation_note"]
+
+
 def test_assign_card_to_active_visit_in_single_flow(client):
     headers = _login(client)
     guest_id = _create_guest(client, headers, suffix="81008")

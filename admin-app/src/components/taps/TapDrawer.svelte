@@ -35,11 +35,9 @@
   ];
   $: beveragePrice = beverage.sell_price_per_liter ?? tap?.sell_price_per_liter ?? null;
   $: projectedRemainingBalance = session?.projectedRemainingBalance ?? session?.projected_remaining_balance ?? computeProjectedRemaining(session, currentPour);
-  $: projectedRemainingAllowanceMl = session?.projectedRemainingAllowanceMl
-    ?? session?.projected_remaining_allowance_ml
-    ?? session?.remainingAllowanceMl
-    ?? session?.remaining_allowance_ml
-    ?? null;
+  $: projectedRemainingAllowanceMl = session?.projectedRemainingAllowanceMl ?? null;
+  $: projectedRemainingAllowanceState = session?.allowanceState || (projectedRemainingAllowanceMl != null ? 'available' : 'telemetry_gap');
+  $: projectedRemainingAllowanceNote = session?.allowanceCalculationNote || null;
   $: beverageKegRows = [
     { label: 'Название напитка', value: operations.beverageName || beverage.name || 'Напиток не назначен', note: beverage.display_brand_name || null },
     { label: 'Стиль', value: operations.beverageStyle || beverage.style || '—', note: beverage.brewery || null },
@@ -215,7 +213,21 @@
             <dl class="session-details">
               <div><dt>Баланс</dt><dd>{session?.balance != null ? formatRubAmount(session.balance) : '—'}</dd></div>
               <div><dt>Прогноз остатка баланса</dt><dd>{projectedRemainingBalance != null ? formatRubAmount(projectedRemainingBalance) : '—'}</dd></div>
-              <div><dt>Прогноз остатка лимита</dt><dd>{projectedRemainingAllowanceMl != null ? formatVolumeRu(projectedRemainingAllowanceMl) : 'Место подготовлено, ждём поле лимита от backend'}</dd></div>
+              <div>
+                <dt>Прогноз остатка лимита</dt>
+                <dd>
+                  {#if projectedRemainingAllowanceMl != null}
+                    {formatVolumeRu(projectedRemainingAllowanceMl)}
+                  {:else if projectedRemainingAllowanceState === 'not_configured'}
+                    Лимит не задан
+                  {:else}
+                    Нет данных от backend
+                  {/if}
+                  {#if projectedRemainingAllowanceNote}
+                    <small>{projectedRemainingAllowanceNote}</small>
+                  {/if}
+                </dd>
+              </div>
               <div><dt>Активный визит / карта</dt><dd>{activeVisitCardLabel(session)}</dd></div>
             </dl>
           </div>
