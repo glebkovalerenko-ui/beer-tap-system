@@ -9,6 +9,12 @@
   export let recentEvents = [];
   export let lastTapLabel = '—';
   export let variant = 'full';
+  export let canTopUp = true;
+  export let canToggleBlock = true;
+  export let canMarkLost = true;
+  export let canOpenVisit = true;
+  export let canOpenHistory = true;
+  export let canEdit = true;
 
   const dispatch = createEventDispatcher();
   let showSecondary = false;
@@ -46,7 +52,7 @@
           {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
         </button>
       {:else}
-        <button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать</button>
+        {#if canEdit}<button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать</button>{/if}
       {/if}
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
     </div>
@@ -83,11 +89,11 @@
       <strong>{lastTapLabel}</strong>
     </div>
     <div class="hero-actions">
-      <button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>
-      <button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Блокировать' : 'Разблокировать'}</button>
-      <button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Lost / перевыпуск</button>
-      <button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit}>Активная сессия</button>
-      <button on:click={() => dispatch('open-history')}>История</button>
+      {#if canTopUp}<button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>{/if}
+      {#if canToggleBlock}<button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Блокировать' : 'Разблокировать'}</button>{/if}
+      {#if canMarkLost}<button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Lost / перевыпуск</button>{/if}
+      {#if canOpenVisit}<button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id}>Активная сессия</button>{/if}
+      {#if canOpenHistory}<button on:click={() => dispatch('open-history')}>История</button>{/if}
     </div>
   </section>
 

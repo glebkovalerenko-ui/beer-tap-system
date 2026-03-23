@@ -52,7 +52,7 @@
     { href: '#/today', label: 'Сегодня', visible: (permissions) => permissions.taps_view || permissions.sessions_view },
     { href: '#/taps', label: 'Краны', visible: (permissions) => permissions.taps_view },
     { href: '#/sessions', label: 'Сессии', visible: (permissions) => permissions.sessions_view },
-    { href: '#/cards-guests', label: 'Карты и гости', visible: (permissions) => permissions.cards_manage },
+    { href: '#/cards-guests', label: 'Карты и гости', visible: (permissions) => permissions.cards_lookup },
     { href: '#/kegs-beverages', label: 'Кеги и напитки', visible: (permissions) => permissions.settings_manage },
     { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_manage },
     { href: '#/tap-screens', label: 'Экраны кранов', visible: (permissions) => permissions.display_override },
