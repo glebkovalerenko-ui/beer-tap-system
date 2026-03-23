@@ -7,14 +7,65 @@ import { sessionStore } from './sessionStore.js';
 
 /** @typedef {import('../../../src-tauri/src/api_client').Tap} Tap */
 
-const PRODUCT_STATE_LABELS = {
-  ready: 'Готов к продаже',
-  pouring: 'Идёт налив',
-  needs_help: 'Требует внимания',
-  unavailable: 'Недоступен',
-  syncing: 'Синхронизация',
-  no_keg: 'Нет кеги',
-};
+export const TAP_OPERATOR_STATES = Object.freeze({
+  READY: 'ready',
+  POURING: 'pouring',
+  NEEDS_HELP: 'needs_help',
+  UNAVAILABLE: 'unavailable',
+  SYNCING: 'syncing',
+  NO_KEG: 'no_keg',
+});
+
+export const TAP_OPERATOR_STATE_META = Object.freeze({
+  [TAP_OPERATOR_STATES.READY]: {
+    label: 'Готов к продаже',
+    shortLabel: 'Готов',
+    icon: '●',
+    tone: 'ok',
+    layout: 'steady',
+    headline: 'Кран готов к следующей продаже',
+  },
+  [TAP_OPERATOR_STATES.POURING]: {
+    label: 'Идёт налив',
+    shortLabel: 'Налив',
+    icon: '⏵',
+    tone: 'live',
+    layout: 'live',
+    headline: 'Сейчас идёт авторизованный налив',
+  },
+  [TAP_OPERATOR_STATES.NEEDS_HELP]: {
+    label: 'Требует внимания',
+    shortLabel: 'Нужна помощь',
+    icon: '!',
+    tone: 'warn',
+    layout: 'stacked',
+    headline: 'Оператору нужно проверить кран',
+  },
+  [TAP_OPERATOR_STATES.UNAVAILABLE]: {
+    label: 'Недоступен',
+    shortLabel: 'Недоступен',
+    icon: '×',
+    tone: 'muted',
+    layout: 'stacked',
+    headline: 'Кран временно выведен из продажи',
+  },
+  [TAP_OPERATOR_STATES.SYNCING]: {
+    label: 'Синхронизация',
+    shortLabel: 'Синхронизация',
+    icon: '↻',
+    tone: 'sync',
+    layout: 'steady',
+    headline: 'Локальные данные ещё не подтверждены backend',
+  },
+  [TAP_OPERATOR_STATES.NO_KEG]: {
+    label: 'Нет кеги',
+    shortLabel: 'Без кеги',
+    icon: '◌',
+    tone: 'muted',
+    layout: 'empty',
+    headline: 'Кран не сможет продавать без подключённой кеги',
+  },
+});
 
 function toErrorMessage(context, error) {
   logError(context, error);
@@ -52,7 +103,89 @@ function minutesSince(value) {
 }
 
 function labelFromState(state) {
-  return PRODUCT_STATE_LABELS[state] || state || 'Нет данных';
+  return TAP_OPERATOR_STATE_META[state]?.label || state || 'Нет данных';
+}
+
+function reasonFromEvent(item) {
+  if (!item) return null;
+  if (item.reason === 'flow_detected_when_valve_closed_without_active_session') {
+    return 'Контроллер зафиксировал поток без активной сессии или при закрытом клапане.';
+  }
+  if (item.status === 'rejected' && item.item_type === 'pour') {
+    return 'Последний налив был отклонён и требует проверки продажи.';
+  }
+  if (item.reason && item.reason !== 'authorized_pour_in_progress') {
+    return humanizeCode(item.reason);
+  }
+  if (item.event_status === 'started') {
+    return 'Поток начался, но операторский сценарий ещё не подтверждён.';
+  }
+  return null;
+}
+
+function deriveOperatorState(rawTap, activeSession, recentEvents) {
+  const tap = rawTap || {};
+  const problemEvent = recentEvents.find((item) => reasonFromEvent(item));
+  const staleHeartbeat = minutesSince(tap.last_heartbeat_at || tap.updated_at || activeSession?.lock_set_at || null);
+  const isHeartbeatStale = staleHeartbeat != null && staleHeartbeat >= 5;
+
+  if (!tap.keg_id) {
+    return {
+      state: TAP_OPERATOR_STATES.NO_KEG,
+      reason: 'Кега не назначена, продажа недоступна, пока линию не подключат.',
+      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+    };
+  }
+
+  if (tap.sync_state === 'syncing' || tap.status === 'processing_sync') {
+    return {
+      state: TAP_OPERATOR_STATES.SYNCING,
+      reason: 'Кран ждёт подтверждения локальных данных от backend.',
+      telemetry: activeSession ? 'Есть локальная активная сессия.' : null,
+    };
+  }
+
+  if (activeSession || recentEvents.some((item) => item.reason === 'authorized_pour_in_progress' || item.event_status === 'started')) {
+    return {
+      state: TAP_OPERATOR_STATES.POURING,
+      reason: activeSession ? 'Есть активная сессия, поток подтверждён.' : 'Контроллер уже сообщил о начале потока.',
+      telemetry: activeSession?.card_uid ? `Карта ${activeSession.card_uid}` : null,
+    };
+  }
+
+  if (tap.status === 'cleaning' || tap.status === 'empty' || tap.status === 'locked') {
+    return {
+      state: TAP_OPERATOR_STATES.UNAVAILABLE,
+      reason: tap.status === 'locked'
+        ? 'Кран заблокирован и временно не продаёт.'
+        : tap.status === 'cleaning'
+          ? 'Кран находится в промывке.'
+          : 'Линия помечена как пустая и временно снята с продажи.',
+      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+    };
+  }
+
+  if (problemEvent || isHeartbeatStale) {
+    return {
+      state: TAP_OPERATOR_STATES.NEEDS_HELP,
+      reason: problemEvent ? reasonFromEvent(problemEvent) : 'Устройство давно не присылало heartbeat, оператору нужна проверка линии.',
+      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+    };
+  }
+
+  if (tap.status === 'active' || tap.product_state === TAP_OPERATOR_STATES.READY) {
+    return {
+      state: TAP_OPERATOR_STATES.READY,
+      reason: 'Все ключевые системы отвечают, кран можно использовать для следующей продажи.',
+      telemetry: null,
+    };
+  }
+
+  return {
+    state: TAP_OPERATOR_STATES.NEEDS_HELP,
+    reason: 'Состояние крана не удалось уверенно классифицировать, нужна ручная проверка.',
+    telemetry: null,
+  };
 }
 
 function titleCase(text) {
@@ -63,18 +196,6 @@ function titleCase(text) {
 function humanizeCode(code) {
   if (!code) return null;
   return titleCase(String(code).replaceAll('_', ' '));
-}
-
-function deriveProductState(rawTap, activeSession, recentEvents) {
-  const tap = rawTap || {};
-  if (!tap.keg_id) return 'no_keg';
-  if (tap.product_state) return tap.product_state;
-  if (tap.sync_state === 'syncing' || tap.status === 'processing_sync') return 'syncing';
-  if (activeSession || recentEvents.some((item) => item.reason === 'authorized_pour_in_progress' || item.event_status === 'started')) return 'pouring';
-  if (tap.status === 'active') return 'ready';
-  if (tap.status === 'cleaning' || tap.status === 'empty' || tap.status === 'locked') return 'unavailable';
-  if (recentEvents.some((item) => item.reason && item.reason !== 'authorized_pour_in_progress')) return 'needs_help';
-  return 'needs_help';
 }
 
 function buildSubsystemStatus(rawValue, fallbackState, fallbackLabel) {
@@ -321,7 +442,8 @@ function buildTapView(rawTap, context = {}) {
 
   const heartbeatAt = rawTap.last_heartbeat_at || rawTap.updated_at || activeSession?.lock_set_at || null;
   const heartbeatMinutes = minutesSince(heartbeatAt);
-  const productState = deriveProductState(rawTap, activeSession, recentEvents);
+  const operatorState = deriveOperatorState(rawTap, activeSession, recentEvents);
+  const productState = operatorState.state;
   const syncState = rawTap.sync_state || (rawTap.status === 'processing_sync' ? 'syncing' : activeSession ? 'live' : 'idle');
   const currentPourVolumeMl = toNumber(rawTap.current_pour_volume_ml ?? recentEvents[0]?.volume_ml);
   const currentPourAmount = rawTap.current_pour_amount ?? recentEvents[0]?.amount_charged ?? null;
@@ -334,6 +456,10 @@ function buildTapView(rawTap, context = {}) {
     operations: {
       productState,
       productStateLabel: labelFromState(productState),
+      operatorState: productState,
+      operatorStateMeta: TAP_OPERATOR_STATE_META[productState] || TAP_OPERATOR_STATE_META[TAP_OPERATOR_STATES.NEEDS_HELP],
+      operatorStateReason: operatorState.reason,
+      operatorStateTelemetry: operatorState.telemetry,
       beverageName: keg?.beverage?.name || rawTap.beverage_name || 'Напиток не назначен',
       beverageStyle: keg?.beverage?.style || rawTap.beverage_style || null,
       remainingVolumeMl: currentVolume,
@@ -369,7 +495,7 @@ function buildTapView(rawTap, context = {}) {
       },
       recentEvents,
       operatorHistory: buildOperatorHistory(recentEvents, activeSession),
-      liveStatus: rawTap.live_status || (productState === 'pouring' ? 'Идёт налив' : productState === 'ready' ? 'Готов к продаже' : 'Нужна проверка'),
+      liveStatus: rawTap.live_status || (activeSession ? 'Сессия открыта, контроллер видит линию.' : rawTap.display_enabled === false ? 'Экран отключён, но кран управляется локально.' : 'Телеметрия поступает в штатном режиме.'),
     },
   };
 
