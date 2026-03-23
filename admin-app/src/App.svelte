@@ -63,8 +63,16 @@
   let shiftLoadAttempted = false;
 
   $: if ($sessionStore.token && !shiftLoadAttempted) {
-    shiftStore.fetchCurrent();
     shiftLoadAttempted = true;
+    shiftStore.fetchCurrent().catch((error) => {
+      const message = error?.message || error?.toString?.() || '';
+      if (message.includes('Требуется повторный вход') || message.includes('Could not validate credentials')) {
+        sessionStore.logout();
+        return;
+      }
+
+      console.error('[App] Не удалось загрузить текущую смену', error);
+    });
   }
 
   $: if (!$sessionStore.token && shiftLoadAttempted) {
