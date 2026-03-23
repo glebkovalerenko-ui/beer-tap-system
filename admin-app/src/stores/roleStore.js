@@ -90,11 +90,11 @@ const ROLES = {
 
 function getInitialRole() {
   if (typeof localStorage === 'undefined') {
-    return 'operator';
+    return 'engineer_owner';
   }
 
   const savedRole = localStorage.getItem(STORAGE_KEY);
-  return ROLES[savedRole] ? savedRole : 'operator';
+  return ROLES[savedRole] ? savedRole : 'engineer_owner';
 }
 
 function createRoleStore() {
