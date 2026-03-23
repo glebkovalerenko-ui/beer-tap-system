@@ -230,6 +230,7 @@
         on:open-detail={(event) => selectTap(event.detail.tap)}
         on:assign={handleOpenAssignModal}
         on:display-settings={handleOpenTapDisplaySettings}
+        on:open-history={openSessionFromTap}
         on:stop-pour={(event) => handleStopPour(event.detail.tap)}
         on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
         on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}

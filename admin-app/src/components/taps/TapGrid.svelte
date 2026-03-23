@@ -19,6 +19,7 @@
           on:open-detail
           on:assign
           on:display-settings
+          on:open-history
           on:stop-pour
           on:toggle-lock
           on:cleaning
