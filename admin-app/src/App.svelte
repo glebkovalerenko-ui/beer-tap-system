@@ -7,7 +7,6 @@
   import { systemStore } from './stores/systemStore.js';
   import { roleStore } from './stores/roleStore.js';
   import { demoModeStore } from './stores/demoModeStore.js';
-  import { nfcReaderStore } from './stores/nfcReaderStore.js';
   import { shiftStore } from './stores/shiftStore.js';
   import { initializeBackendBaseUrl } from './lib/config.js';
 
@@ -111,7 +110,6 @@
     },
   ];
 
-  let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   let shiftLoadAttempted = false;
 
   $: if ($sessionStore.token && !shiftLoadAttempted) {
@@ -132,10 +130,6 @@
     shiftLoadAttempted = false;
   }
 
-  const updateOnline = () => {
-    online = navigator.onLine;
-  };
-
   onMount(() => {
     let disposed = false;
 
@@ -151,9 +145,6 @@
       }
     })();
 
-    window.addEventListener('online', updateOnline);
-    window.addEventListener('offline', updateOnline);
-
     return () => {
       disposed = true;
     };
@@ -165,8 +156,6 @@
 
   onDestroy(() => {
     systemStore.stopPolling();
-    window.removeEventListener('online', updateOnline);
-    window.removeEventListener('offline', updateOnline);
   });
 </script>
 
@@ -179,7 +168,7 @@
     {/if}
 
     <ShellTopBar />
-    <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
+    <SystemFallbackBanner demoMode={$demoModeStore} />
 
     <div class="workspace-grid">
       <aside class="left-rail ui-card">
