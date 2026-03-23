@@ -49,6 +49,8 @@
     { label: 'Сводка контента экрана', value: displaySummary, note: null },
   ];
   $: chronologyGroups = groupChronology(recentHistory);
+  $: titleId = 'tap-drawer-title';
+  $: descriptionId = 'tap-drawer-description';
 
   function emit(name) {
     dispatch(name, { tap });
@@ -133,226 +135,366 @@
 </script>
 
 {#if tap}
-  <aside class="tap-drawer">
-    <div class="drawer-head">
+  <div class="tap-drawer">
+    <header class="drawer-head">
       <div>
         <div class="eyebrow">Карточка крана</div>
-        <h2>{tap.display_name}</h2>
-        <p>{operations.productStateLabel} — {operations.operatorStateReason || operations.liveStatus}</p>
+        <h2 id={titleId}>{tap.display_name}</h2>
+        <p id={descriptionId}>{operations.productStateLabel} — {operations.operatorStateReason || operations.liveStatus}</p>
       </div>
-      <button class="close-btn" on:click={() => dispatch('close')}>✕</button>
-    </div>
+      <button class="close-btn" type="button" on:click={() => dispatch('close')}>✕</button>
+    </header>
 
-    <section class="drawer-section info-grid">
-      <article class="status-explainer">
-        <div class="section-head compact">
-          <div>
-            <h3>Почему кран в этом статусе</h3>
-            <p>Сначала объясняем операторский статус, потом уже показываем сырую телеметрию устройств.</p>
-          </div>
-        </div>
-        <dl>
-          {#each stateExplanationRows as row}
+    <div class="drawer-body">
+      <section class="drawer-section info-grid">
+        <article class="status-explainer">
+          <div class="section-head compact">
             <div>
-              <dt>{row.label}</dt>
-              <dd>
-                <strong>{row.value}</strong>
-                {#if row.note}
-                  <small>{row.note}</small>
-                {/if}
-              </dd>
+              <h3>Почему кран в этом статусе</h3>
+              <p>Сначала объясняем операторский статус, потом уже показываем сырую телеметрию устройств.</p>
             </div>
-          {/each}
-        </dl>
-      </article>
-
-      <article>
-        <div class="section-head compact">
-          <div>
-            <h3>Живое состояние</h3>
-            <p>Поддерживающая телеметрия: помогает подтвердить статус, но не заменяет его.</p>
           </div>
-        </div>
-        <dl>
-          {#each liveStateRows as row}
-            <div>
-              <dt>{row.label}</dt>
-              <dd>
-                <strong>{row.value}</strong>
-                {#if row.note}
-                  <small>{row.note}</small>
-                {/if}
-              </dd>
-            </div>
-          {/each}
-        </dl>
-      </article>
-
-      <article class="current-session">
-        <div class="section-head compact">
-          <div>
-            <h3>Текущая сессия</h3>
-            <p>Активный гость, налив и оперативные действия по визиту.</p>
-          </div>
-        </div>
-
-        <div class="session-panel">
-          <div class="session-copy">
-            <strong>{session?.guestName || 'Сессия сейчас не открыта'}</strong>
-            <p>
-              {#if session}
-                Карта {session.cardUid || 'не привязана'} · открыта {session.openedAt ? formatDateTimeRu(session.openedAt) : 'недавно'}
-              {:else}
-                Откройте сессию, если гость уже у крана, или заблокируйте линию до начала работы.
-              {/if}
-            </p>
-            <div class="session-metrics">
-              <span>Налито: {formatVolumeRu(currentPour.volumeMl || 0)}</span>
-              <span>Сумма: {currentPour.amount ? formatRubAmount(currentPour.amount) : '0 ₽'}</span>
-              <span>Статус: {currentPour.isActive ? 'Налив активен' : 'Поток не зафиксирован'}</span>
-            </div>
-            <dl class="session-details">
-              <div><dt>Баланс</dt><dd>{session?.balance != null ? formatRubAmount(session.balance) : '—'}</dd></div>
-              <div><dt>Прогноз остатка баланса</dt><dd>{projectedRemainingBalance != null ? formatRubAmount(projectedRemainingBalance) : '—'}</dd></div>
+          <dl>
+            {#each stateExplanationRows as row}
               <div>
-                <dt>Прогноз остатка лимита</dt>
+                <dt>{row.label}</dt>
                 <dd>
-                  {#if projectedRemainingAllowanceMl != null}
-                    {formatVolumeRu(projectedRemainingAllowanceMl)}
-                  {:else if projectedRemainingAllowanceState === 'not_configured'}
-                    Лимит не задан
-                  {:else}
-                    {TAP_COPY.backendNoData}
-                  {/if}
-                  {#if projectedRemainingAllowanceNote}
-                    <small>{projectedRemainingAllowanceNote}</small>
+                  <strong>{row.value}</strong>
+                  {#if row.note}
+                    <small>{row.note}</small>
                   {/if}
                 </dd>
               </div>
-              <div><dt>{TAP_COPY.activeSessionCard}</dt><dd>{activeVisitCardLabel(session)}</dd></div>
-            </dl>
+            {/each}
+          </dl>
+        </article>
+
+        <article>
+          <div class="section-head compact">
+            <div>
+              <h3>Живое состояние</h3>
+              <p>Поддерживающая телеметрия: помогает подтвердить статус, но не заменяет его.</p>
+            </div>
+          </div>
+          <dl>
+            {#each liveStateRows as row}
+              <div>
+                <dt>{row.label}</dt>
+                <dd>
+                  <strong>{row.value}</strong>
+                  {#if row.note}
+                    <small>{row.note}</small>
+                  {/if}
+                </dd>
+              </div>
+            {/each}
+          </dl>
+        </article>
+
+        <article class="current-session">
+          <div class="section-head compact">
+            <div>
+              <h3>Текущая сессия</h3>
+              <p>Активный гость, налив и оперативные действия по визиту.</p>
+            </div>
           </div>
 
-          <div class="action-stack">
-            {#if canControl && session}
-              <button class="primary danger" on:click={() => emit('stop-pour')}>Остановить налив</button>
-            {/if}
-            <button class="primary" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
-            {#if canControl}
-              <button class="secondary" on:click={() => emit('toggle-lock')}>
-                {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
-              </button>
-            {/if}
-          </div>
-        </div>
-      </article>
-    </section>
+          <div class="session-panel">
+            <div class="session-copy">
+              <strong>{session?.guestName || 'Сессия сейчас не открыта'}</strong>
+              <p>
+                {#if session}
+                  Карта {session.cardUid || 'не привязана'} · открыта {session.openedAt ? formatDateTimeRu(session.openedAt) : 'недавно'}
+                {:else}
+                  Откройте сессию, если гость уже у крана, или заблокируйте линию до начала работы.
+                {/if}
+              </p>
+              <div class="session-metrics">
+                <span>Налито: {formatVolumeRu(currentPour.volumeMl || 0)}</span>
+                <span>Сумма: {currentPour.amount ? formatRubAmount(currentPour.amount) : '0 ₽'}</span>
+                <span>Статус: {currentPour.isActive ? 'Налив активен' : 'Поток не зафиксирован'}</span>
+              </div>
+              <dl class="session-details">
+                <div><dt>Баланс</dt><dd>{session?.balance != null ? formatRubAmount(session.balance) : '—'}</dd></div>
+                <div><dt>Прогноз остатка баланса</dt><dd>{projectedRemainingBalance != null ? formatRubAmount(projectedRemainingBalance) : '—'}</dd></div>
+                <div>
+                  <dt>Прогноз остатка лимита</dt>
+                  <dd>
+                    {#if projectedRemainingAllowanceMl != null}
+                      {formatVolumeRu(projectedRemainingAllowanceMl)}
+                    {:else if projectedRemainingAllowanceState === 'not_configured'}
+                      Лимит не задан
+                    {:else}
+                      {TAP_COPY.backendNoData}
+                    {/if}
+                    {#if projectedRemainingAllowanceNote}
+                      <small>{projectedRemainingAllowanceNote}</small>
+                    {/if}
+                  </dd>
+                </div>
+                <div><dt>{TAP_COPY.activeSessionCard}</dt><dd>{activeVisitCardLabel(session)}</dd></div>
+              </dl>
+            </div>
 
-    <section class="drawer-section">
-      <div class="section-head">
-        <div>
-          <h3>Напиток и кега</h3>
-          <p>Контекст напитка, установленной кеги и того, что оператор ожидает увидеть на экране.</p>
-        </div>
-        {#if canDisplayOverride}
-          <button class="secondary-btn" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
-        {/if}
-      </div>
-
-      <dl class="split-details">
-        {#each beverageKegRows as row}
-          <div>
-            <dt>{row.label}</dt>
-            <dd>
-              <strong>{row.value}</strong>
-              {#if row.note}
-                <small>{row.note}</small>
+            <div class="action-stack">
+              {#if canControl && session}
+                <button class="primary danger" type="button" on:click={() => emit('stop-pour')}>Остановить налив</button>
               {/if}
-            </dd>
+              <button class="primary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
+              {#if canControl}
+                <button class="secondary" type="button" on:click={() => emit('toggle-lock')}>
+                  {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
+                </button>
+              {/if}
+            </div>
           </div>
-        {/each}
-      </dl>
-    </section>
+        </article>
+      </section>
 
-    <section class="drawer-section">
-      <div class="section-head">
-        <div>
-          <h3>История по крану</h3>
-          <p>Последние {HISTORY_LIMIT} событий собраны в читаемую хронологию для оператора.</p>
+      <section class="drawer-section">
+        <div class="section-head">
+          <div>
+            <h3>Напиток и кега</h3>
+            <p>Контекст напитка, установленной кеги и того, что оператор ожидает увидеть на экране.</p>
+          </div>
+          {#if canDisplayOverride}
+            <button class="secondary-btn" type="button" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
+          {/if}
         </div>
-      </div>
 
-      {#if chronologyGroups.length}
-        <div class="chronology-groups">
-          {#each chronologyGroups as group}
-            <article class="chronology-group">
-              <h4>{group.label}</h4>
-              <ul class="events-list">
-                {#each group.items as item}
-                  <li class={`tone-${item.tone}`}>
-                    <div class="event-main">
-                      <div class="event-headline">
-                        <strong>{item.timeLabel} · {item.title}</strong>
-                        <span class={`priority ${item.tone}`}>{item.priorityLabel}</span>
-                      </div>
-                      {#if item.summaryLine}
-                        <p>{item.summaryLine}</p>
-                      {/if}
-                      <div class="event-links">
-                        {#if item.sessionAction}
-                          <a href={item.sessionAction.href} on:click|preventDefault={() => openLinkedSession(item.sessionAction.visitId)}>
-                            {item.sessionAction.label}
-                          </a>
-                        {/if}
-                        {#if item.incidentAction}
-                          <a href={item.incidentAction.href}>{item.incidentAction.label}</a>
-                        {/if}
-                      </div>
-                    </div>
-                    <div class="event-meta">
-                      <span>{item.happenedAt ? formatDateTimeRu(item.happenedAt) : 'Время неизвестно'}</span>
-                    </div>
-                  </li>
-                {/each}
-              </ul>
-            </article>
+        <dl class="split-details">
+          {#each beverageKegRows as row}
+            <div>
+              <dt>{row.label}</dt>
+              <dd>
+                <strong>{row.value}</strong>
+                {#if row.note}
+                  <small>{row.note}</small>
+                {/if}
+              </dd>
+            </div>
           {/each}
+        </dl>
+      </section>
+
+      <section class="drawer-section">
+        <div class="section-head">
+          <div>
+            <h3>История по крану</h3>
+            <p>Последние {HISTORY_LIMIT} событий собраны в читаемую хронологию для оператора.</p>
+          </div>
         </div>
-      {:else}
-        <p class="muted">{TAP_COPY.noRecentEvents}</p>
-      {/if}
-    </section>
-  </aside>
+
+        {#if chronologyGroups.length}
+          <div class="chronology-groups">
+            {#each chronologyGroups as group}
+              <article class="chronology-group">
+                <h4>{group.label}</h4>
+                <ul class="events-list">
+                  {#each group.items as item}
+                    <li class={`tone-${item.tone}`}>
+                      <div class="event-main">
+                        <div class="event-headline">
+                          <strong>{item.timeLabel} · {item.title}</strong>
+                          <span class={`priority ${item.tone}`}>{item.priorityLabel}</span>
+                        </div>
+                        {#if item.summaryLine}
+                          <p>{item.summaryLine}</p>
+                        {/if}
+                        <div class="event-links">
+                          {#if item.sessionAction}
+                            <a href={item.sessionAction.href} on:click|preventDefault={() => openLinkedSession(item.sessionAction.visitId)}>
+                              {item.sessionAction.label}
+                            </a>
+                          {/if}
+                          {#if item.incidentAction}
+                            <a href={item.incidentAction.href}>{item.incidentAction.label}</a>
+                          {/if}
+                        </div>
+                      </div>
+                      <div class="event-meta">
+                        <span>{item.happenedAt ? formatDateTimeRu(item.happenedAt) : 'Время неизвестно'}</span>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted">{TAP_COPY.noRecentEvents}</p>
+        {/if}
+      </section>
+    </div>
+  </div>
 {/if}
 
 <style>
-  .tap-drawer { width: min(720px, 92vw); max-height: 88vh; overflow: auto; display: grid; gap: 1rem; }
-  .drawer-head, .section-head, .event-meta, .events-list li, .info-grid, .session-panel { display: flex; gap: 1rem; }
-  .drawer-head, .section-head, .events-list li { justify-content: space-between; align-items: flex-start; }
-  .drawer-head h2, .drawer-section h3, .drawer-head p, .chronology-group h4 { margin: 0; }
-  .eyebrow, .muted, small, dt, .section-head p, .session-copy p { color: var(--text-secondary, #64748b); }
-  .close-btn, .secondary-btn, .primary, .secondary { border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; padding: 0.6rem 0.8rem; font-weight: 600; }
-  .drawer-section { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: rgba(248,250,252,0.8); display: grid; gap: 0.8rem; }
-  .info-grid, .session-panel { flex-wrap: wrap; }
-  .info-grid article, .session-panel, .chronology-group { flex: 1 1 320px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 0.9rem; }
-  .section-head.compact { margin-bottom: 0.25rem; }
-  .current-session .session-panel { justify-content: space-between; align-items: stretch; }
-  .session-copy { display: grid; gap: 0.55rem; flex: 1 1 320px; }
-  .session-copy strong, .event-main strong { margin: 0; }
-  .session-metrics, .event-links { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-  .session-details, .split-details { margin-top: 0.25rem; }
-  .action-stack { display: grid; gap: 0.65rem; min-width: 220px; }
-  .primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
-  .primary.danger { background: #b91c1c; border-color: #b91c1c; }
-  .secondary { color: #0f172a; }
-  dl { display: grid; gap: 0.6rem; margin: 0.75rem 0 0; }
-  .split-details { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  dl div { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
-  dt, dd { margin: 0; }
-  dd { text-align: right; display: grid; gap: 0.15rem; justify-items: end; }
-  .chronology-groups, .events-list { display: grid; gap: 0.75rem; }
-  .events-list { list-style: none; padding: 0; margin: 0; }
-  .events-list li { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem; background: #fff; }
+  .tap-drawer {
+    min-height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .drawer-head,
+  .section-head,
+  .event-meta,
+  .events-list li,
+  .info-grid,
+  .session-panel {
+    display: flex;
+    gap: 1rem;
+  }
+  .drawer-head,
+  .section-head,
+  .events-list li {
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .drawer-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 0 0 1rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 1), rgba(248, 250, 252, 0.96));
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .drawer-head h2,
+  .drawer-section h3,
+  .drawer-head p,
+  .chronology-group h4 {
+    margin: 0;
+  }
+  .drawer-body {
+    min-height: 0;
+    display: grid;
+    gap: 1rem;
+  }
+  .eyebrow,
+  .muted,
+  small,
+  dt,
+  .section-head p,
+  .session-copy p {
+    color: var(--text-secondary, #64748b);
+  }
+  .close-btn,
+  .secondary-btn,
+  .primary,
+  .secondary {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    padding: 0.6rem 0.8rem;
+    font-weight: 600;
+  }
+  .close-btn {
+    flex: 0 0 auto;
+  }
+  .drawer-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 1rem;
+    background: rgba(248,250,252,0.8);
+    display: grid;
+    gap: 0.8rem;
+  }
+  .info-grid,
+  .session-panel {
+    flex-wrap: wrap;
+  }
+  .info-grid article,
+  .session-panel,
+  .chronology-group {
+    flex: 1 1 320px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #fff;
+    padding: 0.9rem;
+  }
+  .section-head.compact {
+    margin-bottom: 0.25rem;
+  }
+  .current-session .session-panel {
+    justify-content: space-between;
+    align-items: stretch;
+  }
+  .session-copy {
+    display: grid;
+    gap: 0.55rem;
+    flex: 1 1 320px;
+  }
+  .session-copy strong,
+  .event-main strong {
+    margin: 0;
+  }
+  .session-metrics,
+  .event-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .session-details,
+  .split-details {
+    margin-top: 0.25rem;
+  }
+  .action-stack {
+    display: grid;
+    gap: 0.65rem;
+    min-width: 220px;
+  }
+  .primary {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+  .primary.danger {
+    background: #b91c1c;
+    border-color: #b91c1c;
+  }
+  .secondary {
+    color: #0f172a;
+  }
+  dl {
+    display: grid;
+    gap: 0.6rem;
+    margin: 0.75rem 0 0;
+  }
+  .split-details {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  dl div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  dt,
+  dd {
+    margin: 0;
+  }
+  dd {
+    text-align: right;
+    display: grid;
+    gap: 0.15rem;
+    justify-items: end;
+  }
+  .chronology-groups,
+  .events-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .events-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .events-list li {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 0.8rem;
+    background: #fff;
+  }
   .events-list li.tone-critical { border-color: #fecaca; background: #fff7f7; }
   .events-list li.tone-warning { border-color: #fde68a; background: #fffbeb; }
   .events-list li.tone-info { border-color: #bfdbfe; background: #f8fbff; }
@@ -368,7 +510,20 @@
   .priority.neutral { background: #e5e7eb; color: #475569; }
 
   @media (max-width: 720px) {
-    dl div, .events-list li { display: grid; }
-    dd, .event-meta { justify-items: start; text-align: left; align-items: flex-start; }
+    .drawer-head {
+      padding-bottom: 0.85rem;
+    }
+
+    dl div,
+    .events-list li {
+      display: grid;
+    }
+
+    dd,
+    .event-meta {
+      justify-items: start;
+      text-align: left;
+      align-items: flex-start;
+    }
   }
 </style>
