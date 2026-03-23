@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -55,6 +56,70 @@ def _type_label(reason: Optional[str]) -> str:
         "authorized_pour_in_progress": "authorized_flow",
     }
     return mapping.get(reason or "", reason or "operational_anomaly")
+
+
+def _incident_action_detail(action: str, **details) -> str:
+    payload = {"action": action, **{key: value for key, value in details.items() if value not in (None, "")}}
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _record_action_log(db: Session, *, incident_id: str, actor_id: Optional[str], action: str, details: dict) -> None:
+    db.add(models.AuditLog(
+        actor_id=actor_id,
+        action=f"incident_{action}",
+        target_entity="Incident",
+        target_id=incident_id,
+        details=_incident_action_detail(action, **details),
+    ))
+
+
+def _get_incident_state(db: Session, incident_id: str) -> Optional[models.IncidentState]:
+    return db.query(models.IncidentState).filter(models.IncidentState.incident_id == incident_id).first()
+
+
+def _get_or_create_incident_state(db: Session, incident: dict) -> models.IncidentState:
+    state = _get_incident_state(db, incident["incident_id"])
+    if state:
+        return state
+    state = models.IncidentState(
+        incident_id=incident["incident_id"],
+        status=incident["status"],
+        owner=incident.get("operator"),
+        last_action=incident.get("note_action"),
+        last_action_at=incident.get("created_at"),
+        last_note=incident.get("note_action"),
+        escalated_at=None,
+        escalation_reason=None,
+        closed_at=incident.get("created_at") if incident["status"] == "closed" else None,
+        closure_summary=incident.get("note_action") if incident["status"] == "closed" else None,
+    )
+    db.add(state)
+    db.flush()
+    return state
+
+
+def _apply_overlay(base: dict, state: Optional[models.IncidentState]) -> dict:
+    if not state:
+        base.setdefault("owner", base.get("operator"))
+        base.setdefault("last_action", base.get("note_action"))
+        base.setdefault("last_action_at", base.get("created_at"))
+        base.setdefault("escalated_at", None)
+        base.setdefault("escalation_reason", None)
+        base.setdefault("closed_at", base.get("created_at") if base.get("status") == "closed" else None)
+        base.setdefault("closure_summary", base.get("note_action") if base.get("status") == "closed" else None)
+        return base
+
+    base["status"] = state.status or base["status"]
+    base["operator"] = state.owner or base.get("operator")
+    base["owner"] = state.owner or base.get("operator")
+    base["note_action"] = state.last_note or state.last_action or base.get("note_action")
+    base["last_action"] = state.last_action or state.last_note or base.get("note_action")
+    base["last_action_at"] = state.last_action_at or base.get("created_at")
+    base["escalated_at"] = state.escalated_at
+    base["escalation_reason"] = state.escalation_reason
+    base["closed_at"] = state.closed_at or (base.get("created_at") if base.get("status") == "closed" else None)
+    base["closure_summary"] = state.closure_summary
+    return base
 
 
 def list_incidents(db: Session, limit: int = 100) -> list[dict]:
@@ -133,8 +198,80 @@ def list_incidents(db: Session, limit: int = 100) -> list[dict]:
                 "source": "tap_state",
             })
 
+    incident_ids = [item["incident_id"] for item in incidents]
+    overlays = {}
+    if incident_ids:
+        overlays = {row.incident_id: row for row in db.query(models.IncidentState).filter(models.IncidentState.incident_id.in_(incident_ids)).all()}
+
+    incidents = [_apply_overlay(item, overlays.get(item["incident_id"])) for item in incidents]
     incidents.sort(key=lambda item: _as_utc(item["created_at"]) or _utcnow(), reverse=True)
     return incidents[:limit]
+
+
+def get_incident(db: Session, incident_id: str) -> dict:
+    for item in list_incidents(db, limit=500):
+        if item["incident_id"] == incident_id:
+            return item
+    raise HTTPException(status_code=404, detail="Incident not found")
+
+
+def claim_incident(db: Session, *, incident_id: str, owner: str, note: Optional[str], actor_id: Optional[str]) -> dict:
+    incident = get_incident(db, incident_id)
+    state = _get_or_create_incident_state(db, incident)
+    now = _utcnow()
+    state.owner = owner
+    state.status = "closed" if state.closed_at else "in_progress"
+    state.last_action = "claim"
+    state.last_action_at = now
+    state.last_note = note or f"Incident assigned to {owner}"
+    _record_action_log(db, incident_id=incident_id, actor_id=actor_id, action="claim", details={"owner": owner, "note": note})
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def add_note(db: Session, *, incident_id: str, note: str, actor_id: Optional[str]) -> dict:
+    incident = get_incident(db, incident_id)
+    state = _get_or_create_incident_state(db, incident)
+    now = _utcnow()
+    if state.status == "new":
+        state.status = "in_progress" if state.owner else state.status
+    state.last_action = "note"
+    state.last_action_at = now
+    state.last_note = note
+    _record_action_log(db, incident_id=incident_id, actor_id=actor_id, action="note", details={"note": note})
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def escalate_incident(db: Session, *, incident_id: str, reason: str, note: Optional[str], actor_id: Optional[str]) -> dict:
+    incident = get_incident(db, incident_id)
+    state = _get_or_create_incident_state(db, incident)
+    now = _utcnow()
+    if state.status != "closed":
+        state.status = "in_progress"
+    state.last_action = "escalate"
+    state.last_action_at = now
+    state.last_note = note or reason
+    state.escalated_at = now
+    state.escalation_reason = reason
+    _record_action_log(db, incident_id=incident_id, actor_id=actor_id, action="escalate", details={"reason": reason, "note": note})
+    db.commit()
+    return get_incident(db, incident_id)
+
+
+def close_incident(db: Session, *, incident_id: str, resolution_summary: str, note: Optional[str], actor_id: Optional[str]) -> dict:
+    incident = get_incident(db, incident_id)
+    state = _get_or_create_incident_state(db, incident)
+    now = _utcnow()
+    state.status = "closed"
+    state.last_action = "close"
+    state.last_action_at = now
+    state.last_note = note or resolution_summary
+    state.closed_at = now
+    state.closure_summary = resolution_summary
+    _record_action_log(db, incident_id=incident_id, actor_id=actor_id, action="close", details={"resolution_summary": resolution_summary, "note": note})
+    db.commit()
+    return get_incident(db, incident_id)
 
 
 def get_system_summary(db: Session) -> dict:
@@ -143,6 +280,7 @@ def get_system_summary(db: Session) -> dict:
     emergency_state = db.query(models.SystemState).filter(models.SystemState.key == EMERGENCY_STOP_KEY).first()
     emergency_stop = bool(emergency_state and str(emergency_state.value).strip().lower() == "true")
     open_non_sale = db.query(models.NonSaleFlow).filter(models.NonSaleFlow.finalized_at.is_(None)).count()
+    open_incident_overlays = db.query(models.IncidentState).filter(models.IncidentState.status != "closed").count()
     pending_sync = db.query(models.Pour).filter(models.Pour.sync_status == "pending_sync").count()
 
     controller_devices = []
@@ -209,6 +347,6 @@ def get_system_summary(db: Session) -> dict:
         "emergency_stop": emergency_stop,
         "overall_state": overall_state,
         "generated_at": _utcnow(),
-        "open_incident_count": open_non_sale + (1 if emergency_stop else 0),
+        "open_incident_count": max(open_non_sale + (1 if emergency_stop else 0), open_incident_overlays),
         "subsystems": subsystems,
     }

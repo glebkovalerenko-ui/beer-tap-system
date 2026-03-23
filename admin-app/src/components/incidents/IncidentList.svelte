@@ -77,19 +77,25 @@
                 </div>
 
                 <div class="card-actions">
-                  <button
-                    class="secondary"
-                    disabled={readOnly || item.status === 'closed' || !actionCapabilities.claim}
-                    on:click|stopPropagation={() => emit('claimIncident', item)}
-                  >
-                    {actionLabel(item)}
-                  </button>
-                  <button
-                    class="secondary warning"
-                    disabled={readOnly || !actionCapabilities.escalate}
-                    on:click|stopPropagation={() => emit('escalateIncident', item)}
-                  >Эскалировать</button>
-                  <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>Action form</button>
+                  {#if actionCapabilities.claim}
+                    <button
+                      class="secondary"
+                      disabled={readOnly || item.status === 'closed'}
+                      on:click|stopPropagation={() => emit('claimIncident', item)}
+                    >
+                      {actionLabel(item)}
+                    </button>
+                  {/if}
+                  {#if actionCapabilities.escalate}
+                    <button
+                      class="secondary warning"
+                      disabled={readOnly}
+                      on:click|stopPropagation={() => emit('escalateIncident', item)}
+                    >Эскалировать</button>
+                  {/if}
+                  {#if actionCapabilities.note || actionCapabilities.close}
+                    <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>Action form</button>
+                  {/if}
                 </div>
               </article>
             {/each}
