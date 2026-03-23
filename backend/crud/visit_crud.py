@@ -551,12 +551,12 @@ def _build_session_history_item(db: Session, visit: models.Visit, include_narrat
         label, detail_text = _operator_action_label(log.action, details)
         if log.action in {
             'visit_force_unlock','reconcile_done','lost_card_blocked','card_in_use_on_other_tap',
-            'insufficient_funds_blocked','sync_tail_overdraft_accepted','sync_missing_pending',
+            'insufficient_funds_blocked','insufficient_funds_denied','sync_tail_overdraft_accepted','sync_missing_pending',
             'sync_conflict','sync_rejected_insufficient_funds','late_sync_mismatch','late_sync_matched'
         }:
             operator_actions.append(schemas.SessionOperatorAction(timestamp=log.timestamp, action=log.action, actor_id=log.actor_id, label=label, details=detail_text))
             last_operator_action_at = log.timestamp
-        if log.action in {'card_in_use_on_other_tap','insufficient_funds_blocked','sync_missing_pending','sync_conflict','sync_rejected_insufficient_funds','late_sync_mismatch','lost_card_blocked'}:
+        if log.action in {'card_in_use_on_other_tap','insufficient_funds_blocked','insufficient_funds_denied','sync_missing_pending','sync_conflict','sync_rejected_insufficient_funds','late_sync_mismatch','lost_card_blocked'}:
             incident_actions.append(log)
         if log.action == 'sync_tail_overdraft_accepted':
             contains_tail_pour = True
@@ -596,7 +596,17 @@ def _build_session_history_item(db: Session, visit: models.Visit, include_narrat
     completion_source = None
     if visit.status == 'closed':
         reason = (visit.closed_reason or '').strip()
-        completion_source = 'operator_close' if reason in {'guest_checkout','operator_close','manual_close',''} else reason
+        completion_source = reason or None
+    elif contains_non_sale_flow:
+        completion_source = 'no_sale_flow'
+    elif any(action.action == 'lost_card_blocked' for action in operator_actions):
+        completion_source = 'blocked_lost_card'
+    elif any(action.action == 'insufficient_funds_blocked' for action in operator_actions):
+        completion_source = 'blocked_insufficient_funds'
+    elif any(action.action == 'card_in_use_on_other_tap' for action in operator_actions):
+        completion_source = 'blocked_card_in_use'
+    elif any(action.action == 'insufficient_funds_denied' for action in operator_actions):
+        completion_source = 'denied_insufficient_funds'
     elif visit.active_tap_id is None and has_unsynced:
         completion_source = 'sync_pending'
 

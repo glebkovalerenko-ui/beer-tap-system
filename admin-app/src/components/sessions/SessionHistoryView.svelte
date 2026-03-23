@@ -13,6 +13,7 @@
     tapId: '',
     status: '',
     cardUid: '',
+    completionSource: '',
     incidentOnly: false,
     unsyncedOnly: false,
     zeroVolumeAbortOnly: false,
@@ -34,12 +35,27 @@
   };
 
   const completionSourceLabels = {
-    operator: 'Завершена оператором',
-    auto_close: 'Закрылась автоматически',
-    abort: 'Прервана оператором',
-    incident: 'Остановлена из-за инцидента',
-    system: 'Завершена системой',
-    timeout: 'Завершена по таймауту',
+    normal: 'Обычное завершение',
+    card_removed: 'Карта извлечена',
+    timeout: 'Таймаут / автоостановка',
+    blocked: 'Заблокировано',
+    denied: 'Отказано',
+    no_sale_flow: 'Non-sale flow',
+    guest_checkout: 'Обычное завершение: checkout гостя',
+    checkout: 'Обычное завершение: checkout',
+    demo_checkout: 'Обычное завершение: demo checkout',
+    operator_close: 'Обычное завершение: оператор закрыл сессию',
+    manual_close: 'Обычное завершение: ручное закрытие',
+    card_removed_close: 'Завершена после извлечения карты',
+    controller_timeout: 'Таймаут контроллера',
+    sync_timeout: 'Таймаут синхронизации',
+    timeout_close: 'Завершена по таймауту',
+    blocked_lost_card: 'Заблокировано: карта помечена как потерянная',
+    blocked_insufficient_funds: 'Заблокировано: недостаточно средств',
+    blocked_card_in_use: 'Заблокировано: карта уже занята на другом кране',
+    denied_insufficient_funds: 'Отказано: недостаточно средств',
+    sync_pending: 'Ожидает синхронизации',
+    system: 'Системное завершение',
   };
 
   const narrativeKindLabels = {
@@ -121,7 +137,7 @@
       visit_status: item.visit_status || item.status || (isActive ? 'active' : null),
       taps: item.taps || (item.active_tap_id ? [String(item.active_tap_id)] : []),
       sync_state: item.sync_state || (isActive ? 'pending_sync' : 'not_started'),
-      completion_source: item.completion_source || (isActive ? 'system' : null),
+      completion_source: item.completion_source ?? (isActive ? null : null),
       contains_tail_pour: Boolean(item.contains_tail_pour),
       contains_non_sale_flow: Boolean(item.contains_non_sale_flow),
       has_incident: Boolean(item.has_incident),
@@ -169,9 +185,38 @@
     return value ? formatDateTimeRu(value) : '—';
   }
 
+  function normalizeCompletionSource(item) {
+    const raw = String(item?.completion_source || '').trim().toLowerCase();
+    const actions = (item?.operator_actions || []).map((action) => String(action.action || '').toLowerCase());
+
+    if (item?.contains_non_sale_flow) return 'no_sale_flow';
+    if (raw === 'card_removed' || raw === 'card_removed_close' || raw.includes('card_removed')) return 'card_removed';
+    if (raw === 'timeout' || raw === 'timeout_close' || raw.endsWith('_timeout') || raw.includes('timeout')) return 'timeout';
+    if (
+      raw.startsWith('blocked_')
+      || actions.some((action) => ['lost_card_blocked', 'insufficient_funds_blocked', 'card_in_use_on_other_tap'].includes(action))
+    ) return 'blocked';
+    if (
+      raw.startsWith('denied_')
+      || actions.some((action) => ['insufficient_funds_denied'].includes(action))
+    ) return 'denied';
+    if (raw === 'sync_pending' && item?.has_unsynced) return 'timeout';
+    if (raw) return 'normal';
+    if (item?.operator_status === 'Прервана') return 'blocked';
+    return item?.isActive ? '' : 'normal';
+  }
+
   function describeCompletionSource(value) {
     if (!value) return 'Не указан';
     return completionSourceLabels[value] || value.replaceAll('_', ' ');
+  }
+
+  function describeCompletionSourceDetails(item) {
+    const normalized = normalizeCompletionSource(item);
+    const raw = String(item?.completion_source || '').trim();
+    if (!normalized && !raw) return 'Не указан';
+    if (raw && raw !== normalized) return `${describeCompletionSource(normalized)} · ${describeCompletionSource(raw.toLowerCase())}`;
+    return describeCompletionSource(raw || normalized);
   }
 
   function describeFlags(item) {
@@ -211,6 +256,7 @@
     }
     if (!matchesStatus(item)) return false;
     if (!matchesText(item, filters.cardUid)) return false;
+    if (filters.completionSource && normalizeCompletionSource(item) !== filters.completionSource) return false;
     if (filters.incidentOnly && !item.has_incident) return false;
     if (filters.unsyncedOnly && !item.has_unsynced) return false;
     if (filters.zeroVolumeAbortOnly && !isZeroVolumeAbort(item)) return false;
@@ -401,6 +447,18 @@
         </select>
       </label>
       <label><span>Карта / UID / Visit ID</span><input bind:value={filters.cardUid} placeholder="UID карты или visit" /></label>
+      <label>
+        <span>Причина завершения</span>
+        <select bind:value={filters.completionSource}>
+          <option value="">Все</option>
+          <option value="normal">normal</option>
+          <option value="card_removed">card_removed</option>
+          <option value="timeout">timeout</option>
+          <option value="blocked">blocked</option>
+          <option value="denied">denied</option>
+          <option value="no_sale_flow">no_sale_flow</option>
+        </select>
+      </label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.incidentOnly} /> Только с инцидентами</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только с несинхронизированными данными</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> Только нулевые прерывания без налива</label>
@@ -463,11 +521,11 @@
                   <strong>{item.guest_full_name}</strong>
                   <span class:active={item.isActive} class="state">{item.operator_status}</span>
                 </div>
-                <div class="row"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
+                <div class="row meta-grid"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span><span class="completion-pill">Источник: {describeCompletionSourceDetails(item)}</span></div>
                 <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
                 <div class="chips">
                   <span>{syncLabels[item.sync_state] || item.sync_state}</span>
-                  {#if item.completion_source}<span>Источник завершения: {describeCompletionSource(item.completion_source)}</span>{/if}
+                  {#if item.completion_source}<span>Raw completion_source: {item.completion_source}</span>{/if}
                   {#if item.contains_tail_pour}<span>Есть долив хвоста</span>{/if}
                   {#if item.contains_non_sale_flow}<span>Есть служебный налив</span>{/if}
                   {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
@@ -592,6 +650,8 @@
   .chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
   .chips span, .eyebrow, .muted, small, dt { color: var(--text-secondary, #64748b); }
   .chips span { background: #f1f5f9; border-radius: 999px; padding: 0.2rem 0.55rem; }
+  .meta-grid { flex-wrap: wrap; }
+  .completion-pill { font-weight: 600; color: #0f172a; }
   .drawer { position: sticky; top: 0; min-height: 320px; max-height: 85vh; overflow: auto; }
   .drawer-open { border-color: #bfdbfe; }
   .stats-grid { flex-wrap: wrap; }
