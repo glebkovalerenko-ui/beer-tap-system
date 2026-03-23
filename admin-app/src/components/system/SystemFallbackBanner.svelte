@@ -1,8 +1,26 @@
 <script>
   export let demoMode = false;
-  export let online = true;
+  import { onDestroy, onMount } from 'svelte';
+  import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
+
+  export let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   export let nfcStatus = 'ok';
 
+  function updateOnline() {
+    online = navigator.onLine;
+  }
+
+  onMount(() => {
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('online', updateOnline);
+    window.removeEventListener('offline', updateOnline);
+  });
+
+  $: nfcStatus = $nfcReaderStore.status;
   $: nfcHasWarning = nfcStatus === 'error' || nfcStatus === 'disconnected' || nfcStatus === 'recovering';
   $: hasWarning = demoMode || !online || nfcHasWarning;
 </script>

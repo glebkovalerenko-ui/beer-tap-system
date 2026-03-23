@@ -6,9 +6,11 @@
   import { shiftStore } from '../../stores/shiftStore.js';
   import { systemStore } from '../../stores/systemStore.js';
   import { uiStore } from '../../stores/uiStore.js';
+  import { tapStore } from '../../stores/tapStore.js';
   import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
   import { confirmShiftAction } from '../../lib/shiftActionConfirm.js';
-  import { formatHealthPill, healthStateLabel, healthTone } from '../../lib/healthStatus.js';
+  import { healthStateLabel } from '../../lib/healthStatus.js';
+  import ShellStatusPills from './ShellStatusPills.svelte';
 
   let now = new Date();
 
@@ -60,65 +62,68 @@
     return () => clearInterval(clockTimer);
   });
 
-  $: primaryHealthPills = $systemStore.health.primaryPills || [];
   $: overallState = $systemStore.health.overall || 'unknown';
   $: overallStateLabel = healthStateLabel(overallState, 'overall');
+  $: syncAttentionCount = Number($tapStore.summary?.unsyncedFlowCount || 0);
+  $: openIncidentCount = Number($systemStore.openIncidentCount || 0);
+  $: operatorName = $sessionStore.user?.name || $sessionStore.user?.email || 'Текущий оператор';
 </script>
 
 <header class="topbar ui-card">
-  <section class="topbar-block shift-block" aria-label="Смена и время">
-    <div class="block-head">
-      <p class="eyebrow">Смена / время</p>
-      <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
+  <section class="summary-block" aria-label="Единая operational summary панель">
+    <div class="summary-heading">
+      <div class="headline-group">
+        <p class="eyebrow">Operational summary</p>
+        <div class="headline-row">
+          <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
+          <span class="overall-health" data-tone={overallState}>{overallStateLabel}</span>
+        </div>
+        <p class="supporting-text">
+          {shiftStatusText()} · {openIncidentCount} откр. инцидентов · {syncAttentionCount} несинхр. проливов
+        </p>
+      </div>
+
+      <div class="time-block" aria-label="Текущее время смены">
+        <span class="time-value">{formatTimeRu(now.toISOString())}</span>
+        <span class="time-date">{formatDateTimeRu(now.toISOString())}</span>
+      </div>
     </div>
-    <p class="supporting-text">{shiftStatusText()}</p>
-    <div class="time-row">
-      <span class="time-value">{formatTimeRu(now.toISOString())}</span>
-      <span class="time-date">{formatDateTimeRu(now.toISOString())}</span>
-    </div>
-    <div class="shift-actions">
+
+    <ShellStatusPills />
+  </section>
+
+  <section class="actions-block" aria-label="Действия и контекст оператора">
+    <div class="shift-controls">
       {#if $shiftStore.isOpen}
         <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
       {:else}
         <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
       {/if}
-      <button class="ghost" on:click={() => sessionStore.logout()}>Выйти</button>
-    </div>
-  </section>
 
-  <section class="topbar-block health-block" aria-label="Общий health">
-    <div class="block-head">
-      <p class="eyebrow">Общий health</p>
-      <strong class:ok={healthTone(overallState) === 'ok'} class:warn={healthTone(overallState) === 'warn'} class:error={healthTone(overallState) === 'error'}>
-        {overallStateLabel}
-      </strong>
-    </div>
-    <div class="health-pills">
-      {#each primaryHealthPills as item (item.key)}
-        <span class="pill" class:ok={healthTone(item.state) === 'ok'} class:warn={healthTone(item.state) === 'warn'} class:error={healthTone(item.state) === 'error'} title={item.detail}>
-          {formatHealthPill(item)}
-        </span>
-      {/each}
-    </div>
-    <p class="supporting-text">{$systemStore.openIncidentCount} открытых инцидентов · экстренная остановка {$systemStore.emergencyStop ? 'включена' : 'выключена'}</p>
-  </section>
-
-  <section class="topbar-block actions-block" aria-label="Быстрые действия оператора">
-    <div class="block-head">
-      <p class="eyebrow">Быстрые действия</p>
-      <strong>Операционный контекст</strong>
-    </div>
-    <div class="quick-actions">
       {#if $roleStore.permissions.incidents_view}
         <button class="ghost" on:click={() => navigateTo('/incidents')}>Инциденты</button>
       {/if}
       <button class="ghost" on:click={() => navigateTo('/taps')}>Краны</button>
     </div>
-    <div class="guest-context">
-      <span class="guest-label">Guest context</span>
-      <div class="guest-chip">
-        <strong>{$guestContextStore.guestName || 'Гость не выбран'}</strong>
-        <span>{($guestContextStore.cardUid ? `****${$guestContextStore.cardUid.slice(-4)}` : 'без карты')} · {$guestContextStore.isActive === null ? '—' : ($guestContextStore.isActive ? 'активен' : 'заблокирован')}</span>
+
+    <div class="context-grid">
+      <div class="guest-context">
+        <span class="context-label">Guest context</span>
+        <div class="context-card">
+          <strong>{$guestContextStore.guestName || 'Гость не выбран'}</strong>
+          <span>{($guestContextStore.cardUid ? `****${$guestContextStore.cardUid.slice(-4)}` : 'без карты')} · {$guestContextStore.isActive === null ? '—' : ($guestContextStore.isActive ? 'активен' : 'заблокирован')}</span>
+        </div>
+      </div>
+
+      <div class="operator-menu">
+        <span class="context-label">Оператор</span>
+        <div class="context-card operator-card">
+          <div>
+            <strong>{operatorName}</strong>
+            <span>Роль: {$roleStore.label}</span>
+          </div>
+          <button class="ghost" on:click={() => sessionStore.logout()}>Logout</button>
+        </div>
       </div>
     </div>
   </section>
@@ -129,80 +134,87 @@
     margin: 12px;
     padding: 12px 14px;
     display: grid;
-    grid-template-columns: minmax(260px, 0.9fr) minmax(340px, 1.3fr) minmax(260px, 0.9fr);
-    gap: 12px;
+    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+    gap: 14px;
     border-radius: 14px;
     align-items: start;
   }
-  .topbar-block {
+  .summary-block,
+  .actions-block {
     display: grid;
-    gap: 10px;
-    padding: 4px;
+    gap: 12px;
     min-width: 0;
   }
-  .block-head {
-    display: grid;
-    gap: 4px;
+  .summary-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: start;
   }
-  .eyebrow {
+  .headline-group,
+  .time-block,
+  .context-grid,
+  .guest-context,
+  .operator-menu {
+    display: grid;
+    gap: 6px;
+  }
+  .headline-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow,
+  .context-label {
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-secondary);
     margin: 0;
   }
-  .supporting-text, .time-date, .guest-chip span {
+  .supporting-text,
+  .time-date,
+  .context-card span {
     margin: 0;
     color: var(--text-secondary);
     font-size: 0.84rem;
   }
-  .time-row {
-    display: grid;
-    gap: 2px;
+  .overall-health {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: #eef2f8;
+    border: 1px solid #d7e2f1;
+    color: #29405f;
+  }
+  .overall-health[data-tone='ok'] { background: #e9f8ef; border-color: #bde8cc; color: #116d3a; }
+  .overall-health[data-tone='warning'],
+  .overall-health[data-tone='degraded'],
+  .overall-health[data-tone='unknown'] { background: #fff8e9; border-color: #ffe1a3; color: #8d5b00; }
+  .overall-health[data-tone='critical'],
+  .overall-health[data-tone='error'],
+  .overall-health[data-tone='offline'] { background: #ffeef0; border-color: #ffc6cc; color: #9e1f2c; }
+  .time-block {
+    text-align: right;
+    justify-items: end;
   }
   .time-value {
     font-size: 1.45rem;
     font-weight: 700;
   }
-  .shift-actions, .quick-actions {
+  .shift-controls {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
   }
-  .health-pills {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 8px;
+  .context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .pill {
-    border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 0.78rem;
-    background: #eef2f8;
-    color: #29405f;
-    border: 1px solid #d7e2f1;
-    min-width: 0;
-    white-space: normal;
-    line-height: 1.3;
-  }
-  .ok { color: #116d3a; }
-  .warn { color: #8d5b00; }
-  .error { color: #9e1f2c; }
-  .pill.ok { background: #e9f8ef; border-color: #bde8cc; }
-  .pill.warn { background: #fff8e9; border-color: #ffe1a3; }
-  .pill.error { background: #ffeef0; border-color: #ffc6cc; }
-  .ghost { background: #edf2fb; color: #23416b; }
-  .guest-context {
-    display: grid;
-    gap: 6px;
-  }
-  .guest-label {
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
-  }
-  .guest-chip {
+  .context-card {
     display: grid;
     gap: 2px;
     padding: 10px 12px;
@@ -210,23 +222,34 @@
     background: var(--bg-surface-muted);
     border: 1px solid var(--border-soft);
   }
-  @media (max-width: 1240px) {
-    .topbar {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
+  .operator-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .ghost { background: #edf2fb; color: #23416b; }
 
-    .actions-block {
-      grid-column: 1 / -1;
+  @media (max-width: 1100px) {
+    .topbar {
+      grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 820px) {
-    .topbar {
-      grid-template-columns: 1fr;
+    .summary-heading,
+    .operator-card {
+      flex-direction: column;
+      align-items: start;
     }
 
-    .health-pills {
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    .time-block {
+      text-align: left;
+      justify-items: start;
+    }
+
+    .context-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>
