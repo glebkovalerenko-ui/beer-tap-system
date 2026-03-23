@@ -32,6 +32,14 @@
   let reissueStatus = '';
   let isReissueBusy = false;
 
+  $: cardPermissions = $roleStore.permissions;
+  $: canAccessCardsGuests = Boolean(cardPermissions.cards_lookup);
+  $: canOpenVisit = Boolean(cardPermissions.cards_open_active_session);
+  $: canViewHistory = Boolean(cardPermissions.cards_history_view);
+  $: canTopUp = Boolean(cardPermissions.cards_top_up);
+  $: canToggleBlock = Boolean(cardPermissions.cards_block_manage);
+  $: canReissue = Boolean(cardPermissions.cards_reissue_manage);
+
   const fullName = (guest) => [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(' ');
 
   $: {
@@ -100,26 +108,26 @@
       {
         id: 'top-up',
         title: 'Пополнить баланс',
-        description: 'Сразу открыть пополнение после идентификации гостя.',
-        disabled: !guest,
+        description: canTopUp ? 'Сразу открыть пополнение после идентификации гостя.' : 'Недоступно для роли оператора без права на пополнение.',
+        disabled: !guest || !canTopUp,
       },
       {
         id: 'open-visit',
         title: 'Открыть активную сессию',
-        description: 'Перейти в текущий визит, если карта уже участвует в сессии.',
-        disabled: !(visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id),
+        description: canOpenVisit ? 'Перейти в текущий визит, если карта уже участвует в сессии.' : 'Недоступно без права на переход в активную сессию.',
+        disabled: !canOpenVisit || !(visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id),
       },
       {
         id: 'toggle-block',
         title: guest?.is_active ? 'Блокировать гостя' : 'Разблокировать гостя',
-        description: 'Ограничить операции по гостю, не уходя в мастер-данные.',
-        disabled: !guest,
+        description: canToggleBlock ? 'Ограничить операции по гостю, не уходя в мастер-данные.' : 'Недоступно без отдельного права на блокировку.',
+        disabled: !guest || !canToggleBlock,
       },
       {
         id: 'reissue',
         title: lookup?.is_lost ? 'Перевыпустить lost-карту' : 'Lost / перевыпуск',
-        description: 'Отдельный сценарий для lost → перевыпуск → перенос контекста сессии.',
-        disabled: !(guest && (lookup?.is_lost || visit?.visit_id || lookup?.active_visit?.visit_id)),
+        description: canReissue ? 'Отдельный сценарий для lost → перевыпуск → перенос контекста сессии.' : 'Недоступно без права на lost / перевыпуск.',
+        disabled: !canReissue || !(guest && (lookup?.is_lost || visit?.visit_id || lookup?.active_visit?.visit_id)),
         tone: lookup?.is_lost ? 'danger' : 'muted',
       },
     ];
@@ -138,7 +146,7 @@
     reissueStatus = '';
     try {
       selectedLookup = await lostCardStore.resolveCard(event.detail.uid);
-      pendingScenario = selectedLookup?.is_lost ? 'reissue' : 'check-card';
+      pendingScenario = selectedLookup?.is_lost && canReissue ? 'reissue' : 'check-card';
       if (selectedLookup?.guest?.guest_id) {
         selectedGuestId = selectedLookup.guest.guest_id;
       }
@@ -150,6 +158,10 @@
   }
 
   async function handleRestoreLost(event) {
+    if (!canReissue) {
+      uiStore.notifyWarning('Снятие отметки lost доступно только ролям с правом на перевыпуск.');
+      return;
+    }
     const uid = event.detail.uid;
     if (!uid) return;
     try {
@@ -163,6 +175,10 @@
   }
 
   function handleOpenVisit() {
+    if (!canOpenVisit) {
+      uiStore.notifyWarning('Открытие активной сессии недоступно для текущей роли.');
+      return;
+    }
     const visitId = selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id;
     if (!visitId) return;
     sessionStorage.setItem('visits.lookupVisitId', visitId);
@@ -170,12 +186,20 @@
   }
 
   function handleOpenHistory() {
+    if (!canViewHistory) {
+      uiStore.notifyWarning('Просмотр истории недоступен для текущей роли.');
+      return;
+    }
     const cardUid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid || '';
     if (cardUid) sessionStorage.setItem('sessions.history.cardUid', cardUid);
     window.location.hash = '/sessions/history';
   }
 
   async function handleOpenNewVisit(event) {
+    if (!canOpenVisit) {
+      uiStore.notifyWarning('Открытие нового визита недоступно для текущей роли.');
+      return;
+    }
     try {
       const opened = await visitStore.openVisit({ guestId: event.detail.guestId });
       sessionStorage.setItem('visits.lookupVisitId', opened.visit_id);
@@ -188,6 +212,10 @@
   }
 
   function handleOpenTopUpModal() {
+    if (!canTopUp) {
+      uiStore.notifyWarning('Пополнение баланса недоступно для текущей роли.');
+      return;
+    }
     if (!selectedGuest) return;
     if (!get(shiftStore).isOpen) {
       uiStore.notifyWarning('Сначала откройте смену на дашборде, затем выполните пополнение.');
@@ -209,6 +237,10 @@
   }
 
   async function handleToggleBlock() {
+    if (!canToggleBlock) {
+      uiStore.notifyWarning('Блокировка гостя недоступна для текущей роли.');
+      return;
+    }
     if (!selectedGuest) return;
     pageError = '';
     try {
@@ -228,6 +260,10 @@
   }
 
   async function handleMarkLost() {
+    if (!canReissue) {
+      uiStore.notifyWarning('Lost / перевыпуск недоступны для текущей роли.');
+      return;
+    }
     const visitId = selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id;
     if (!visitId) {
       uiStore.notifyWarning('Пометить lost можно из активного визита с привязанной картой.');
@@ -270,6 +306,10 @@
   }
 
   async function submitReissue() {
+    if (!canReissue) {
+      uiStore.notifyWarning('Перевыпуск карты недоступен для текущей роли.');
+      return;
+    }
     const nextUid = reissueUidInput.trim();
     if (!selectedGuest || !nextUid) return;
     isReissueBusy = true;
@@ -302,6 +342,10 @@
   }
 
   async function handleSaveGuest(event) {
+    if (!canReissue && !canToggleBlock) {
+      uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.');
+      return;
+    }
     formError = '';
     try {
       await guestStore.updateGuest(selectedGuest.guest_id, event.detail);
@@ -317,7 +361,7 @@
   });
 </script>
 
-{#if !$roleStore.permissions.cards_manage}
+{#if !canAccessCardsGuests}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает операции с картами и гостями.</p>
@@ -337,14 +381,14 @@
     <div class="quick-grid">
       <CardLookupPanel
         title="Lookup и решение оператора"
-        description="Сначала идентифицируйте карту, затем сразу выберите действие: проверка, пополнение, сессия, блокировка или перевыпуск."
+        description="Сначала идентифицируйте карту, затем выберите доступное для роли действие: проверка, сессия, история или разрешённые management-операции."
         result={selectedLookup}
         error={lookupError}
         loading={$lostCardStore.loading || $visitStore.loading}
-        allowRestoreLost={$roleStore.permissions.cards_manage}
-        allowOpenVisit={true}
+        allowRestoreLost={canReissue}
+        allowOpenVisit={canOpenVisit}
         allowOpenGuest={Boolean(selectedGuest)}
-        allowOpenNewVisit={true}
+        allowOpenNewVisit={canOpenVisit}
         openVisitLabel="Открыть активную сессию"
         openGuestLabel="Показать контекст гостя"
         openNewVisitLabel="Открыть новый визит"
@@ -402,12 +446,18 @@
             lastTapLabel={lastTapLabel}
             variant="operator"
             on:close={() => { selectedGuestId = null; selectedLookup = null; phoneQuery = ''; pendingScenario = ''; }}
+            canTopUp={canTopUp}
+            canToggleBlock={canToggleBlock}
+            canMarkLost={canReissue}
+            canOpenHistory={canViewHistory}
+            canOpenVisit={canOpenVisit}
+            canEdit={canReissue || canToggleBlock}
             on:top-up={handleOpenTopUpModal}
             on:toggle-block={handleToggleBlock}
             on:mark-lost={handleMarkLost}
             on:open-history={handleOpenHistory}
             on:open-visit={handleOpenVisit}
-            on:edit={() => { formError = ''; isEditModalOpen = true; }}
+            on:edit={() => { if (!(canReissue || canToggleBlock)) { uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.'); return; } formError = ''; isEditModalOpen = true; }}
           />
         {:else}
           <div class="empty-state">
@@ -449,28 +499,28 @@
               </dl>
             </section>
 
-            <section class:active={pendingScenario === 'top-up'} class="scenario-card">
+            {#if canTopUp}<section class:active={pendingScenario === 'top-up'} class="scenario-card">
               <h3>Пополнить баланс</h3>
               <p>Primary CTA уже доступен в lookup. Здесь — только подтверждение текущего контекста.</p>
               <div class="scenario-note">Гость: <strong>{lookupGuestName}</strong>{selectedGuest ? ` · баланс ${formatRubAmount(selectedGuest.balance)}` : ''}</div>
-            </section>
+            </section>{/if}
 
-            <section class:active={pendingScenario === 'open-visit'} class="scenario-card">
+            {#if canOpenVisit}<section class:active={pendingScenario === 'open-visit'} class="scenario-card">
               <h3>Открыть активную сессию</h3>
               <p>Используйте, когда lookup показал активный визит или lost-карту в рамках действующей сессии.</p>
               <div class="scenario-note">Визит: <strong>{selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id || '—'}</strong></div>
-            </section>
+            </section>{/if}
 
-            <section class:active={pendingScenario === 'toggle-block'} class="scenario-card">
+            {#if canToggleBlock}<section class:active={pendingScenario === 'toggle-block'} class="scenario-card">
               <h3>{selectedGuest?.is_active ? 'Блокировать гостя' : 'Разблокировать гостя'}</h3>
               <p>Используйте, если нужно немедленно остановить работу по гостю без открытия мастер-данных.</p>
               <div class="scenario-note">Текущий статус гостя: <strong>{selectedGuest?.is_active ? 'активен' : 'заблокирован'}</strong></div>
-            </section>
+            </section>{/if}
 
-            <section class:active={pendingScenario === 'reissue'} class="scenario-card reissue-card">
+            {#if canReissue}<section class:active={pendingScenario === 'reissue'} class="scenario-card reissue-card">
               <h3>Lost → перевыпуск → перенос контекста</h3>
               <p>Отдельный операторский flow: потерянную карту можно восстановить, затем привязать новую и перенести на неё активную сессию.</p>
-              {#if selectedLookup?.is_lost}
+              {#if canReissue && selectedLookup?.is_lost}
                 <div class="scenario-warning">
                   <strong>Текущая карта в статусе lost.</strong>
                   <span>Отмечена {formatDateTimeRu(selectedLookup.lost_card?.reported_at)}.</span>
@@ -496,13 +546,13 @@
               {#if reissueError}
                 <p class="error">{reissueError}</p>
               {/if}
-            </section>
+            </section>{/if}
           </div>
         {/if}
       </section>
     </div>
 
-    {#if selectedLookup?.is_lost}
+    {#if canReissue && selectedLookup?.is_lost}
       <section class="ui-card incident-strip">
         <strong>Карта в статусе lost.</strong>
         <span>Оператор может снять отметку, запустить перевыпуск и перенести активную сессию без перехода в глубокий guest profile.</span>
