@@ -150,3 +150,153 @@ export function formatKegStatus(status) {
 export function formatShiftReportMetricLabel(metric) {
   return SHIFT_REPORT_STATUS_LABELS[metric] || metric || '-';
 }
+
+const DEFAULT_TAP_DISPLAY_COPY = {
+  fallbackTitle: 'Кран недоступен',
+  fallbackSubtitle: 'Обратитесь к оператору',
+  maintenanceTitle: 'Кран временно недоступен',
+  maintenanceSubtitle: 'Обратитесь к оператору',
+};
+
+function compactText(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+}
+
+function chooseScenario(productState, enabled) {
+  if (enabled === false) return 'display_disabled';
+  if (productState === 'pouring') return 'pouring';
+  if (productState === 'ready') return 'beverage_spotlight';
+  if (productState === 'no_keg') return 'fallback_empty';
+  if (productState === 'syncing') return 'syncing';
+  return 'maintenance';
+}
+
+export function buildTapGuestDisplaySnapshot(tap, displayConfig = null) {
+  const operations = tap?.operations || {};
+  const beverage = tap?.keg?.beverage || null;
+  const config = displayConfig || {};
+  const displayEnabled = config.enabled ?? tap?.display_enabled ?? true;
+  const scenario = chooseScenario(operations.productState, displayEnabled);
+
+  const titleCandidates = {
+    display_disabled: [
+      config.maintenance_title,
+      config.fallback_title,
+      beverage?.display_brand_name,
+      beverage?.name,
+    ],
+    fallback_empty: [
+      config.fallback_title,
+      config.maintenance_title,
+      beverage?.display_brand_name,
+      beverage?.name,
+    ],
+    maintenance: [
+      config.maintenance_title,
+      config.fallback_title,
+      beverage?.display_brand_name,
+      beverage?.name,
+    ],
+    syncing: [
+      beverage?.display_brand_name,
+      beverage?.name,
+      config.maintenance_title,
+      config.fallback_title,
+    ],
+    pouring: [
+      beverage?.display_brand_name,
+      beverage?.name,
+      config.maintenance_title,
+    ],
+    beverage_spotlight: [
+      beverage?.display_brand_name,
+      beverage?.name,
+      config.fallback_title,
+    ],
+  };
+
+  const subtitleCandidates = {
+    display_disabled: [
+      config.maintenance_subtitle,
+      config.fallback_subtitle,
+      operations.operatorStateReason,
+      operations.liveStatus,
+    ],
+    fallback_empty: [
+      config.fallback_subtitle,
+      operations.operatorStateReason,
+      operations.liveStatus,
+      beverage?.description_short,
+    ],
+    maintenance: [
+      config.maintenance_subtitle,
+      operations.operatorStateReason,
+      operations.liveStatus,
+      beverage?.description_short,
+    ],
+    syncing: [
+      operations.liveStatus,
+      operations.operatorStateReason,
+      beverage?.description_short,
+    ],
+    pouring: [
+      operations.liveStatus,
+      operations.operatorStateReason,
+      beverage?.description_short,
+    ],
+    beverage_spotlight: [
+      beverage?.description_short,
+      [beverage?.style, beverage?.brewery].filter(Boolean).join(' · '),
+      operations.liveStatus,
+    ],
+  };
+
+  const title = titleCandidates[scenario]?.map(compactText).find(Boolean)
+    || DEFAULT_TAP_DISPLAY_COPY.fallbackTitle;
+  const subtitle = subtitleCandidates[scenario]?.map(compactText).find(Boolean)
+    || (scenario === 'beverage_spotlight' || scenario === 'pouring'
+      ? DEFAULT_TAP_DISPLAY_COPY.fallbackSubtitle
+      : DEFAULT_TAP_DISPLAY_COPY.maintenanceSubtitle);
+
+  return {
+    enabled: displayEnabled,
+    scenario,
+    scenarioLabel: {
+      display_disabled: 'Экран отключён для гостей',
+      beverage_spotlight: 'Гость видит карточку напитка',
+      pouring: 'Гость видит активный налив',
+      fallback_empty: 'Гость видит fallback для пустого крана',
+      syncing: 'Гость видит бренд до подтверждения синхронизации',
+      maintenance: 'Гость видит сервисный экран',
+    }[scenario] || 'Сценарий уточняется',
+    title,
+    subtitle,
+    brandingSummary: [
+      beverage?.display_brand_name ? `Бренд: ${beverage.display_brand_name}` : null,
+      beverage?.name ? `Напиток: ${beverage.name}` : null,
+      beverage?.style ? `Стиль: ${beverage.style}` : null,
+      beverage?.brewery ? `Пивоварня: ${beverage.brewery}` : null,
+    ].filter(Boolean).join(' · ') || 'Гостевой контент без бренд-метаданных.',
+    background: {
+      present: Boolean(config.override_background_asset_id || beverage?.background_asset_id),
+      source: config.override_background_asset_id
+        ? 'Фон переопределён на уровне крана'
+        : beverage?.background_asset_id
+          ? 'Фон наследуется от напитка'
+          : 'Фон не задан',
+    },
+    logo: {
+      present: Boolean(beverage?.logo_asset_id),
+      source: beverage?.logo_asset_id ? 'Логотип напитка доступен' : 'Логотип не задан',
+    },
+    runtimeSummary: operations.displayStatus?.label || operations.liveStatus || 'Нет данных о runtime',
+    runtimeTone: operations.displayStatus?.state || 'unknown',
+    operatorSummary: [
+      displayEnabled ? 'Tap display включён' : 'Tap display выключен',
+      operations.productStateLabel ? `Состояние крана: ${operations.productStateLabel}` : null,
+      operations.operatorStateReason || null,
+      operations.liveStatus || null,
+    ].filter(Boolean),
+  };
+}
