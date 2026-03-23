@@ -16,26 +16,14 @@
     incidentOnly: false,
     unsyncedOnly: false,
     zeroVolumeAbortOnly: false,
+    activeOnly: false,
   };
 
   let filters = { ...DEFAULT_FILTERS };
   let focusVisitId = '';
   let focusTapId = '';
   let focusResolved = false;
-
-  $: items = $visitStore.sessionHistory || [];
-  $: detail = $visitStore.sessionHistoryDetail;
-  $: filteredItems = items.filter(matchesClientFilters);
-  $: focusContextText = focusVisitId
-    ? `Журнал сфокусирован на сессии ${focusVisitId}.`
-    : focusTapId
-      ? `Журнал сфокусирован на контексте крана ${focusTapId}.`
-      : '';
-  $: detailNarrativeGroups = detail ? groupedNarrative(detail) : { timeline: [], operatorObservations: [] };
-  $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary) : [];
-  $: if (focusVisitId && !focusResolved && !$visitStore.historyLoading && (filteredItems.length > 0 || items.length > 0)) {
-    resolveFocusVisit();
-  }
+  let selectedVisitId = '';
 
   const syncLabels = {
     pending_sync: 'Ожидает синхронизации',
@@ -74,6 +62,24 @@
     assign_card: 'Оператор привязал карту',
   };
 
+  $: activeItems = ($visitStore.activeVisits || []).map((item) => normalizeVisit(item, 'active'));
+  $: historyItems = ($visitStore.sessionHistory || []).map((item) => normalizeVisit(item, 'history'));
+  $: mergedItems = mergeVisits(activeItems, historyItems);
+  $: filteredItems = mergedItems.filter(matchesFilters);
+  $: pinnedActiveItems = filteredItems.filter((item) => item.isActive);
+  $: journalItems = filters.activeOnly ? pinnedActiveItems : filteredItems.filter((item) => !item.isActive);
+  $: detail = $visitStore.sessionHistoryDetail;
+  $: focusContextText = focusVisitId
+    ? `Открываем сессию ${focusVisitId} в общем журнале.`
+    : focusTapId
+      ? `Журнал сфокусирован на кране ${focusTapId}.`
+      : '';
+  $: detailNarrativeGroups = detail ? groupedNarrative(detail) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
+  $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary) : [];
+  $: if (focusVisitId && !focusResolved && !$visitStore.historyLoading && (!$visitStore.loading || activeItems.length > 0 || historyItems.length > 0)) {
+    resolveFocusVisit();
+  }
+
   onMount(async () => {
     filters = { ...filters, ...getPeriodBounds(filters.periodPreset) };
 
@@ -100,6 +106,41 @@
     await applyFilters();
   });
 
+  function normalizeVisit(item, source) {
+    const lifecycle = item.lifecycle || {};
+    const isActive = source === 'active' || item.status === 'active' || item.visit_status === 'active' || item.operator_status === 'Активна';
+    return {
+      ...item,
+      source,
+      isActive,
+      lifecycle,
+      opened_at: item.opened_at || lifecycle.opened_at || null,
+      last_event_at: item.last_event_at || lifecycle.last_event_at || lifecycle.last_pour_ended_at || item.updated_at || null,
+      guest_full_name: item.guest_full_name || 'Гость без имени',
+      operator_status: item.operator_status || (isActive ? 'Активна' : item.status || 'Неизвестно'),
+      visit_status: item.visit_status || item.status || (isActive ? 'active' : null),
+      taps: item.taps || (item.active_tap_id ? [String(item.active_tap_id)] : []),
+      sync_state: item.sync_state || (isActive ? 'pending_sync' : 'not_started'),
+      completion_source: item.completion_source || (isActive ? 'system' : null),
+      contains_tail_pour: Boolean(item.contains_tail_pour),
+      contains_non_sale_flow: Boolean(item.contains_non_sale_flow),
+      has_incident: Boolean(item.has_incident),
+      has_unsynced: Boolean(item.has_unsynced),
+      incident_count: item.incident_count || 0,
+      card_uid: item.card_uid || '',
+    };
+  }
+
+  function mergeVisits(active = [], history = []) {
+    const map = new Map();
+    for (const item of history) map.set(String(item.visit_id), item);
+    for (const item of active) map.set(String(item.visit_id), { ...map.get(String(item.visit_id)), ...item, isActive: true, source: 'active' });
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return new Date(b.last_event_at || b.opened_at || 0).getTime() - new Date(a.last_event_at || a.opened_at || 0).getTime();
+    });
+  }
+
   function isoDateLocal(value) {
     const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
     return local.toISOString().slice(0, 10);
@@ -124,6 +165,10 @@
     return { dateFrom: today, dateTo: today };
   }
 
+  function formatMaybeDate(value) {
+    return value ? formatDateTimeRu(value) : '—';
+  }
+
   function describeCompletionSource(value) {
     if (!value) return 'Не указан';
     return completionSourceLabels[value] || value.replaceAll('_', ' ');
@@ -142,8 +187,34 @@
     return item.operator_status === 'Прервана' && !item.lifecycle?.first_pour_started_at && !item.lifecycle?.last_pour_ended_at;
   }
 
-  function matchesClientFilters(item) {
+  function matchesText(item, query) {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return true;
+    return [item.card_uid, item.visit_id, item.guest_full_name]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalized));
+  }
+
+  function matchesStatus(item) {
+    if (!filters.status) return true;
+    if (filters.status === 'active') return item.isActive;
+    if (filters.status === 'closed') return !item.isActive && item.operator_status !== 'Прервана';
+    if (filters.status === 'aborted') return item.operator_status === 'Прервана';
+    return true;
+  }
+
+  function matchesFilters(item) {
+    if (filters.tapId) {
+      const tapNeedle = String(filters.tapId).trim();
+      const taps = (item.taps || []).map((tap) => String(tap));
+      if (!taps.includes(tapNeedle)) return false;
+    }
+    if (!matchesStatus(item)) return false;
+    if (!matchesText(item, filters.cardUid)) return false;
+    if (filters.incidentOnly && !item.has_incident) return false;
+    if (filters.unsyncedOnly && !item.has_unsynced) return false;
     if (filters.zeroVolumeAbortOnly && !isZeroVolumeAbort(item)) return false;
+    if (filters.activeOnly && !item.isActive) return false;
     return true;
   }
 
@@ -152,7 +223,10 @@
     if (filters.periodPreset !== 'range') {
       filters = { ...filters, ...getPeriodBounds(filters.periodPreset) };
     }
-    await visitStore.fetchSessionHistory(filters).catch(() => {});
+    await Promise.all([
+      visitStore.fetchActiveVisits().catch(() => {}),
+      visitStore.fetchSessionHistory(filters).catch(() => {}),
+    ]);
   }
 
   function resetFilters() {
@@ -165,23 +239,26 @@
   }
 
   async function resolveFocusVisit() {
-    const target = items.find((item) => String(item.visit_id) === String(focusVisitId));
+    const target = mergedItems.find((item) => String(item.visit_id) === String(focusVisitId));
     if (target) {
       focusResolved = true;
       await openDetail(target);
       return;
     }
     focusResolved = true;
+    selectedVisitId = String(focusVisitId);
     await visitStore.fetchSessionHistoryDetail(focusVisitId).catch(() => {});
   }
 
   async function openDetail(item) {
     focusVisitId = String(item.visit_id);
+    selectedVisitId = String(item.visit_id);
     focusResolved = true;
     await visitStore.fetchSessionHistoryDetail(item.visit_id).catch(() => {});
   }
 
   function closeDetail() {
+    selectedVisitId = '';
     visitStore.clearSessionHistoryDetail();
   }
 
@@ -259,7 +336,18 @@
     if (detailPayload.summary.contains_tail_pour) operatorObservations.push({ title: 'Есть долив хвоста', description: 'Сессия включает хвостовой долив и требует внимательной проверки итогов.' });
     if (detailPayload.summary.contains_non_sale_flow) operatorObservations.push({ title: 'Есть служебный налив', description: 'Часть действий прошла как non-sale и не должна трактоваться как обычная продажа.' });
     if (detailPayload.summary.has_unsynced) operatorObservations.push({ title: 'Есть риск несинхронизированных данных', description: syncLabels[detailPayload.summary.sync_state] || detailPayload.summary.sync_state });
-    return { timeline, operatorObservations };
+
+    const lifecycle = detailPayload.summary.lifecycle || {};
+    const lifecycleCards = [
+      { label: 'Старт сессии', value: formatMaybeDate(lifecycle.opened_at), note: 'Источник: открытие визита / старт workflow' },
+      { label: 'Источник завершения', value: describeCompletionSource(detailPayload.summary.completion_source), note: 'Окончание сессии или причина прерывания' },
+      { label: 'Синхронизация', value: syncLabels[detailPayload.summary.sync_state] || detailPayload.summary.sync_state, note: formatMaybeDate(lifecycle.last_sync_at) },
+      { label: 'Tail pour', value: detailPayload.summary.contains_tail_pour ? 'Да' : 'Нет', note: detailPayload.summary.contains_tail_pour ? 'Нужна проверка хвостового долива' : 'Хвостовой долив не найден' },
+      { label: 'Non-sale flow', value: detailPayload.summary.contains_non_sale_flow ? 'Да' : 'Нет', note: detailPayload.summary.contains_non_sale_flow ? 'Был служебный налив без продажи' : 'Служебных наливов нет' },
+      { label: 'Финиш сессии', value: formatMaybeDate(lifecycle.closed_at), note: `Последний налив: ${formatMaybeDate(lifecycle.last_pour_ended_at)}` },
+    ];
+
+    return { timeline, operatorObservations, lifecycleCards };
   }
 
   function normalizedOperatorActions(summary) {
@@ -283,6 +371,14 @@
 
 <div class="history-layout">
   <section class="ui-card filters-panel">
+    <div class="filters-title">
+      <div>
+        <h2>Общий журнал сессий</h2>
+        <p>Активные визиты закреплены сверху, а история и поиск работают в одном операторском экране.</p>
+      </div>
+      <button on:click={applyFilters} disabled={$visitStore.historyLoading || $visitStore.loading}>Обновить</button>
+    </div>
+
     <div class="filters-grid period-grid">
       <label>
         <span>Период</span>
@@ -304,54 +400,91 @@
           <option value="aborted">Прервана</option>
         </select>
       </label>
-      <label><span>Карта</span><input bind:value={filters.cardUid} placeholder="UID карты" /></label>
+      <label><span>Карта / UID / Visit ID</span><input bind:value={filters.cardUid} placeholder="UID карты или visit" /></label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.incidentOnly} /> Только с инцидентами</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только с несинхронизированными данными</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> Только нулевые прерывания без налива</label>
+      <label class="checkbox"><input type="checkbox" bind:checked={filters.activeOnly} /> Только активные</label>
     </div>
     <div class="actions"><button on:click={applyFilters}>Применить</button><button class="secondary" on:click={resetFilters}>Сбросить</button></div>
   </section>
 
+  {#if focusContextText}
+    <div class="focus-banner">{focusContextText}</div>
+  {/if}
+
   <div class="content-grid">
-    <section class="ui-card list-panel">
-      <div class="list-head">
-        <div>
-          <h2>Журнал сессий</h2>
-          <p>Текущие и завершённые сессии в операторском представлении.</p>
+    <section class="list-stack">
+      <section class="ui-card list-panel pinned-panel">
+        <div class="list-head">
+          <div>
+            <h3>Активные сейчас</h3>
+            <p>Закреплённый блок помогает сразу видеть, что ещё не завершено.</p>
+          </div>
+          <span class="counter">{pinnedActiveItems.length}</span>
         </div>
-        <button on:click={applyFilters} disabled={$visitStore.historyLoading}>Обновить</button>
-      </div>
-      {#if focusContextText}
-        <div class="focus-banner">{focusContextText}</div>
-      {/if}
-      {#if filteredItems.length === 0}
-        <p class="muted">Нет сессий по выбранным фильтрам.</p>
-      {:else}
-        <div class="session-list">
-          {#each filteredItems as item}
-            <button class:selected={String(item.visit_id) === String(focusVisitId)} class="session-item" on:click={() => openDetail(item)}>
-              <div class="row top"><strong>{item.guest_full_name}</strong><span>{item.operator_status}</span></div>
-              <div class="row"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
-              <div class="row"><span>Открыта: {formatDateTimeRu(item.opened_at)}</span><span>Последнее событие: {formatDateTimeRu(item.last_event_at)}</span></div>
-              <div class="chips">
-                <span>{syncLabels[item.sync_state] || item.sync_state}</span>
-                {#if item.completion_source}<span>Источник завершения: {describeCompletionSource(item.completion_source)}</span>{/if}
-                {#if item.contains_tail_pour}<span>Есть долив хвоста</span>{/if}
-                {#if item.contains_non_sale_flow}<span>Есть служебный налив</span>{/if}
-                {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
-                {#if isZeroVolumeAbort(item)}<span>Прервана без налива</span>{/if}
-              </div>
-            </button>
-          {/each}
+
+        {#if pinnedActiveItems.length === 0}
+          <p class="muted">По текущим фильтрам активных сессий нет.</p>
+        {:else}
+          <div class="session-list compact-list">
+            {#each pinnedActiveItems as item}
+              <button class:selected={String(item.visit_id) === String(selectedVisitId)} class="session-item pinned" on:click={() => openDetail(item)}>
+                <div class="row top"><strong>{item.guest_full_name}</strong><span class="state active">Активна</span></div>
+                <div class="row"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
+                <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
+                <div class="chips">
+                  <span>{syncLabels[item.sync_state] || item.sync_state}</span>
+                  {#if item.has_unsynced}<span>Есть несинхронизированные данные</span>{/if}
+                  {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="ui-card list-panel">
+        <div class="list-head">
+          <div>
+            <h3>{filters.activeOnly ? 'Отфильтрованные активные сессии' : 'История и завершённые сессии'}</h3>
+            <p>Открывайте любую строку справа в detail panel без переключения режимов.</p>
+          </div>
+          <span class="counter">{journalItems.length}</span>
         </div>
-      {/if}
+
+        {#if journalItems.length === 0}
+          <p class="muted">Нет сессий по выбранным фильтрам.</p>
+        {:else}
+          <div class="session-list">
+            {#each journalItems as item}
+              <button class:selected={String(item.visit_id) === String(selectedVisitId)} class="session-item" on:click={() => openDetail(item)}>
+                <div class="row top">
+                  <strong>{item.guest_full_name}</strong>
+                  <span class:active={item.isActive} class="state">{item.operator_status}</span>
+                </div>
+                <div class="row"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
+                <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
+                <div class="chips">
+                  <span>{syncLabels[item.sync_state] || item.sync_state}</span>
+                  {#if item.completion_source}<span>Источник завершения: {describeCompletionSource(item.completion_source)}</span>{/if}
+                  {#if item.contains_tail_pour}<span>Есть долив хвоста</span>{/if}
+                  {#if item.contains_non_sale_flow}<span>Есть служебный налив</span>{/if}
+                  {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
+                  {#if isZeroVolumeAbort(item)}<span>Прервана без налива</span>{/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
     </section>
 
-    {#if detail}
-      <aside class="ui-card drawer">
+    <aside class="ui-card drawer" class:drawer-open={detail}>
+      {#if detail}
         <div class="drawer-head">
           <div>
-            <div class="eyebrow">Детали сессии</div>
+            <div class="eyebrow">Detail panel</div>
             <h2>{detail.summary.guest_full_name}</h2>
             <p>{detail.summary.card_uid || 'Без карты'} · {detail.summary.operator_status}</p>
           </div>
@@ -366,20 +499,24 @@
         </section>
 
         <section class="stats-grid">
-          <article><span>Источник завершения</span><strong>{describeCompletionSource(detail.summary.completion_source)}</strong></article>
-          <article><span>Синхронизация</span><strong>{syncLabels[detail.summary.sync_state] || detail.summary.sync_state}</strong></article>
-          <article><span>Флаги</span><strong>{describeFlags(detail.summary)}</strong></article>
+          {#each detailNarrativeGroups.lifecycleCards as card}
+            <article>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.note}</small>
+            </article>
+          {/each}
         </section>
 
         <section class="timeline-section">
-          <h3>Lifecycle timestamps</h3>
+          <h3>Lifecycle события</h3>
           <dl>
-            <div><dt>Открытие</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.opened_at)}</dd></div>
-            <div><dt>Авторизация</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.first_authorized_at)}</dd></div>
-            <div><dt>Старт налива</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.first_pour_started_at)}</dd></div>
-            <div><dt>Последний налив завершён</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.last_pour_ended_at)}</dd></div>
-            <div><dt>Последняя синхронизация</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.last_sync_at)}</dd></div>
-            <div><dt>Закрытие / прерывание</dt><dd>{formatDateTimeRu(detail.summary.lifecycle.closed_at)}</dd></div>
+            <div><dt>Открытие</dt><dd>{formatMaybeDate(detail.summary.lifecycle.opened_at)}</dd></div>
+            <div><dt>Авторизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
+            <div><dt>Старт налива</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_pour_started_at)}</dd></div>
+            <div><dt>Последний налив завершён</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_pour_ended_at)}</dd></div>
+            <div><dt>Последняя синхронизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_sync_at)}</dd></div>
+            <div><dt>Закрытие / прерывание</dt><dd>{formatMaybeDate(detail.summary.lifecycle.closed_at)}</dd></div>
           </dl>
         </section>
 
@@ -388,7 +525,7 @@
           <ul class="timeline">
             {#each detailNarrativeGroups.timeline as event}
               <li>
-                <div class="time">{formatDateTimeRu(event.timestamp)}</div>
+                <div class="time">{formatMaybeDate(event.timestamp)}</div>
                 <div>
                   <strong>{event.title}</strong>
                   <p>{event.description}</p>
@@ -400,7 +537,7 @@
         </section>
 
         <section class="timeline-section">
-          <h3>Что увидел оператор</h3>
+          <h3>Sync / tail / non-sale / incidents</h3>
           {#if detailNarrativeGroups.operatorObservations.length}
             <ul class="timeline compact">
               {#each detailNarrativeGroups.operatorObservations as observation}
@@ -413,49 +550,64 @@
         </section>
 
         <section class="timeline-section">
-          <h3>Какие действия были предприняты</h3>
+          <h3>Operator actions</h3>
           {#if detailOperatorActions.length}
             <ul class="timeline compact">
               {#each detailOperatorActions as action}
-                <li><div class="time">{formatDateTimeRu(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'Без дополнительного комментария'}</p></div></li>
+                <li><div class="time">{formatMaybeDate(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'Без дополнительного комментария'}</p></div></li>
               {/each}
             </ul>
           {:else}
             <p class="muted">Явных вмешательств оператора не было.</p>
           {/if}
         </section>
-      </aside>
-    {/if}
+      {:else}
+        <div class="empty-drawer">
+          <div class="eyebrow">Detail panel</div>
+          <h2>Выберите сессию</h2>
+          <p>Откройте любую строку в активном блоке или журнале, чтобы увидеть lifecycle, синхронизацию и действия оператора.</p>
+        </div>
+      {/if}
+    </aside>
   </div>
 </div>
 
 <style>
-  .history-layout, .filters-panel, .list-panel, .drawer, .timeline-section, .summary-section { display: grid; gap: 1rem; }
-  .content-grid { display: grid; grid-template-columns: minmax(360px, 520px) minmax(420px, 1fr); gap: 1rem; align-items: start; }
+  .history-layout, .filters-panel, .list-panel, .drawer, .timeline-section, .summary-section, .list-stack { display: grid; gap: 1rem; }
+  .filters-title, .actions, .list-head, .drawer-head, .row, .timeline li, dl div, .stats-grid { display: flex; gap: 0.75rem; }
+  .filters-title, .actions, .list-head, .drawer-head, .row, .timeline li, dl div { justify-content: space-between; }
+  .content-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(380px, 0.9fr); gap: 1rem; align-items: start; }
   .filters-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.75rem; }
   .period-grid { align-items: end; }
   label { display: grid; gap: 0.35rem; font-size: 0.92rem; }
   input, select, button { font: inherit; }
   input, select { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; }
   .checkbox { align-self: end; display: flex; gap: 0.5rem; align-items: center; }
-  .actions, .list-head, .drawer-head, .row, .timeline li, dl div, .stats-grid { display: flex; gap: 0.75rem; }
-  .actions, .list-head, .drawer-head, .row, .timeline li, dl div { justify-content: space-between; }
   .session-list, .timeline { display: grid; gap: 0.75rem; }
-  .session-item, .actions button, .drawer-head button { border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 0.9rem; text-align: left; }
-  .session-item.selected, .focus-banner { border-color: #2563eb; background: #eff6ff; }
-  .focus-banner { border: 1px solid #bfdbfe; border-radius: 12px; padding: 0.85rem 1rem; color: #1d4ed8; }
-  .session-item .top { align-items: center; }
+  .session-item, .actions button, .drawer-head button, .filters-title button { border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 0.9rem; text-align: left; }
+  .session-item { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+  .session-item:hover, .session-item.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #bfdbfe; }
+  .session-item.pinned { background: linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%); }
+  .focus-banner { border: 1px solid #bfdbfe; border-radius: 12px; padding: 0.85rem 1rem; color: #1d4ed8; background: #eff6ff; }
   .chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
   .chips span, .eyebrow, .muted, small, dt { color: var(--text-secondary, #64748b); }
   .chips span { background: #f1f5f9; border-radius: 999px; padding: 0.2rem 0.55rem; }
-  .drawer { position: sticky; top: 0; max-height: 85vh; overflow: auto; }
+  .drawer { position: sticky; top: 0; min-height: 320px; max-height: 85vh; overflow: auto; }
+  .drawer-open { border-color: #bfdbfe; }
   .stats-grid { flex-wrap: wrap; }
-  .stats-grid article, .summary-section { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem; }
-  .stats-grid article { flex: 1 1 160px; display: grid; gap: 0.35rem; }
+  .stats-grid article, .summary-section, .empty-drawer { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.85rem; }
+  .stats-grid article { flex: 1 1 180px; display: grid; gap: 0.35rem; }
   .timeline { list-style: none; padding: 0; margin: 0; }
   .timeline li { align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem; }
-  .timeline p, .drawer-head h2, .drawer-head p, .list-head h2, .list-head p, .summary-section p { margin: 0; }
+  .timeline p, .drawer-head h2, .drawer-head p, .list-head h3, .list-head p, .summary-section p, .filters-title h2, .filters-title p, .empty-drawer h2, .empty-drawer p { margin: 0; }
   .time { min-width: 132px; color: var(--text-secondary, #64748b); font-size: 0.85rem; }
+  .counter, .state { border-radius: 999px; padding: 0.2rem 0.65rem; background: #f1f5f9; color: #475569; }
+  .state.active { background: #dcfce7; color: #166534; }
   dl { display: grid; gap: 0.5rem; margin: 0; }
-  @media (max-width: 1100px) { .content-grid { grid-template-columns: 1fr; } .filters-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
+  .compact-list { gap: 0.5rem; }
+  @media (max-width: 1100px) {
+    .content-grid { grid-template-columns: 1fr; }
+    .filters-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    .drawer { position: static; max-height: none; }
+  }
 </style>
