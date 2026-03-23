@@ -7,6 +7,10 @@
 
   let incidentFocusSource = '';
 
+  $: canViewHealth = $roleStore.permissions.system_health_view;
+  $: canUseEngineeringActions = $roleStore.permissions.system_engineering_actions;
+  $: canManageSystemSettings = $roleStore.permissions.settings_manage;
+
   onMount(() => {
     incidentFocusSource = sessionStorage.getItem('system.focusSource') || '';
     if (incidentFocusSource) {
@@ -15,13 +19,16 @@
   });
 </script>
 
-{#if !$roleStore.permissions.system_view}
-  <section class="ui-card restricted"><h1>Система</h1><p>Раздел для health, устройств и проблем синхронизации доступен только инженерным ролям.</p></section>
+{#if !canViewHealth}
+  <section class="ui-card restricted">
+    <h1>Система</h1>
+    <p>Раздел с operational health, устройствами и синхронизацией доступен оператору, старшему смены и инженеру по назначенным правам.</p>
+  </section>
 {:else}
   <section class="page">
     <div class="page-header">
       <h1>Система</h1>
-      <p>Панель для старшего смены и инженера: здесь разбирают только health, устройства и проблемы синхронизации, не смешивая их с конфигурацией и SOP.</p>
+      <p>Базовый health overview открыт для смены в режиме чтения: здесь проверяют статус сервисов, устройств и очередей обмена. Инженерные действия и глубокие настройки показываются только при отдельных правах.</p>
     </div>
     <div class="ui-card panel">
       {#if incidentFocusSource}
@@ -33,7 +40,11 @@
         <div><span class="eyebrow">Экстренная остановка</span><strong>{$systemStore.emergencyStop ? 'Включена' : 'Выключена'}</strong></div>
       </div>
     </div>
-    <SystemHealthSummary summary={$systemStore} />
+    <SystemHealthSummary
+      summary={$systemStore}
+      canUseEngineeringActions={canUseEngineeringActions}
+      canManageSystemSettings={canManageSystemSettings}
+    />
   </section>
 {/if}
 

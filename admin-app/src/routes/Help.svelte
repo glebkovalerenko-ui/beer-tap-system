@@ -78,7 +78,7 @@
   ];
 </script>
 
-{#if !$roleStore.permissions.system_view}
+{#if !$roleStore.permissions.system_health_view}
   <section class="ui-card restricted">
     <h1>Справка / регламенты</h1>
     <p>Раздел с SOP и operator playbooks доступен старшему смены и инженерным ролям.</p>

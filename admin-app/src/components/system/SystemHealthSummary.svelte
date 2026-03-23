@@ -1,10 +1,23 @@
 <script>
   export let summary = { subsystems: [], health: { sections: {} }, generatedAt: null, error: null };
+  export let canUseEngineeringActions = false;
+  export let canManageSystemSettings = false;
 
   const toneLabel = (state) => state === 'ok' ? 'В норме' : state === 'warning' || state === 'degraded' || state === 'unknown' ? 'Нужно проверить' : 'Требуется вмешательство';
 </script>
 
 <div class="system-layout">
+  <section class="card permission-block read-only-block">
+    <div class="permission-head">
+      <div>
+        <span class="eyebrow">Read-only overview</span>
+        <h2>Operational health для смены</h2>
+      </div>
+      <span class="permission-pill">operator / supervisor / engineer</span>
+    </div>
+    <p class="permission-copy">Эти блоки доступны в режиме чтения для оператора, старшего смены и инженера: они помогают быстро понять, где нужен эскалационный разбор.</p>
+  </section>
+
   <section class="card section-card">
     <div class="section-head">
       <div>
@@ -111,31 +124,62 @@
       </div>
     {/if}
   </section>
+
+  {#if canUseEngineeringActions || canManageSystemSettings}
+    <section class="card permission-block advanced-block">
+      <div class="permission-head">
+        <div>
+          <span class="eyebrow">Advanced access</span>
+          <h2>Инженерные действия и глубокие настройки</h2>
+        </div>
+      </div>
+      <div class="advanced-grid">
+        {#if canUseEngineeringActions}
+          <article class="advanced-card">
+            <h3>Инженерные инструменты</h3>
+            <p>Резерв для сервисных команд, углублённой диагностики и действий восстановления. Показывайте такие элементы только по ключу <code>system_engineering_actions</code>.</p>
+          </article>
+        {/if}
+        {#if canManageSystemSettings}
+          <article class="advanced-card">
+            <h3>Глубокие настройки</h3>
+            <p>Конфигурационные и management-изменения должны жить отдельно от health overview и открываться только по ключу <code>settings_manage</code>.</p>
+          </article>
+        {/if}
+      </div>
+    </section>
+  {/if}
 </div>
 
 <style>
   .system-layout { display:grid; gap:1rem; }
   .card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 1rem; background: #fff; }
   .section-card { display:grid; gap:1rem; }
-  .section-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+  .section-head, .permission-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
   .eyebrow { display:block; color:var(--text-secondary); font-size:.8rem; text-transform:uppercase; }
   h2,h3,p { margin:0; }
-  .status-pill,.issue-count { border-radius:999px; padding:.35rem .75rem; background:#eef2ff; font-weight:700; }
+  .status-pill,.issue-count,.permission-pill { border-radius:999px; padding:.35rem .75rem; background:#eef2ff; font-weight:700; }
+  .permission-pill { color:#1d4ed8; }
   .status-pill.ok { background:#e9f8ef; color:#116d3a; }
   .status-pill.warning,.status-pill.degraded,.status-pill.unknown { background:#fff8e9; color:#8d5b00; }
   .status-pill.critical,.status-pill.error,.status-pill.offline { background:#ffeef0; color:#9e1f2c; }
   .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
-  .summary-item,.subsystem-card { border-radius:14px; border:1px solid #e5e7eb; padding:.85rem; display:grid; gap:.35rem; }
+  .summary-item,.subsystem-card,.advanced-card { border-radius:14px; border:1px solid #e5e7eb; padding:.85rem; display:grid; gap:.35rem; }
   .summary-item.ok,.subsystem-card.ok { background:#f8fffb; }
   .summary-item.warning,.summary-item.degraded,.summary-item.unknown,.subsystem-card.warning,.subsystem-card.degraded,.subsystem-card.unknown { background:#fffbeb; }
   .summary-item.critical,.summary-item.error,.summary-item.offline,.subsystem-card.critical,.subsystem-card.error,.subsystem-card.offline { background:#fef2f2; }
-  .summary-item.neutral { background:#f8fafc; }
-  .subsystem-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem; }
+  .summary-item.neutral,.advanced-card { background:#f8fafc; }
+  .permission-block { display:grid; gap:.75rem; }
+  .read-only-block { background:#f8fbff; border-color:#bfdbfe; }
+  .advanced-block { background:#fffbeb; border-color:#fcd34d; }
+  .permission-copy { color:var(--text-secondary); }
+  .subsystem-grid, .advanced-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem; }
   .head { display:flex; justify-content:space-between; gap:1rem; align-items:center; }
   ul { margin:0; padding-left:1rem; display:grid; gap:.5rem; }
   li span, small, .meta-note, .empty-state { color:var(--text-secondary); }
   small { display:block; }
   .issue-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
   .alert { padding:.85rem 1rem; border:1px solid #fecaca; border-radius:12px; background:#fef2f2; color:#991b1b; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
   @media (max-width: 860px){ .issue-columns{ grid-template-columns:1fr; } }
 </style>

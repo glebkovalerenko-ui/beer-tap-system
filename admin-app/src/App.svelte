@@ -55,12 +55,12 @@
     { href: '#/kegs-beverages', label: 'Кеги и напитки', visible: (permissions) => permissions.settings_manage },
     { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_manage },
     { href: '#/tap-screens', label: 'Экраны кранов', visible: (permissions) => permissions.display_override },
-    { href: '#/system', label: 'Система', visible: (permissions) => permissions.system_view },
+    { href: '#/system', label: 'Система', visible: (permissions) => permissions.system_health_view },
   ];
 
   const supportNav = [
     { href: '#/settings', label: 'Настройки', visible: (permissions) => permissions.settings_manage },
-    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_view },
+    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_health_view },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
