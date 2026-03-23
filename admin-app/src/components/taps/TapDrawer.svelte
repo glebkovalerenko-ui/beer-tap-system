@@ -7,12 +7,43 @@
   export let canControl = false;
 
   const dispatch = createEventDispatcher();
+  const HISTORY_LIMIT = 12;
 
   $: operations = tap?.operations || {};
   $: session = operations.activeSessionSummary;
   $: currentPour = operations.currentPour || {};
   $: operatorHistory = operations.operatorHistory || [];
+  $: recentHistory = operatorHistory.slice(0, HISTORY_LIMIT);
   $: isLocked = tap?.status === 'locked';
+  $: keg = tap?.keg || null;
+  $: beverage = keg?.beverage || {};
+  $: liveStateRows = [
+    { label: 'Подключение', value: operations.heartbeat?.isStale ? 'offline' : 'online', note: operations.liveStatus || null },
+    { label: 'Ридер', value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.state || null },
+    { label: 'Клапан', value: valveStatusLabel(tap, operations, currentPour), note: null },
+    { label: 'Поток', value: currentPour.isActive ? 'Идёт налив' : 'Поток не зафиксирован', note: currentPour.volumeMl ? formatVolumeRu(currentPour.volumeMl) : null },
+    { label: 'Экран', value: operations.displayStatus?.label || 'Нет данных', note: displaySummary },
+    { label: 'Последний heartbeat', value: operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных', note: operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал heartbeat' },
+    { label: 'Синхронизация', value: operations.syncState?.label || 'Нет данных', note: tap?.status || null },
+    { label: 'Активный визит / карта', value: activeVisitCardLabel(session), note: session?.guestName || null },
+  ];
+  $: beveragePrice = beverage.sell_price_per_liter ?? tap?.sell_price_per_liter ?? null;
+  $: projectedRemainingBalance = session?.projectedRemainingBalance ?? session?.projected_remaining_balance ?? computeProjectedRemaining(session, currentPour);
+  $: projectedRemainingAllowanceMl = session?.projectedRemainingAllowanceMl
+    ?? session?.projected_remaining_allowance_ml
+    ?? session?.remainingAllowanceMl
+    ?? session?.remaining_allowance_ml
+    ?? null;
+  $: beverageKegRows = [
+    { label: 'Название напитка', value: operations.beverageName || beverage.name || 'Напиток не назначен', note: beverage.display_brand_name || null },
+    { label: 'Стиль', value: operations.beverageStyle || beverage.style || '—', note: beverage.brewery || null },
+    { label: 'ABV', value: formatAbv(beverage.abv), note: null },
+    { label: 'Цена', value: beveragePrice ? formatRubAmount(beveragePrice) : '—', note: beverage.price_display_mode_default || null },
+    { label: 'Остаток', value: operations.remainingVolumeMl != null ? formatVolumeRu(operations.remainingVolumeMl) : '—', note: operations.remainingPercent != null ? `${operations.remainingPercent}% от полной кеги` : null },
+    { label: 'Дата подключения кеги', value: keg?.tapped_at ? formatDateTimeRu(keg.tapped_at) : 'Кега не подключена', note: keg?.created_at ? `Создана ${formatDateTimeRu(keg.created_at)}` : null },
+    { label: 'Сводка контента экрана', value: displaySummary, note: null },
+  ];
+  $: chronologyGroups = groupChronology(recentHistory);
 
   function emit(name) {
     dispatch(name, { tap });
@@ -21,137 +52,231 @@
   function openLinkedSession(visitId) {
     dispatch('open-session', { tap, visitId: visitId || session?.visitId || null });
   }
+
+  function activeVisitCardLabel(activeSession) {
+    if (!activeSession) return 'Нет активного визита';
+    return `${activeSession.visitId ? `Визит #${activeSession.visitId}` : 'Визит открыт'}${activeSession.cardUid ? ` · карта ${activeSession.cardUid}` : ' · карта не привязана'}`;
+  }
+
+  function computeProjectedRemaining(activeSession, pour) {
+    const balance = toNumber(activeSession?.balance);
+    const amount = toNumber(pour?.amount);
+    if (balance == null) return null;
+    return Math.max(balance - (amount || 0), 0);
+  }
+
+  function toNumber(value) {
+    if (value == null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function formatAbv(value) {
+    const numeric = toNumber(value);
+    return numeric == null ? '—' : `${numeric}%`;
+  }
+
+  function valveStatusLabel(tapView, ops, pour) {
+    if (tapView?.status === 'locked') return 'Закрыт';
+    if (pour?.isActive) return 'Открыт';
+    if (ops?.productState === 'maintenance') return 'Сервисный режим';
+    return 'Готов';
+  }
+
+  function buildDisplaySummary(tapView, drink, ops) {
+    const parts = [];
+    if (tapView?.display_enabled === false) parts.push('экран отключён');
+    else parts.push(ops?.displayStatus?.label || 'экран без статуса');
+    if (drink?.display_brand_name) parts.push(`бренд: ${drink.display_brand_name}`);
+    if (drink?.description_short) parts.push(drink.description_short);
+    if (drink?.price_display_mode_default) parts.push(`режим цены: ${drink.price_display_mode_default}`);
+    return parts.filter(Boolean).join(' · ') || 'Нет описания контента экрана';
+  }
+
+  $: displaySummary = buildDisplaySummary(tap, beverage, operations);
+
+  function groupChronology(items) {
+    const groups = [];
+
+    items.forEach((item) => {
+      const date = item?.happenedAt ? new Date(item.happenedAt) : null;
+      const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+      const groupKey = validDate ? validDate.toISOString().slice(0, 10) : 'unknown';
+      const groupLabel = validDate
+        ? validDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
+        : 'Время не определено';
+      const summaryBits = [
+        item?.description,
+        item?.volumeMl ? formatVolumeRu(item.volumeMl) : null,
+        item?.amount ? formatRubAmount(item.amount) : null,
+        !item?.amount && item?.rawStatus ? item.rawStatus : null,
+      ].filter(Boolean);
+
+      const entry = {
+        ...item,
+        timeLabel: validDate ? validDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '—',
+        summaryLine: summaryBits.join(' · '),
+      };
+
+      const existingGroup = groups.find((group) => group.key === groupKey);
+      if (existingGroup) existingGroup.items.push(entry);
+      else groups.push({ key: groupKey, label: groupLabel, items: [entry] });
+    });
+
+    return groups;
+  }
 </script>
 
 {#if tap}
   <aside class="tap-drawer">
     <div class="drawer-head">
       <div>
-        <div class="eyebrow">Tap detail</div>
+        <div class="eyebrow">Карточка крана</div>
         <h2>{tap.display_name}</h2>
         <p>{operations.productStateLabel} · {operations.liveStatus}</p>
       </div>
       <button class="close-btn" on:click={() => dispatch('close')}>✕</button>
     </div>
 
-    <section class="drawer-section stats-grid">
+    <section class="drawer-section info-grid">
       <article>
-        <span>Heartbeat</span>
-        <strong>{operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных'}</strong>
-        <small>{operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал heartbeat'}</small>
-      </article>
-      <article>
-        <span>Sync state</span>
-        <strong>{operations.syncState?.label || 'Нет данных'}</strong>
-        <small>{tap.status}</small>
-      </article>
-      <article>
-        <span>Текущий налив</span>
-        <strong>{formatVolumeRu(currentPour.volumeMl || 0)}</strong>
-        <small>{currentPour.amount ? formatRubAmount(currentPour.amount) : 'Без списания'}</small>
-      </article>
-    </section>
-
-    <section class="drawer-section current-session">
-      <div class="section-head">
-        <div>
-          <h3>Текущая сессия</h3>
-          <p>Явные операторские действия по активной блокировке и текущему наливу.</p>
+        <div class="section-head compact">
+          <div>
+            <h3>Живое состояние</h3>
+            <p>Срез по устройствам и локальному состоянию крана в текущий момент.</p>
+          </div>
         </div>
-      </div>
+        <dl>
+          {#each liveStateRows as row}
+            <div>
+              <dt>{row.label}</dt>
+              <dd>
+                <strong>{row.value}</strong>
+                {#if row.note}
+                  <small>{row.note}</small>
+                {/if}
+              </dd>
+            </div>
+          {/each}
+        </dl>
+      </article>
 
-      <div class="session-panel">
-        <div class="session-copy">
-          <strong>{session?.guestName || 'Сессия сейчас не открыта'}</strong>
-          <p>
-            {#if session}
-              Карта {session.cardUid || 'не привязана'} · открыта {session.openedAt ? formatDateTimeRu(session.openedAt) : 'недавно'}
-            {:else}
-              Откройте сессию, если гость уже у крана, или заблокируйте линию до начала работы.
-            {/if}
-          </p>
-          <div class="session-metrics">
-            <span>Налито: {formatVolumeRu(currentPour.volumeMl || 0)}</span>
-            <span>Сумма: {currentPour.amount ? formatRubAmount(currentPour.amount) : '0 ₽'}</span>
-            <span>Статус: {currentPour.isActive ? 'Налив активен' : 'Поток не зафиксирован'}</span>
+      <article class="current-session">
+        <div class="section-head compact">
+          <div>
+            <h3>Текущая сессия</h3>
+            <p>Активный гость, налив и оперативные действия по визиту.</p>
           </div>
         </div>
 
-        <div class="action-stack">
-          {#if canControl && session}
-            <button class="primary danger" on:click={() => emit('stop-pour')}>Остановить налив</button>
-          {/if}
-          <button class="primary" on:click={() => openLinkedSession(session?.visitId)}>Открыть сессию</button>
-          {#if canControl}
-            <button class="secondary" on:click={() => emit('toggle-lock')}>
-              {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
-            </button>
-          {/if}
-        </div>
-      </div>
-    </section>
+        <div class="session-panel">
+          <div class="session-copy">
+            <strong>{session?.guestName || 'Сессия сейчас не открыта'}</strong>
+            <p>
+              {#if session}
+                Карта {session.cardUid || 'не привязана'} · открыта {session.openedAt ? formatDateTimeRu(session.openedAt) : 'недавно'}
+              {:else}
+                Откройте сессию, если гость уже у крана, или заблокируйте линию до начала работы.
+              {/if}
+            </p>
+            <div class="session-metrics">
+              <span>Налито: {formatVolumeRu(currentPour.volumeMl || 0)}</span>
+              <span>Сумма: {currentPour.amount ? formatRubAmount(currentPour.amount) : '0 ₽'}</span>
+              <span>Статус: {currentPour.isActive ? 'Налив активен' : 'Поток не зафиксирован'}</span>
+            </div>
+            <dl class="session-details">
+              <div><dt>Баланс</dt><dd>{session?.balance != null ? formatRubAmount(session.balance) : '—'}</dd></div>
+              <div><dt>Прогноз остатка баланса</dt><dd>{projectedRemainingBalance != null ? formatRubAmount(projectedRemainingBalance) : '—'}</dd></div>
+              <div><dt>Прогноз остатка лимита</dt><dd>{projectedRemainingAllowanceMl != null ? formatVolumeRu(projectedRemainingAllowanceMl) : 'Место подготовлено, ждём поле лимита от backend'}</dd></div>
+              <div><dt>Активный визит / карта</dt><dd>{activeVisitCardLabel(session)}</dd></div>
+            </dl>
+          </div>
 
-    <section class="drawer-section info-grid">
-      <article>
-        <h3>Оперативный статус</h3>
-        <dl>
-          <div><dt>Product state</dt><dd>{operations.productStateLabel}</dd></div>
-          <div><dt>Controller</dt><dd>{operations.controllerStatus?.label || 'Нет данных'}</dd></div>
-          <div><dt>Display</dt><dd>{operations.displayStatus?.label || 'Нет данных'}</dd></div>
-          <div><dt>Reader</dt><dd>{operations.readerStatus?.label || 'Нет данных'}</dd></div>
-        </dl>
-      </article>
-      <article>
-        <h3>Гость / карта</h3>
-        <dl>
-          <div><dt>Активный гость</dt><dd>{session?.guestName || 'Нет активной сессии'}</dd></div>
-          <div><dt>Карта</dt><dd>{session?.cardUid || '—'}</dd></div>
-          <div><dt>Баланс</dt><dd>{session?.balance ? formatRubAmount(session.balance) : '—'}</dd></div>
-          <div><dt>Открыта</dt><dd>{session?.openedAt ? formatDateTimeRu(session.openedAt) : '—'}</dd></div>
-        </dl>
+          <div class="action-stack">
+            {#if canControl && session}
+              <button class="primary danger" on:click={() => emit('stop-pour')}>Остановить налив</button>
+            {/if}
+            <button class="primary" on:click={() => openLinkedSession(session?.visitId)}>Открыть сессию</button>
+            {#if canControl}
+              <button class="secondary" on:click={() => emit('toggle-lock')}>
+                {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
+              </button>
+            {/if}
+          </div>
+        </div>
       </article>
     </section>
 
     <section class="drawer-section">
       <div class="section-head">
         <div>
-          <h3>История действий оператора</h3>
-          <p>Последние события уже преобразованы в человекочитаемую ленту со ссылками на сессию и инцидент.</p>
+          <h3>Напиток и кега</h3>
+          <p>Контекст напитка, установленной кеги и того, что оператор ожидает увидеть на экране.</p>
         </div>
         {#if canDisplayOverride}
           <button class="secondary-btn" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
         {/if}
       </div>
 
-      {#if operatorHistory.length}
-        <ul class="events-list">
-          {#each operatorHistory as item}
-            <li class={`tone-${item.tone}`}>
-              <div class="event-main">
-                <div class="event-headline">
-                  <strong>{item.title}</strong>
-                  <span class={`priority ${item.tone}`}>{item.priorityLabel}</span>
-                </div>
-                <p>{item.description}</p>
-                <div class="event-links">
-                  {#if item.sessionAction}
-                    <a href={item.sessionAction.href} on:click|preventDefault={() => openLinkedSession(item.sessionAction.visitId)}>
-                      {item.sessionAction.label}
-                    </a>
-                  {/if}
-                  {#if item.incidentAction}
-                    <a href={item.incidentAction.href}>{item.incidentAction.label}</a>
-                  {/if}
-                </div>
-              </div>
-              <div class="event-meta">
-                <span>{item.happenedAt ? formatDateTimeRu(item.happenedAt) : 'Время неизвестно'}</span>
-                <span>{formatVolumeRu(item.volumeMl || 0)}</span>
-                <span>{item.amount ? formatRubAmount(item.amount) : item.rawStatus || 'Без суммы'}</span>
-              </div>
-            </li>
+      <dl class="split-details">
+        {#each beverageKegRows as row}
+          <div>
+            <dt>{row.label}</dt>
+            <dd>
+              <strong>{row.value}</strong>
+              {#if row.note}
+                <small>{row.note}</small>
+              {/if}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+    </section>
+
+    <section class="drawer-section">
+      <div class="section-head">
+        <div>
+          <h3>История по крану</h3>
+          <p>Последние {HISTORY_LIMIT} событий собраны в читаемую хронологию для оператора.</p>
+        </div>
+      </div>
+
+      {#if chronologyGroups.length}
+        <div class="chronology-groups">
+          {#each chronologyGroups as group}
+            <article class="chronology-group">
+              <h4>{group.label}</h4>
+              <ul class="events-list">
+                {#each group.items as item}
+                  <li class={`tone-${item.tone}`}>
+                    <div class="event-main">
+                      <div class="event-headline">
+                        <strong>{item.timeLabel} · {item.title}</strong>
+                        <span class={`priority ${item.tone}`}>{item.priorityLabel}</span>
+                      </div>
+                      {#if item.summaryLine}
+                        <p>{item.summaryLine}</p>
+                      {/if}
+                      <div class="event-links">
+                        {#if item.sessionAction}
+                          <a href={item.sessionAction.href} on:click|preventDefault={() => openLinkedSession(item.sessionAction.visitId)}>
+                            {item.sessionAction.label}
+                          </a>
+                        {/if}
+                        {#if item.incidentAction}
+                          <a href={item.incidentAction.href}>{item.incidentAction.label}</a>
+                        {/if}
+                      </div>
+                    </div>
+                    <div class="event-meta">
+                      <span>{item.happenedAt ? formatDateTimeRu(item.happenedAt) : 'Время неизвестно'}</span>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            </article>
           {/each}
-        </ul>
+        </div>
       {:else}
         <p class="muted">Нет недавних событий по этому крану.</p>
       {/if}
@@ -161,26 +286,31 @@
 
 <style>
   .tap-drawer { width: min(720px, 92vw); max-height: 88vh; overflow: auto; display: grid; gap: 1rem; }
-  .drawer-head, .section-head, .event-meta, .events-list li, .stats-grid, .info-grid, .session-panel { display: flex; gap: 1rem; }
+  .drawer-head, .section-head, .event-meta, .events-list li, .info-grid, .session-panel { display: flex; gap: 1rem; }
   .drawer-head, .section-head, .events-list li { justify-content: space-between; align-items: flex-start; }
-  .drawer-head h2, .drawer-section h3, .drawer-head p { margin: 0; }
+  .drawer-head h2, .drawer-section h3, .drawer-head p, .chronology-group h4 { margin: 0; }
   .eyebrow, .muted, small, dt, .section-head p, .session-copy p { color: var(--text-secondary, #64748b); }
   .close-btn, .secondary-btn, .primary, .secondary { border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; padding: 0.6rem 0.8rem; font-weight: 600; }
   .drawer-section { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: rgba(248,250,252,0.8); display: grid; gap: 0.8rem; }
-  .stats-grid, .info-grid, .session-panel { flex-wrap: wrap; }
-  .stats-grid article, .info-grid article, .session-panel { flex: 1 1 220px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 0.9rem; }
+  .info-grid, .session-panel { flex-wrap: wrap; }
+  .info-grid article, .session-panel, .chronology-group { flex: 1 1 320px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 0.9rem; }
+  .section-head.compact { margin-bottom: 0.25rem; }
   .current-session .session-panel { justify-content: space-between; align-items: stretch; }
   .session-copy { display: grid; gap: 0.55rem; flex: 1 1 320px; }
   .session-copy strong, .event-main strong { margin: 0; }
   .session-metrics, .event-links { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .session-details, .split-details { margin-top: 0.25rem; }
   .action-stack { display: grid; gap: 0.65rem; min-width: 220px; }
   .primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
   .primary.danger { background: #b91c1c; border-color: #b91c1c; }
   .secondary { color: #0f172a; }
   dl { display: grid; gap: 0.6rem; margin: 0.75rem 0 0; }
-  dl div { display: flex; justify-content: space-between; gap: 1rem; }
+  .split-details { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  dl div { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
   dt, dd { margin: 0; }
-  .events-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.65rem; }
+  dd { text-align: right; display: grid; gap: 0.15rem; justify-items: end; }
+  .chronology-groups, .events-list { display: grid; gap: 0.75rem; }
+  .events-list { list-style: none; padding: 0; margin: 0; }
   .events-list li { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.8rem; background: #fff; }
   .events-list li.tone-critical { border-color: #fecaca; background: #fff7f7; }
   .events-list li.tone-warning { border-color: #fde68a; background: #fffbeb; }
@@ -195,4 +325,9 @@
   .priority.warning { background: #fef3c7; color: #92400e; }
   .priority.info { background: #dbeafe; color: #1d4ed8; }
   .priority.neutral { background: #e5e7eb; color: #475569; }
+
+  @media (max-width: 720px) {
+    dl div, .events-list li { display: grid; }
+    dd, .event-meta { justify-items: start; text-align: left; align-items: flex-start; }
+  }
 </style>
