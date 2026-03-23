@@ -5,11 +5,19 @@
 
   export let groupedItems = [];
   export let selectedIncidentId = null;
+  export let actionCapabilities = {};
+  export let readOnly = false;
 
   const dispatch = createEventDispatcher();
 
   function emit(name, item) {
     dispatch(name, { item, incidentId: item.incident_id });
+  }
+
+  function actionLabel(item) {
+    if (item.status === 'new') return 'Взять в работу';
+    if (item.status === 'in_progress') return 'Закрыть';
+    return 'Закрыт';
   }
 </script>
 
@@ -46,8 +54,19 @@
                 <div class="card-meta">
                   <span><strong>Кран:</strong> {item.tapLabel}</span>
                   <span><strong>Создан:</strong> {formatDateTimeRu(item.created_at)}</span>
-                  <span><strong>Оператор:</strong> {item.operator || 'Не назначен'}</span>
+                  <span><strong>Ответственный:</strong> {item.accountability.ownerLabel}</span>
                   <span><strong>Источник:</strong> {item.sourceLabel}</span>
+                </div>
+
+                <div class="state-row">
+                  <span class={`status-badge ${item.status}`}>{item.statusLabel}</span>
+                  <span class={`ownership-badge ${item.accountability.ownerState}`}>{item.accountability.ownerBadge}</span>
+                  {#if item.accountability.lastEscalatedAt}
+                    <span class="signal-badge">Эскалация {formatDateTimeRu(item.accountability.lastEscalatedAt)}</span>
+                  {/if}
+                  {#if readOnly}
+                    <span class="signal-badge warning">Read-only</span>
+                  {/if}
                 </div>
 
                 <div class="card-links">
@@ -58,9 +77,19 @@
                 </div>
 
                 <div class="card-actions">
-                  <button class="secondary" on:click|stopPropagation={() => emit('closeIncident', item)}>Закрыть</button>
-                  <button class="secondary warning" on:click|stopPropagation={() => emit('escalateIncident', item)}>Эскалировать</button>
-                  <button class="primary" on:click|stopPropagation={() => emit('addNote', item)}>Добавить заметку</button>
+                  <button
+                    class="secondary"
+                    disabled={readOnly || item.status === 'closed' || !actionCapabilities.claim}
+                    on:click|stopPropagation={() => emit('claimIncident', item)}
+                  >
+                    {actionLabel(item)}
+                  </button>
+                  <button
+                    class="secondary warning"
+                    disabled={readOnly || !actionCapabilities.escalate}
+                    on:click|stopPropagation={() => emit('escalateIncident', item)}
+                  >Эскалировать</button>
+                  <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>Action form</button>
                 </div>
               </article>
             {/each}
@@ -73,7 +102,7 @@
 
 <style>
   .incident-list, .incident-group, .incident-cards { display: grid; gap: 1rem; }
-  .group-head, .card-head, .card-meta, .card-links, .card-actions { display: flex; gap: 0.75rem; }
+  .group-head, .card-head, .card-meta, .card-links, .card-actions, .state-row { display: flex; gap: 0.75rem; }
   .group-head, .card-head { justify-content: space-between; }
   .group-head h2, .group-head p, .card-head p { margin: 0; }
   .incident-card { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: #fff; display: grid; gap: 0.9rem; cursor: pointer; }
@@ -84,10 +113,19 @@
   .priority.medium { background: #dbeafe; color: #1d4ed8; }
   .priority.high { background: #fef3c7; color: #92400e; }
   .priority.critical { background: #fee2e2; color: #b91c1c; }
-  .card-meta { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.92rem; }
+  .card-meta, .state-row { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.92rem; }
   .card-links, .card-actions { flex-wrap: wrap; }
   .card-links .link, .card-actions button { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; background: #fff; font: inherit; font-weight: 700; }
   .card-links .link { color: #1d4ed8; }
   .card-actions .primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
   .card-actions .warning { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
+  .card-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
+  .status-badge, .ownership-badge, .signal-badge { border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.84rem; font-weight: 700; }
+  .status-badge.new { background: #eff6ff; color: #1d4ed8; }
+  .status-badge.in_progress { background: #fff7ed; color: #c2410c; }
+  .status-badge.closed { background: #ecfdf3; color: #166534; }
+  .ownership-badge.unassigned { background: #f8fafc; color: #475569; }
+  .ownership-badge.assigned { background: #eef2ff; color: #3730a3; }
+  .signal-badge { background: #f8fafc; color: #475569; }
+  .signal-badge.warning { background: #fff7ed; color: #9a3412; }
 </style>

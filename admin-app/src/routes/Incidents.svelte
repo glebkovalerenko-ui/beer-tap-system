@@ -2,6 +2,9 @@
   // @ts-nocheck
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
+  import Modal from '../components/common/Modal.svelte';
+  import IncidentList from '../components/incidents/IncidentList.svelte';
+  import { formatDateTimeRu } from '../lib/formatters.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
@@ -9,7 +12,6 @@
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { visitStore } from '../stores/visitStore.js';
-  import IncidentList from '../components/incidents/IncidentList.svelte';
 
   const DEFAULT_FILTERS = {
     priority: 'all',
@@ -43,7 +45,15 @@
   let hasLoadedContext = false;
   let filters = { ...DEFAULT_FILTERS };
   let selectedIncidentId = null;
-  let localOverrides = {};
+  let isActionModalOpen = false;
+  let actionForm = {
+    incidentId: null,
+    action: 'note',
+    owner: '',
+    note: '',
+    escalationReason: '',
+    resolutionSummary: '',
+  };
 
   onMount(() => {
     const token = get(sessionStore).token;
@@ -83,18 +93,21 @@
     return true;
   }
 
-  function buildNarrative(incident, tapMatch, sessionMatch) {
+  function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
     const happened = incident.status === 'closed'
-      ? 'уже закрыт и сохранён в журнале.'
+      ? 'закрыт и подтверждён в backend-источнике.'
       : incident.status === 'in_progress'
-        ? 'взят в работу оператором.'
-        : 'ещё ждёт разбора оператором.';
+        ? 'находится в работе и требует фиксированного результата.'
+        : 'ещё ждёт назначения ответственного.';
 
     return [
       `${titleCase(incident.type)} на ${tapMatch?.display_name || incident.tap || 'непривязанном кране'} ${happened}`,
+      accountability.owner
+        ? `Ответственный оператор: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
+        : 'Ответственный оператор не зафиксирован — это gap для operator accountability и его нужно закрыть backend-действием.',
       tapMatch?.operations?.productStateLabel
         ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без live-описания'}.`
-        : 'По крану нет расширенной telemеtry, поэтому narrative собран из incident/tap/session данных клиента.',
+        : 'По крану нет расширенной telemetry, поэтому narrative собран из incident/tap/session данных клиента.',
       sessionMatch
         ? `Связанная сессия #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
         : 'Активная связанная сессия не найдена — стоит проверить журнал сессий и системные события.',
@@ -150,34 +163,80 @@
     return events.slice(0, 6);
   }
 
-  function deriveActionsTaken(incident, override, tapMatch, sessionMatch) {
+  function deriveAccountability(incident, sessionMatch) {
+    const owner = incident.operator || sessionMatch?.operator_name || null;
+    const lastEscalatedAt = incident.source === 'system_state' ? incident.created_at : null;
+    const lastActionLabel = incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
+    const nextStep = incident.status === 'new'
+      ? 'Назначить ответственного и перевести инцидент в работу.'
+      : incident.status === 'in_progress'
+        ? 'Зафиксировать действие, при необходимости эскалировать и закрыть только после подтверждения backend.'
+        : 'Проверить, что closure note и таймлайн содержат итог разбора.';
+
+    return {
+      owner,
+      ownerLabel: owner || 'Не назначен',
+      ownerBadge: owner ? `Owner: ${owner}` : 'Owner не назначен',
+      ownerState: owner ? 'assigned' : 'unassigned',
+      acknowledgedAt: incident.status !== 'new' ? incident.created_at : null,
+      lastEscalatedAt,
+      closedAt: incident.status === 'closed' ? incident.created_at : null,
+      lastActionLabel,
+      nextStep,
+      stateFlow: [
+        {
+          key: 'new',
+          label: 'Новый',
+          description: 'Incident появился в backend и ждёт triage.',
+          active: incident.status === 'new',
+          done: incident.status !== 'new',
+        },
+        {
+          key: 'in_progress',
+          label: 'В работе',
+          description: owner
+            ? `Ответственный ${owner} ведёт разбор.`
+            : 'Нужно назначить owner, чтобы зафиксировать accountability.',
+          active: incident.status === 'in_progress',
+          done: incident.status === 'closed',
+        },
+        {
+          key: 'closed',
+          label: 'Закрыт',
+          description: incident.status === 'closed'
+            ? 'Источник уже вернул closed — статус считается устойчивым.'
+            : 'Закрытие допустимо только после backend-подтверждения.',
+          active: incident.status === 'closed',
+          done: incident.status === 'closed',
+        },
+      ],
+    };
+  }
+
+  function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
     const actions = [];
-    if (incident.operator) {
+    if (accountability.owner) {
       actions.push({
         kind: 'owner',
-        title: `Назначен оператор ${incident.operator}`,
-        detail: incident.note_action || 'Явное действие ещё не записано.',
+        title: `Ответственный: ${accountability.owner}`,
+        detail: accountability.lastActionLabel,
+        time: accountability.acknowledgedAt,
       });
     }
-    if (override?.note) {
-      actions.push({
-        kind: 'note',
-        title: 'Добавлена заметка',
-        detail: override.note,
-      });
-    }
-    if (override?.escalatedAt) {
+    if (accountability.lastEscalatedAt) {
       actions.push({
         kind: 'escalation',
-        title: 'Инцидент эскалирован',
-        detail: `Передан в engineering/system context ${override.escalatedAt}.`,
+        title: 'Эскалация в system context',
+        detail: 'Эскалация видна как системный сигнал; без backend action нельзя считать её подтверждённой оператором.',
+        time: accountability.lastEscalatedAt,
       });
     }
-    if (override?.status === 'closed') {
+    if (incident.note_action) {
       actions.push({
-        kind: 'closed',
-        title: 'Инцидент закрыт локально',
-        detail: 'До появления backend-команды статус удерживается как client-side override.',
+        kind: 'note',
+        title: 'Последняя заметка / действие из источника',
+        detail: incident.note_action,
+        time: incident.created_at,
       });
     }
     if (tapMatch?.operations?.heartbeat?.isStale) {
@@ -185,6 +244,7 @@
         kind: 'signal',
         title: 'Автоматический сигнал',
         detail: `Последний heartbeat ${tapMatch.operations.heartbeat.minutesAgo} мин назад.`,
+        time: tapMatch.operations.heartbeat.at,
       });
     }
     if (sessionMatch?.incident_count) {
@@ -192,6 +252,7 @@
         kind: 'history',
         title: 'Есть след в истории сессий',
         detail: `В связанной сессии отмечено incident: ${sessionMatch.incident_count}.`,
+        time: sessionMatch.last_event_at || sessionMatch.opened_at,
       });
     }
     return actions;
@@ -207,19 +268,13 @@
   }
 
   $: enrichedItems = ($incidentStore.items || []).map((incident) => {
-    const override = localOverrides[incident.incident_id] || {};
     const tapMatch = ($tapStore.taps || []).find((tap) => String(tap.tap_id) === String(incident.tap) || tap.display_name === incident.tap) || null;
     const sessionMatch = matchSession(incident, tapMatch);
-    const status = override.status || incident.status;
-    const operator = override.operator || incident.operator;
-    const noteAction = override.note || incident.note_action;
+    const accountability = deriveAccountability(incident, sessionMatch);
     const tapLabel = tapMatch?.display_name || incident.tap || '—';
 
     return {
       ...incident,
-      status,
-      operator,
-      note_action: noteAction,
       tapLabel,
       tapId: tapMatch?.tap_id || null,
       tapHref: tapMatch ? '#/taps' : null,
@@ -229,16 +284,18 @@
       sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'incident-api',
       typeLabel: titleCase(incident.type),
       priorityLabel: PRIORITY_LABELS[incident.priority] || titleCase(incident.priority),
-      statusLabel: STATUS_LABELS[status] || titleCase(status),
-      operatorInitials: initials(operator),
-      summary: buildNarrative({ ...incident, status }, tapMatch, sessionMatch)[0],
-      narrative: buildNarrative({ ...incident, status }, tapMatch, sessionMatch),
-      impact: deriveImpact({ ...incident, status }, tapMatch, sessionMatch),
-      relatedEvents: deriveRelatedEvents({ ...incident, status }, tapMatch, sessionMatch),
-      actionsTaken: deriveActionsTaken({ ...incident, status, operator, note_action: noteAction }, override, tapMatch, sessionMatch),
+      statusLabel: STATUS_LABELS[incident.status] || titleCase(incident.status),
+      operatorInitials: initials(accountability.owner),
+      accountability,
+      summary: buildNarrative(incident, tapMatch, sessionMatch, accountability)[0],
+      narrative: buildNarrative(incident, tapMatch, sessionMatch, accountability),
+      impact: deriveImpact(incident, tapMatch, sessionMatch),
+      relatedEvents: deriveRelatedEvents(incident, tapMatch, sessionMatch),
+      actionsTaken: deriveActionsTaken(incident, tapMatch, sessionMatch, accountability),
       tapContext: tapMatch,
       systemState: $systemStore.overallState,
       openIncidentCount: $systemStore.openIncidentCount,
+      backendStatusIsAuthoritative: true,
     };
   });
 
@@ -256,7 +313,7 @@
       && (filters.type === 'all' || item.type === filters.type)
       && (filters.tap === 'all' || item.tapLabel === filters.tap)
       && timeMatches(item.created_at, filters.time)
-      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.operator || '', item.summary].join(' ').toLowerCase().includes(query));
+      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary].join(' ').toLowerCase().includes(query));
   });
 
   $: groupedItems = SECTION_ORDER.map((status) => ({
@@ -270,6 +327,7 @@
   }
 
   $: selectedIncident = filteredItems.find((item) => item.incident_id === selectedIncidentId) || null;
+  $: actionModalIncident = enrichedItems.find((item) => item.incident_id === actionForm.incidentId) || selectedIncident;
 
   function resetFilters() {
     filters = { ...DEFAULT_FILTERS };
@@ -308,43 +366,46 @@
     window.location.hash = '/system';
   }
 
-  async function closeIncident(event) {
-    const item = event.detail.item;
-    const approved = await uiStore.confirm({
-      title: `Закрыть инцидент #${item.incident_id}`,
-      message: 'Backend-команды закрытия пока нет, поэтому статус будет зафиксирован локально в клиенте до следующего обновления данных.',
-      confirmText: 'Закрыть локально',
-      cancelText: 'Отмена',
-    });
-    if (!approved) return;
-    localOverrides = {
-      ...localOverrides,
-      [item.incident_id]: { ...(localOverrides[item.incident_id] || {}), status: 'closed' },
+  function openActionForm(event, suggestedAction = 'note') {
+    const item = event.detail?.item || event;
+    actionForm = {
+      incidentId: item.incident_id,
+      action: suggestedAction,
+      owner: item.accountability?.owner || item.operator || '',
+      note: item.note_action || '',
+      escalationReason: '',
+      resolutionSummary: '',
     };
-    uiStore.notifySuccess(`Инцидент #${item.incident_id} помечен как закрытый в текущей сессии.`);
+    incidentStore.clearActionError();
+    isActionModalOpen = true;
   }
 
-  function escalateIncident(event) {
-    const item = event.detail.item;
-    localOverrides = {
-      ...localOverrides,
-      [item.incident_id]: { ...(localOverrides[item.incident_id] || {}), escalatedAt: new Date().toLocaleString('ru-RU') },
-    };
-    uiStore.notifyWarning(`Инцидент #${item.incident_id} эскалирован. Откройте «Система» для дальнейшей проверки.`);
-    openSystem(event);
+  function closeActionForm() {
+    isActionModalOpen = false;
+    incidentStore.clearActionError();
   }
 
-  function addNote(event) {
-    const item = event.detail.item;
-    const note = typeof window !== 'undefined'
-      ? window.prompt(`Заметка для инцидента #${item.incident_id}`, item.note_action || '')
-      : '';
-    if (!note?.trim()) return;
-    localOverrides = {
-      ...localOverrides,
-      [item.incident_id]: { ...(localOverrides[item.incident_id] || {}), note: note.trim(), status: item.status === 'new' ? 'in_progress' : item.status },
-    };
-    uiStore.notifySuccess('Заметка сохранена локально в narrative инцидента.');
+  async function submitActionForm() {
+    const item = actionModalIncident;
+    if (!item) return;
+
+    try {
+      if (actionForm.action === 'claim') {
+        await incidentStore.claimIncident({ incidentId: item.incident_id, owner: actionForm.owner.trim(), note: actionForm.note.trim() || null });
+      } else if (actionForm.action === 'escalate') {
+        await incidentStore.escalateIncident({ incidentId: item.incident_id, reason: actionForm.escalationReason.trim(), note: actionForm.note.trim() || null });
+      } else if (actionForm.action === 'close') {
+        await incidentStore.closeIncident({ incidentId: item.incident_id, resolutionSummary: actionForm.resolutionSummary.trim(), note: actionForm.note.trim() || null });
+      } else {
+        await incidentStore.addIncidentNote({ incidentId: item.incident_id, note: actionForm.note.trim() });
+      }
+
+      uiStore.notifySuccess('Incident action отправлен.');
+      closeActionForm();
+      incidentStore.fetchIncidents();
+    } catch (error) {
+      uiStore.notifyWarning(error.message || 'Incident action сейчас недоступен.');
+    }
   }
 </script>
 
@@ -355,7 +416,7 @@
     <div class="page-header">
       <div>
         <h1>Инциденты</h1>
-        <p>Операторская очередь с фильтрами, явными действиями и связями в кран, сессию и системный контекст.</p>
+        <p>Operator accountability board: backend-авторитетный статус, ownership flow и явная разница между подтверждённым состоянием и недоступными действиями.</p>
       </div>
       <div class="header-stats">
         <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
@@ -363,6 +424,17 @@
         <article><span>System state</span><strong>{$systemStore.overallState}</strong></article>
       </div>
     </div>
+
+    <section class="ui-card banner-panel" data-tone={$incidentStore.readOnly ? 'warning' : 'ok'}>
+      <div>
+        <div class="eyebrow">Incident action layer</div>
+        <strong>{$incidentStore.readOnly ? 'Read-only mode' : 'Backend actions active'}</strong>
+        <p>{$incidentStore.readOnly ? $incidentStore.readOnlyReason : 'Все action-изменения записываются через backend и обновляют очередь инцидентов.'}</p>
+      </div>
+      {#if $incidentStore.actionError}
+        <p class="banner-error">{$incidentStore.actionError}</p>
+      {/if}
+    </section>
 
     <section class="ui-card filters-panel">
       <div class="filters-grid">
@@ -419,13 +491,15 @@
           <IncidentList
             groupedItems={groupedItems}
             selectedIncidentId={selectedIncidentId}
+            actionCapabilities={$incidentStore.capabilities}
+            readOnly={$incidentStore.readOnly}
             on:select={selectIncident}
             on:openTap={openTap}
             on:openSession={openSession}
             on:openSystem={openSystem}
-            on:closeIncident={closeIncident}
-            on:escalateIncident={escalateIncident}
-            on:addNote={addNote}
+            on:claimIncident={(event) => openActionForm(event, 'claim')}
+            on:escalateIncident={(event) => openActionForm(event, 'escalate')}
+            on:openActionForm={(event) => openActionForm(event, 'note')}
           />
         {/if}
       </div>
@@ -441,6 +515,39 @@
             <div class={`priority-badge ${selectedIncident.priority}`}>{selectedIncident.priorityLabel}</div>
           </div>
 
+          <section class="detail-section accountability-strip">
+            <article>
+              <span>Owner</span>
+              <strong>{selectedIncident.accountability.ownerLabel}</strong>
+              <small>{selectedIncident.accountability.nextStep}</small>
+            </article>
+            <article>
+              <span>Последнее действие</span>
+              <strong>{selectedIncident.accountability.lastActionLabel}</strong>
+              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Источник: backend incident feed' : 'Источник: временный client-side draft'}</small>
+            </article>
+            <article>
+              <span>Эскалация</span>
+              <strong>{selectedIncident.accountability.lastEscalatedAt ? formatDateTimeRu(selectedIncident.accountability.lastEscalatedAt) : 'Не зафиксирована'}</strong>
+              <small>Формальная эскалация требует backend action.</small>
+            </article>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-head">
+              <h3>State flow</h3>
+              <button class="link" on:click={() => openActionForm(selectedIncident, selectedIncident.status === 'new' ? 'claim' : 'note')}>Открыть action form</button>
+            </div>
+            <ol class="state-flow">
+              {#each selectedIncident.accountability.stateFlow as step}
+                <li class:done={step.done} class:active={step.active}>
+                  <strong>{step.label}</strong>
+                  <p>{step.description}</p>
+                </li>
+              {/each}
+            </ol>
+          </section>
+
           <section class="detail-section narrative-section">
             <h3>Что случилось</h3>
             <p>{selectedIncident.summary}</p>
@@ -451,7 +558,7 @@
 
           <section class="detail-section meta-grid">
             <article><span>Кран</span><strong>{selectedIncident.tapLabel}</strong></article>
-            <article><span>Оператор</span><strong>{selectedIncident.operator || 'Не назначен'}</strong></article>
+            <article><span>Оператор</span><strong>{selectedIncident.accountability.ownerLabel}</strong></article>
             <article><span>Источник</span><strong>{selectedIncident.sourceLabel}</strong></article>
             <article><span>Связанная сессия</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найдена'}</strong></article>
           </section>
@@ -473,7 +580,7 @@
                     <p>{event.description}</p>
                   </div>
                   <div class="timeline-meta">
-                    <span>{event.time || 'Время не указано'}</span>
+                    <span>{event.time ? formatDateTimeRu(event.time) : 'Время не указано'}</span>
                     <a href={event.href}>{event.label}</a>
                   </div>
                 </li>
@@ -482,7 +589,7 @@
           </section>
 
           <section class="detail-section">
-            <div class="section-head"><h3>Что уже предпринималось</h3><button class="link" on:click={() => addNote({ detail: { item: selectedIncident } })}>Добавить заметку</button></div>
+            <div class="section-head"><h3>Что уже предпринималось</h3><button class="link" on:click={() => openActionForm(selectedIncident, 'note')}>Открыть action form</button></div>
             {#if selectedIncident.actionsTaken.length}
               <ul class="timeline compact">
                 {#each selectedIncident.actionsTaken as action}
@@ -491,11 +598,12 @@
                       <strong>{action.title}</strong>
                       <p>{action.detail}</p>
                     </div>
+                    <div class="timeline-meta compact">{action.time ? formatDateTimeRu(action.time) : '—'}</div>
                   </li>
                 {/each}
               </ul>
             {:else}
-              <p class="muted">Явных действий пока нет. Можно оставить note или эскалировать кейс.</p>
+              <p class="muted">Явных backend-действий пока нет. Экран не будет имитировать их локально.</p>
             {/if}
           </section>
         {:else}
@@ -504,41 +612,119 @@
       </aside>
     </div>
   </section>
+
+  {#if isActionModalOpen && actionModalIncident}
+    <Modal on:close={closeActionForm}>
+      <div slot="header">
+        <h2>Action form · #{actionModalIncident.incident_id}</h2>
+        <p class="modal-subtitle">Форма отражает целевой workflow ownership / escalation / closure. Пока backend не поддерживает mutation endpoints, submit отключён.</p>
+      </div>
+
+      <div class="incident-action-form">
+        <section class="detail-section compact-panel">
+          <div class="form-grid two-columns">
+            <label>
+              <span>Действие</span>
+              <select bind:value={actionForm.action} disabled={$incidentStore.readOnly}>
+                <option value="claim">Взять в работу</option>
+                <option value="note">Добавить заметку</option>
+                <option value="escalate">Эскалировать</option>
+                <option value="close">Закрыть</option>
+              </select>
+            </label>
+            <label>
+              <span>Ответственный</span>
+              <input bind:value={actionForm.owner} placeholder="Имя оператора" disabled={$incidentStore.readOnly} />
+            </label>
+          </div>
+          <p class="muted">Текущий backend-статус: <strong>{actionModalIncident.statusLabel}</strong>. Пока не появится server-side команда, экран не будет подменять его client-side значением.</p>
+        </section>
+
+        <section class="detail-section compact-panel">
+          <h3>Operator note</h3>
+          <textarea bind:value={actionForm.note} rows="5" placeholder="Что сделал оператор, что проверил, какие данные увидел" disabled={$incidentStore.readOnly}></textarea>
+        </section>
+
+        {#if actionForm.action === 'escalate'}
+          <section class="detail-section compact-panel">
+            <h3>Escalation handoff</h3>
+            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder="Кому и зачем эскалируете, какой сигнал требует engineering/system review" disabled={$incidentStore.readOnly}></textarea>
+          </section>
+        {/if}
+
+        {#if actionForm.action === 'close'}
+          <section class="detail-section compact-panel">
+            <h3>Closure summary</h3>
+            <textarea bind:value={actionForm.resolutionSummary} rows="4" placeholder="Как устранено, чем подтверждено, когда можно считать кейс закрытым" disabled={$incidentStore.readOnly}></textarea>
+          </section>
+        {/if}
+
+        <section class="detail-section compact-panel">
+          <h3>Прозрачность статуса</h3>
+          <ul class="modal-checklist">
+            <li>Новый → в работе → закрыт отображаются только по данным backend feed.</li>
+            <li>Owner, escalation и closure без API не считаются завершёнными действиями.</li>
+            <li>Form оставлена на экране как контракт для будущего durable action layer.</li>
+          </ul>
+        </section>
+      </div>
+
+      <div slot="footer" class="modal-actions">
+        <button class="secondary" type="button" on:click={closeActionForm}>Закрыть</button>
+        <button type="button" on:click={submitActionForm} disabled={$incidentStore.readOnly || $incidentStore.actionLoading}>
+          {$incidentStore.readOnly ? 'Backend read-only' : 'Сохранить action'}
+        </button>
+      </div>
+    </Modal>
+  {/if}
 {/if}
 
 <style>
-  .page, .filters-panel, .panel, .detail-panel, .detail-section { display: grid; gap: 1rem; }
+  .page, .filters-panel, .panel, .detail-panel, .detail-section, .banner-panel, .incident-action-form { display: grid; gap: 1rem; }
   .page-header, .filters-actions, .detail-head, .section-head, .timeline li { display: flex; gap: 1rem; justify-content: space-between; }
   .page-header { align-items: flex-start; flex-wrap: wrap; }
   .page-header h1, .page-header p, .detail-head h2, .detail-head p, .detail-section h3, .timeline p { margin: 0; }
   .header-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-  .header-stats article, .meta-grid article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.85rem 1rem; background: #fff; min-width: 120px; display: grid; gap: 0.3rem; }
-  .filters-grid, .meta-grid { display: grid; gap: 0.75rem; }
+  .header-stats article, .meta-grid article, .accountability-strip article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.85rem 1rem; background: #fff; min-width: 120px; display: grid; gap: 0.3rem; }
+  .filters-grid, .meta-grid, .form-grid { display: grid; gap: 0.75rem; }
   .filters-grid { grid-template-columns: repeat(6, minmax(120px, 1fr)); }
-  .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meta-grid, .accountability-strip, .two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .accountability-strip { display: grid; gap: 0.75rem; }
+  .banner-panel[data-tone='warning'] { border: 1px solid #fdba74; background: #fff7ed; }
+  .banner-panel[data-tone='ok'] { border: 1px solid #86efac; background: #f0fdf4; }
+  .banner-error { color: #9a3412; margin: 0; }
   label { display: grid; gap: 0.35rem; }
-  input, select, button { font: inherit; }
-  input, select, button { border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.7rem 0.85rem; background: #fff; }
+  input, select, button, textarea { font: inherit; }
+  input, select, button, textarea { border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.7rem 0.85rem; background: #fff; }
+  textarea { resize: vertical; min-height: 120px; }
   button { font-weight: 700; }
   .secondary, .link { background: #fff; color: #0f172a; }
   .link { padding: 0; border: none; color: #1d4ed8; }
   .content-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.9fr); gap: 1rem; align-items: start; }
   .detail-panel { position: sticky; top: 0; }
-  .eyebrow, .muted, .detail-section p, label span, .timeline-meta { color: var(--text-secondary, #64748b); }
+  .eyebrow, .muted, .detail-section p, label span, .timeline-meta, .modal-subtitle, .accountability-strip small { color: var(--text-secondary, #64748b); }
   .priority-badge { align-self: flex-start; padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; }
   .priority-badge.low { background: #e2e8f0; }
   .priority-badge.medium { background: #dbeafe; color: #1d4ed8; }
   .priority-badge.high { background: #fef3c7; color: #92400e; }
   .priority-badge.critical { background: #fee2e2; color: #b91c1c; }
   .detail-section { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: rgba(248,250,252,0.8); }
-  .narrative-section ul, .chip-list, .timeline { margin: 0; padding-left: 1rem; }
+  .compact-panel { background: #fff; }
+  .narrative-section ul, .chip-list, .timeline, .state-flow, .modal-checklist { margin: 0; padding-left: 1rem; }
   .chip-list { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding-left: 0; }
   .chip-list li { background: #eff6ff; color: #1e3a8a; border-radius: 999px; padding: 0.35rem 0.7rem; }
   .timeline { list-style: none; padding-left: 0; display: grid; gap: 0.75rem; }
   .timeline li { align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; padding: 0.85rem; }
   .timeline-meta { min-width: 160px; display: grid; gap: 0.5rem; text-align: right; }
+  .timeline-meta.compact { min-width: auto; }
   .timeline a { color: #1d4ed8; text-decoration: none; font-weight: 600; }
+  .state-flow { display: grid; gap: 0.75rem; list-style: none; padding-left: 0; counter-reset: flow; }
+  .state-flow li { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.9rem 1rem; background: #fff; }
+  .state-flow li.active { border-color: #2563eb; background: #eff6ff; }
+  .state-flow li.done { border-color: #86efac; background: #f0fdf4; }
+  .state-flow p { margin-top: 0.25rem; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
   .restricted { padding: 1rem; }
   @media (max-width: 1200px) { .content-grid { grid-template-columns: 1fr; } .detail-panel { position: static; } .filters-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
-  @media (max-width: 720px) { .filters-grid, .meta-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .filters-grid, .meta-grid, .accountability-strip, .two-columns { grid-template-columns: 1fr; } }
 </style>
