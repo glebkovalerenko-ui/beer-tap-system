@@ -6,7 +6,7 @@
 {#if $uiStore.confirm}
   <Modal on:close={() => uiStore.resolveConfirm(false)}>
     <h2 slot="header">{$uiStore.confirm.title}</h2>
-    <p>{$uiStore.confirm.message}</p>
+    <p class="message">{$uiStore.confirm.message}</p>
 
     <div slot="footer" class="actions">
       <button class="cancel" on:click={() => uiStore.resolveConfirm(false)}>{$uiStore.confirm.cancelText}</button>
@@ -17,6 +17,7 @@
 
 <style>
   .actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
+  .message { white-space: pre-line; }
   .cancel { background: #f0f0f0; color: #333; }
   .danger { background: #d9534f; color: #fff; }
 </style>

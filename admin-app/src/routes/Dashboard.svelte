@@ -13,6 +13,7 @@
   import { nfcReaderStore } from '../stores/nfcReaderStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import { normalizeErrorMessage } from '../lib/errorUtils';
+  import { confirmShiftAction } from '../lib/shiftActionConfirm.js';
   import { serverConfigStore, SHOW_API_BASE_URL } from '../lib/config.js';
 
   import TapGrid from '../components/taps/TapGrid.svelte';
@@ -164,6 +165,9 @@
   }
 
   async function openShift() {
+    const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'open' });
+    if (!confirmed) return;
+
     try {
       await shiftStore.openShift();
       uiStore.notifySuccess('Смена открыта.');
@@ -173,6 +177,9 @@
   }
 
   async function closeShift() {
+    const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'close' });
+    if (!confirmed) return;
+
     try {
       await shiftStore.closeShift();
       uiStore.notifySuccess('Смена закрыта.');
