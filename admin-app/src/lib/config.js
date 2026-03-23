@@ -114,6 +114,11 @@ export const SHOW_API_BASE_URL =
 export const DEMO_MODE_ENABLED_BY_DEFAULT =
   String(import.meta.env.VITE_DEMO_MODE || '').toLowerCase() === 'true';
 
+export const ROLE_SWITCH_ENABLED =
+  import.meta.env.DEV ||
+  import.meta.env.MODE === 'test' ||
+  String(import.meta.env.VITE_ROLE_SWITCH_ENABLED || '').toLowerCase() === 'true';
+
 export function getApiBaseUrl() {
   return currentApiBaseUrl;
 }
