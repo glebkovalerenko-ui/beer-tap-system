@@ -1,19 +1,38 @@
 <script>
-  import { roleStore } from '../../stores/roleStore.js';
+  import { onMount } from 'svelte';
   import { sessionStore } from '../../stores/sessionStore.js';
   import { guestContextStore } from '../../stores/guestContextStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
+  import { systemStore } from '../../stores/systemStore.js';
   import { uiStore } from '../../stores/uiStore.js';
-  import ShellStatusPills from './ShellStatusPills.svelte';
-  import ShellGuestContextChip from './ShellGuestContextChip.svelte';
-  import DemoModeToggle from '../system/DemoModeToggle.svelte';
-  import ServerSettingsModal from '../system/ServerSettingsModal.svelte';
+  import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
 
-  export let title = 'Рабочее место оператора';
-  export let modeLabel = 'Режим работы';
+  let now = new Date();
 
-  function changeRole(event) {
-    roleStore.setRole(event.target.value);
+  const overallLabel = {
+    ok: 'В норме',
+    warning: 'Нужно внимание',
+    degraded: 'Есть деградация',
+    critical: 'Критично',
+    error: 'Ошибка',
+    offline: 'Офлайн',
+    unknown: 'Статус уточняется',
+  };
+
+  function navigateTo(path) {
+    window.location.hash = path;
+  }
+
+  function shiftStatusText() {
+    if ($shiftStore.isOpen) {
+      return $shiftStore.shift?.opened_at ? `Открыта с ${formatDateTimeRu($shiftStore.shift.opened_at)}` : 'Смена открыта';
+    }
+
+    if ($shiftStore.shift?.closed_at) {
+      return `Закрыта ${formatDateTimeRu($shiftStore.shift.closed_at)}`;
+    }
+
+    return 'Смена закрыта';
   }
 
   async function handleOpenShift() {
@@ -33,65 +52,162 @@
       uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось закрыть смену');
     }
   }
+
+  onMount(() => {
+    const clockTimer = setInterval(() => {
+      now = new Date();
+    }, 1000);
+
+    return () => clearInterval(clockTimer);
+  });
+
+  $: primaryHealthPills = ($systemStore.health.primaryPills || []).slice(0, 3);
+  $: overallState = $systemStore.health.overall || 'unknown';
+  $: overallStateLabel = overallLabel[overallState] || overallState;
 </script>
 
 <header class="topbar ui-card">
-  <div class="left">
-    <div>
-      <p class="eyebrow">Beer Tap System</p>
-      <h1>{title}</h1>
-      <p class="mode-label">{modeLabel}: {roleStore.roles[$roleStore.key]?.label || 'Не выбран'}</p>
+  <section class="topbar-block shift-block" aria-label="Смена и время">
+    <div class="block-head">
+      <p class="eyebrow">Смена / время</p>
+      <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
     </div>
-    <ShellGuestContextChip
-      guestName={$guestContextStore.guestName}
-      cardUid={$guestContextStore.cardUid}
-      isActive={$guestContextStore.isActive}
-    />
-  </div>
+    <p class="supporting-text">{shiftStatusText()}</p>
+    <div class="time-row">
+      <span class="time-value">{formatTimeRu(now.toISOString())}</span>
+      <span class="time-date">{formatDateTimeRu(now.toISOString())}</span>
+    </div>
+    <div class="shift-actions">
+      {#if $shiftStore.isOpen}
+        <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
+      {:else}
+        <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
+      {/if}
+      <button class="ghost" on:click={() => sessionStore.logout()}>Выйти</button>
+    </div>
+  </section>
 
-  <div class="right">
-    <ShellStatusPills />
-    <ServerSettingsModal buttonLabel="Подключение" variant="ghost" />
-    {#if $shiftStore.isOpen}
-      <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
-    {:else}
-      <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
-    {/if}
-    <DemoModeToggle />
-    <select on:change={changeRole} value={$roleStore.key} aria-label="Выбор рабочей роли">
-      {#each Object.entries(roleStore.roles) as [key, role]}
-        <option value={key}>{role.label}</option>
+  <section class="topbar-block health-block" aria-label="Общий health">
+    <div class="block-head">
+      <p class="eyebrow">Общий health</p>
+      <strong class:ok={overallState === 'ok'} class:warn={['warning', 'degraded', 'unknown'].includes(overallState)} class:error={['critical', 'error', 'offline'].includes(overallState)}>
+        {overallStateLabel}
+      </strong>
+    </div>
+    <div class="health-pills">
+      {#each primaryHealthPills as item (item.key)}
+        <span class="pill" class:ok={item.state === 'ok'} class:warn={['warning', 'degraded', 'unknown'].includes(item.state)} class:error={['critical', 'error', 'offline'].includes(item.state)}>
+          {item.label}: {item.state === 'ok' ? 'норма' : item.detail}
+        </span>
       {/each}
-    </select>
-    <button class="ghost" on:click={() => sessionStore.logout()}>Выйти</button>
-  </div>
+    </div>
+    <p class="supporting-text">{$systemStore.openIncidentCount} открытых инцидентов · экстренная остановка {$systemStore.emergencyStop ? 'включена' : 'выключена'}</p>
+  </section>
+
+  <section class="topbar-block actions-block" aria-label="Быстрые действия оператора">
+    <div class="block-head">
+      <p class="eyebrow">Быстрые действия</p>
+      <strong>Операционный контекст</strong>
+    </div>
+    <div class="quick-actions">
+      <button class="ghost" on:click={() => navigateTo('/incidents')}>Инциденты</button>
+      <button class="ghost" on:click={() => navigateTo('/taps')}>Краны</button>
+    </div>
+    <div class="guest-context">
+      <span class="guest-label">Guest context</span>
+      <div class="guest-chip">
+        <strong>{$guestContextStore.guestName || 'Гость не выбран'}</strong>
+        <span>{($guestContextStore.cardUid ? `****${$guestContextStore.cardUid.slice(-4)}` : 'без карты')} · {$guestContextStore.isActive === null ? '—' : ($guestContextStore.isActive ? 'активен' : 'заблокирован')}</span>
+      </div>
+    </div>
+  </section>
 </header>
 
 <style>
   .topbar {
     margin: 12px;
     padding: 12px 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
     border-radius: 14px;
   }
-  .left { display: flex; gap: 14px; align-items: center; }
+  .topbar-block {
+    display: grid;
+    gap: 10px;
+    padding: 4px;
+    min-width: 0;
+  }
+  .block-head {
+    display: grid;
+    gap: 4px;
+  }
   .eyebrow {
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-secondary);
-    margin: 0 0 0.2rem;
+    margin: 0;
   }
-  h1 { font-size: 1.1rem; margin: 0; min-width: 150px; }
-  .mode-label {
-    margin: 0.25rem 0 0;
+  .supporting-text, .time-date, .guest-chip span {
+    margin: 0;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.84rem;
   }
-  .right { display: flex; align-items: center; gap: 10px; }
-  select { min-width: 170px; }
+  .time-row {
+    display: grid;
+    gap: 2px;
+  }
+  .time-value {
+    font-size: 1.45rem;
+    font-weight: 700;
+  }
+  .shift-actions, .quick-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .health-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .pill {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    background: #eef2f8;
+    color: #29405f;
+    border: 1px solid #d7e2f1;
+  }
+  .ok { color: #116d3a; }
+  .warn { color: #8d5b00; }
+  .error { color: #9e1f2c; }
+  .pill.ok { background: #e9f8ef; border-color: #bde8cc; }
+  .pill.warn { background: #fff8e9; border-color: #ffe1a3; }
+  .pill.error { background: #ffeef0; border-color: #ffc6cc; }
   .ghost { background: #edf2fb; color: #23416b; }
+  .guest-context {
+    display: grid;
+    gap: 6px;
+  }
+  .guest-label {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+  }
+  .guest-chip {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-soft);
+  }
+  @media (max-width: 1080px) {
+    .topbar {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>

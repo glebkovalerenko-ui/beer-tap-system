@@ -14,6 +14,7 @@ const PERMISSIONS = {
   maintenance_actions: 'Опасные сервисные действия: разблокировки, промывка, стопы.',
   display_override: 'Override контента и сценариев экрана крана.',
   settings_manage: 'Изменение системных настроек и management-инструменты.',
+  debug_tools: 'Скрытая debug / management точка входа для demo-mode, role switch и server settings.',
 };
 
 const ROLES = {
@@ -30,6 +31,7 @@ const ROLES = {
       maintenance_actions: false,
       display_override: false,
       settings_manage: false,
+      debug_tools: false,
     },
   },
   shift_lead: {
@@ -45,6 +47,7 @@ const ROLES = {
       maintenance_actions: true,
       display_override: false,
       settings_manage: false,
+      debug_tools: false,
     },
   },
   engineer_owner: {
@@ -60,6 +63,7 @@ const ROLES = {
       maintenance_actions: true,
       display_override: true,
       settings_manage: true,
+      debug_tools: true,
     },
   },
 };

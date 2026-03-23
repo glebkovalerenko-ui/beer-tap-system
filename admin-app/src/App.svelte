@@ -30,6 +30,7 @@
   import ActivityTrail from './components/system/ActivityTrail.svelte';
   import ShellTopBar from './components/shell/ShellTopBar.svelte';
   import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
+  import DebugManagementEntry from './components/system/DebugManagementEntry.svelte';
 
   const routes = {
     '/': Today,
@@ -59,7 +60,6 @@
   ];
 
   const supportNav = [
-    { href: '#/settings', label: 'Настройки', visible: (permissions) => permissions.settings_manage },
     { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_health_view },
   ];
 
@@ -111,6 +111,10 @@
     };
   });
 
+
+  $: visiblePrimaryNav = primaryNav.filter((item) => item.visible($roleStore.permissions));
+  $: visibleSupportNav = supportNav.filter((item) => item.visible($roleStore.permissions));
+
   onDestroy(() => {
     systemStore.stopPolling();
     window.removeEventListener('online', updateOnline);
@@ -126,7 +130,7 @@
       </div>
     {/if}
 
-    <ShellTopBar title="Рабочее место оператора" modeLabel="Режим работы" />
+    <ShellTopBar />
     <SystemFallbackBanner demoMode={$demoModeStore} {online} nfcStatus={$nfcReaderStore.status} />
 
     <div class="workspace-grid">
@@ -134,26 +138,25 @@
         <div class="nav-group">
           <div class="nav-title">Основные разделы</div>
           <nav aria-label="Главная навигация">
-            {#each primaryNav as item}
-              {#if item.visible($roleStore.permissions)}
-                <a href={item.href}>{item.label}</a>
-              {/if}
+            {#each visiblePrimaryNav as item}
+              <a href={item.href}>{item.label}</a>
             {/each}
           </nav>
         </div>
 
-        <div class="nav-group secondary">
-          <div class="nav-title">Поддержка и настройки</div>
-          <nav aria-label="Дополнительные разделы">
-            {#each supportNav as item}
-              {#if item.visible($roleStore.permissions)}
+        {#if visibleSupportNav.length > 0}
+          <div class="nav-group secondary">
+            <div class="nav-title">Поддержка</div>
+            <nav aria-label="Дополнительные разделы">
+              {#each visibleSupportNav as item}
                 <a href={item.href}>{item.label}</a>
-              {/if}
-            {/each}
-          </nav>
-        </div>
+              {/each}
+            </nav>
+          </div>
+        {/if}
 
         <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Показать сценарий обучения</button>
+        <DebugManagementEntry />
         <ActivityTrail />
       </aside>
 
