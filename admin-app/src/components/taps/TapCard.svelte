@@ -21,7 +21,7 @@
   $: canShowLockToggle = canControl && tap.keg_id;
   $: canShowScreen = canDisplayOverride;
   $: canShowKegAction = canControl;
-  $: canShowHistory = true;
+  $: canShowHistory = Boolean(tap?.tap_id);
   $: statusPills = [
     { label: 'Controller', value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
     { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
@@ -151,7 +151,9 @@
       </button>
     {/if}
 
-    <button class="cta" on:click|stopPropagation={() => emit('open-detail')}>История</button>
+    {#if canShowHistory}
+      <button class="cta" on:click|stopPropagation={() => emit('open-history')}>История</button>
+    {/if}
   </div>
 
   {#if canMaintain}
