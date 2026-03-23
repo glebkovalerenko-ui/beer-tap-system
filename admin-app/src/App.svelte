@@ -6,7 +6,6 @@
   import { guestStore } from './stores/guestStore.js';
   import { systemStore } from './stores/systemStore.js';
   import { roleStore } from './stores/roleStore.js';
-  import { demoGuideStore } from './stores/demoGuideStore.js';
   import { demoModeStore } from './stores/demoModeStore.js';
   import { nfcReaderStore } from './stores/nfcReaderStore.js';
   import { shiftStore } from './stores/shiftStore.js';
@@ -27,10 +26,8 @@
   import ToastContainer from './components/feedback/ToastContainer.svelte';
   import ConfirmDialog from './components/feedback/ConfirmDialog.svelte';
   import DemoGuide from './components/demo/DemoGuide.svelte';
-  import ActivityTrail from './components/system/ActivityTrail.svelte';
   import ShellTopBar from './components/shell/ShellTopBar.svelte';
   import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
-  import DebugManagementEntry from './components/system/DebugManagementEntry.svelte';
 
   const routes = {
     '/': Today,
@@ -49,19 +46,63 @@
   };
 
   const primaryNav = [
-    { href: '#/today', label: 'Сегодня', visible: (permissions) => permissions.taps_view || permissions.sessions_view },
-    { href: '#/taps', label: 'Краны', visible: (permissions) => permissions.taps_view },
-    { href: '#/sessions', label: 'Сессии', visible: (permissions) => permissions.sessions_view },
-    { href: '#/cards-guests', label: 'Карты и гости', visible: (permissions) => permissions.cards_lookup },
-    { href: '#/kegs-beverages', label: 'Кеги и напитки', visible: (permissions) => permissions.settings_manage },
-    { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_view },
-    { href: '#/tap-screens', label: 'Экраны кранов', visible: (permissions) => permissions.display_override },
-    { href: '#/system', label: 'Система', visible: (permissions) => permissions.system_health_view },
+    {
+      href: '#/today',
+      label: 'Сейчас в смене',
+      description: 'Открыть текущие задачи, очередь внимания и быстрые действия смены.',
+      visible: (permissions) => permissions.taps_view || permissions.sessions_view,
+    },
+    {
+      href: '#/taps',
+      label: 'Краны',
+      description: 'Следить за линиями, статусами и рабочими действиями у стойки.',
+      visible: (permissions) => permissions.taps_view,
+    },
+    {
+      href: '#/sessions',
+      label: 'Сессии',
+      description: 'Сопровождать активные визиты и разбирать историю обслуживания.',
+      visible: (permissions) => permissions.sessions_view,
+    },
+    {
+      href: '#/cards-guests',
+      label: 'Карты и гости',
+      description: 'Найти гостя, проверить карту и безопасно продолжить обслуживание.',
+      visible: (permissions) => permissions.cards_lookup,
+    },
+    {
+      href: '#/incidents',
+      label: 'Инциденты',
+      description: 'Фиксировать проблемы смены и отслеживать эскалации.',
+      visible: (permissions) => permissions.incidents_view,
+    },
+    {
+      href: '#/system',
+      label: 'Система',
+      description: 'Проверить health, устройства и синхронизацию, когда сервис проседает.',
+      visible: (permissions) => permissions.system_health_view,
+    },
+    {
+      href: '#/kegs-beverages',
+      label: 'Кеги и напитки',
+      description: 'Рабочая подготовка ассортимента и линии налива.',
+      visible: (permissions) => permissions.settings_manage,
+    },
+    {
+      href: '#/tap-screens',
+      label: 'Экраны кранов',
+      description: 'Сервисное управление display-сценариями.',
+      visible: (permissions) => permissions.display_override,
+    },
   ];
 
   const supportNav = [
-    { href: '#/help', label: 'Справка / регламенты', visible: (permissions) => permissions.system_health_view, tone: 'support' },
-    { href: '#/settings', label: 'Настройки', visible: (permissions) => permissions.settings_manage, tone: 'muted' },
+    {
+      href: '#/help',
+      label: 'Справка и поддержка',
+      description: 'Регламенты смены, SOP и сервисные entry-point\'ы для старшего/инженера.',
+      visible: (permissions) => permissions.system_health_view,
+    },
   ];
 
   let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
@@ -136,29 +177,36 @@
 
     <div class="workspace-grid">
       <aside class="left-rail ui-card">
+        <div class="nav-group rail-intro">
+          <div class="nav-title">Рабочая навигация</div>
+          <p>Откройте раздел, где оператору нужно работать прямо сейчас. Сервисные и редкие инструменты убраны из постоянной зоны.</p>
+        </div>
+
         <div class="nav-group">
           <div class="nav-title">Основные разделы</div>
           <nav aria-label="Главная навигация">
             {#each visiblePrimaryNav as item}
-              <a href={item.href}>{item.label}</a>
+              <a href={item.href}>
+                <strong>{item.label}</strong>
+                <span>{item.description}</span>
+              </a>
             {/each}
           </nav>
         </div>
 
         {#if visibleSupportNav.length > 0}
-          <div class="nav-group secondary">
+          <div class="support-block">
             <div class="nav-title">Поддержка</div>
-            <nav aria-label="Дополнительные разделы">
+            <nav aria-label="Поддержка и регламенты">
               {#each visibleSupportNav as item}
-                <a href={item.href} class:muted-link={item.tone === 'muted'}>{item.label}</a>
+                <a href={item.href} class="support-link">
+                  <strong>{item.label}</strong>
+                  <span>{item.description}</span>
+                </a>
               {/each}
             </nav>
           </div>
         {/if}
-
-        <button class="demo-button" on:click={() => demoGuideStore.open()}>▶ Показать сценарий обучения</button>
-        <DebugManagementEntry />
-        <ActivityTrail />
       </aside>
 
       <main class="main-content ui-card">
@@ -216,8 +264,21 @@
     gap: 10px;
   }
 
-  .secondary {
+  .rail-intro {
+    gap: 6px;
+  }
+
+  .rail-intro p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 0.92rem;
+  }
+
+  .support-block {
     margin-top: auto;
+    display: grid;
+    gap: 10px;
   }
 
   .nav-title {
@@ -239,80 +300,27 @@
     background: var(--bg-surface-muted);
     border: 1px solid var(--border-soft);
     border-radius: 10px;
-    padding: 10px;
-    font-weight: 600;
+    padding: 12px;
+    display: grid;
+    gap: 4px;
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+  }
+
+  nav a strong {
+    font-size: 0.96rem;
+  }
+
+  nav a span {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+    line-height: 1.35;
   }
 
   nav a:hover,
   nav a:focus-visible { background: #eaf1ff; }
 
-  .secondary nav a {
-    color: var(--text-secondary);
-    background: color-mix(in srgb, var(--bg-surface-muted) 82%, transparent);
-    border-color: color-mix(in srgb, var(--border-soft) 88%, transparent);
-  }
-
-  .secondary nav a.muted-link {
-    background: color-mix(in srgb, var(--bg-surface-muted) 58%, transparent);
+  .support-link {
+    background: color-mix(in srgb, var(--bg-surface-muted) 72%, transparent);
     border-style: dashed;
-    opacity: 0.9;
-  }
-
-  .secondary nav a:hover,
-  .secondary nav a:focus-visible {
-    color: var(--text-primary);
-    opacity: 1;
-  }
-
-  .main-content { overflow: hidden; }
-
-  .page-scroll {
-    overflow-y: auto;
-    padding: var(--space-4);
-    height: 100%;
-    box-sizing: border-box;
-  }
-
-  .demo-button { width: 100%; background: #eef3ff; color: #1849a9; }
-
-  .emergency-banner {
-    background-color: var(--danger);
-    color: white;
-    text-align: center;
-    padding: 0.5rem;
-    font-weight: bold;
-    width: 100%;
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 1000;
-  }
-
-  .app-shell.emergency-active { padding-top: 2.5rem; }
-
-  :global(button) {
-    font-size: 0.95rem;
-    padding: 0.6rem 1rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid rgba(0,0,0,0.08);
-    background: var(--brand);
-    color: white;
-    cursor: pointer;
-    transition: transform 0.06s ease, filter 0.06s ease, box-shadow 0.06s ease;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
-  }
-
-  :global(button:hover:not(:disabled)) { filter: brightness(0.95); }
-  :global(button:active:not(:disabled)) { transform: scale(0.98); }
-  :global(button:disabled) { opacity: 0.6; cursor: not-allowed; filter: none; }
-
-  :global(input, textarea, select) {
-    font-size: 0.95rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-soft);
-    box-sizing: border-box;
-    background: #fff;
   }
 </style>
