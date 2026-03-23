@@ -1,4 +1,5 @@
 <script>
+  import { ROLE_SWITCH_ENABLED } from '../../lib/config.js';
   import { roleStore } from '../../stores/roleStore.js';
   import DemoModeToggle from './DemoModeToggle.svelte';
   import ServerSettingsModal from './ServerSettingsModal.svelte';
@@ -8,9 +9,13 @@
   function changeRole(event) {
     roleStore.setRole(event.target.value);
   }
+
+  $: canAccessDebugTools = $roleStore.permissions.debug_tools;
+  $: canAccessRoleSwitch = ROLE_SWITCH_ENABLED || $roleStore.permissions.role_switch;
+  $: canRenderEntry = canAccessDebugTools || canAccessRoleSwitch;
 </script>
 
-{#if $roleStore.permissions.debug_tools}
+{#if canRenderEntry}
   <section class="debug-entry ui-card" aria-label="Скрытая debug / management точка входа">
     <button
       class="debug-toggle"
@@ -23,19 +28,31 @@
 
     {#if isOpen}
       <div class="debug-panel">
-        <p class="debug-copy">Сервисные и demo-инструменты вынесены из operator top bar и открываются только по скрытому debug flag.</p>
-        <div class="debug-actions">
-          <DemoModeToggle />
-          <ServerSettingsModal buttonLabel="Подключение" variant="ghost" />
-        </div>
-        <label class="role-picker">
-          <span>Рабочая роль</span>
-          <select on:change={changeRole} value={$roleStore.key} aria-label="Выбор рабочей роли">
-            {#each Object.entries(roleStore.roles) as [key, role]}
-              <option value={key}>{role.label}</option>
-            {/each}
-          </select>
-        </label>
+        <p class="debug-copy">
+          {#if canAccessDebugTools}
+            Сервисные и demo-инструменты вынесены из operator top bar и открываются только по скрытому debug flag.
+          {:else}
+            В этой сборке role switch оставлен доступным отдельно от demo/server settings, чтобы не потерять инженерный доступ.
+          {/if}
+        </p>
+
+        {#if canAccessDebugTools}
+          <div class="debug-actions">
+            <DemoModeToggle />
+            <ServerSettingsModal buttonLabel="Подключение" variant="ghost" />
+          </div>
+        {/if}
+
+        {#if canAccessRoleSwitch}
+          <label class="role-picker">
+            <span>Рабочая роль</span>
+            <select on:change={changeRole} value={$roleStore.key} aria-label="Выбор рабочей роли">
+              {#each Object.entries(roleStore.roles) as [key, role]}
+                <option value={key}>{role.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
       </div>
     {/if}
   </section>
