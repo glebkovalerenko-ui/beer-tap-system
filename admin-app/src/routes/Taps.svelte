@@ -1,5 +1,5 @@
 <script>
-  import TapsKegs from './TapsKegs.svelte';
+  import TapsWorkspace from './TapsWorkspace.svelte';
 </script>
 
-<TapsKegs initialSection="taps" />
+<TapsWorkspace />
