@@ -54,7 +54,7 @@
     { href: '#/sessions', label: 'Сессии', visible: (permissions) => permissions.sessions_view },
     { href: '#/cards-guests', label: 'Карты и гости', visible: (permissions) => permissions.cards_lookup },
     { href: '#/kegs-beverages', label: 'Кеги и напитки', visible: (permissions) => permissions.settings_manage },
-    { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_manage },
+    { href: '#/incidents', label: 'Инциденты', visible: (permissions) => permissions.incidents_view },
     { href: '#/tap-screens', label: 'Экраны кранов', visible: (permissions) => permissions.display_override },
     { href: '#/system', label: 'Система', visible: (permissions) => permissions.system_health_view },
   ];

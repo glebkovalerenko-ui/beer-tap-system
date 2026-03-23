@@ -1,4 +1,5 @@
 <script>
+  import { roleStore } from '../../stores/roleStore.js';
   export let summary = { subsystems: [], health: { sections: {} }, generatedAt: null, error: null };
   export let canUseEngineeringActions = false;
   export let canManageSystemSettings = false;
@@ -37,8 +38,8 @@
 
     if (type === 'incident') {
       return {
-        label: fallbackLabel || 'Открыть инциденты',
-        action: () => navigateTo('/incidents'),
+        label: fallbackLabel || ($roleStore.permissions.incidents_view ? 'Открыть инциденты' : 'Открыть систему'),
+        action: () => ($roleStore.permissions.incidents_view ? navigateTo('/incidents') : focusSystem(item?.label || item?.name || 'System details')),
       };
     }
 
@@ -457,7 +458,9 @@
           {#if isProblemState(item.state)}
             <div class="action-links compact-links">
               <button class="link-btn" on:click={() => focusSystem(item.label || item.name)}>Открыть sync details</button>
-              <button class="link-btn secondary" on:click={() => navigateTo('/incidents')}>Посмотреть инциденты</button>
+              {#if $roleStore.permissions.incidents_view}
+                <button class="link-btn secondary" on:click={() => navigateTo('/incidents')}>Посмотреть инциденты</button>
+              {/if}
             </div>
           {/if}
         </article>

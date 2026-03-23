@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { sessionStore } from '../../stores/sessionStore.js';
+  import { roleStore } from '../../stores/roleStore.js';
   import { guestContextStore } from '../../stores/guestContextStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
   import { systemStore } from '../../stores/systemStore.js';
@@ -110,7 +111,9 @@
       <strong>Операционный контекст</strong>
     </div>
     <div class="quick-actions">
-      <button class="ghost" on:click={() => navigateTo('/incidents')}>Инциденты</button>
+      {#if $roleStore.permissions.incidents_view}
+        <button class="ghost" on:click={() => navigateTo('/incidents')}>Инциденты</button>
+      {/if}
       <button class="ghost" on:click={() => navigateTo('/taps')}>Краны</button>
     </div>
     <div class="guest-context">
