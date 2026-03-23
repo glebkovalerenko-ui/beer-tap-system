@@ -324,7 +324,7 @@
                 </button>
               {/if}
               {#if canDisplayOverride}
-                <button class="secondary" type="button" on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
+                <button class="secondary" type="button" aria-label={`Открыть настройки экрана для ${tap.display_name}`} on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
               {/if}
               <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
             </div>

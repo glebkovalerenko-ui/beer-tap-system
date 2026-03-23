@@ -27,18 +27,28 @@
     { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
     { label: 'Reader', value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
   ];
-  $: canShowPrimaryDetailsAction = canShowScreen || canShowKegAction;
-  $: primaryDetailActionLabel = canShowScreen ? 'Экран' : 'Кега';
+  $: secondaryAction = canShowScreen
+    ? { label: 'Экран', ariaLabel: `Открыть настройки экрана для ${tap.display_name}`, event: 'display-settings' }
+    : canShowKegAction
+      ? { label: 'Кега', ariaLabel: `Открыть карточку крана ${tap.display_name} для действий с кегой`, event: 'open-detail' }
+      : null;
   $: actionCount = [
     true,
     canShowStop,
     canShowLockToggle,
-    canShowPrimaryDetailsAction,
+    Boolean(secondaryAction),
     canShowHistory,
   ].filter(Boolean).length;
 
   function emit(name) {
     dispatch(name, { tap });
+  }
+
+  function handleCardKeydown(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      emit('open-detail');
+    }
   }
 </script>
 
@@ -48,7 +58,7 @@
   role="button"
   tabindex="0"
   on:click={() => emit('open-detail')}
-  on:keydown={(event) => (event.key === 'Enter' || event.key === ' ' ) && emit('open-detail')}
+  on:keydown={handleCardKeydown}
 >
   <div class="card-header">
     <div>
@@ -137,24 +147,29 @@
   </div>
 
   <div class="card-actions" class:multi-line={actionCount > 2}>
-    <button class="cta primary" on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
+    <button class="cta primary" type="button" aria-label={`Открыть карточку крана ${tap.display_name}`} on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
 
     {#if canShowStop}
-      <button class="cta danger" on:click|stopPropagation={() => emit('stop-pour')}>Стоп</button>
+      <button class="cta danger" type="button" aria-label={`Остановить налив на ${tap.display_name}`} on:click|stopPropagation={() => emit('stop-pour')}>Стоп</button>
     {/if}
 
     {#if canShowLockToggle}
-      <button class="cta" on:click|stopPropagation={() => emit('toggle-lock')}>
+      <button class="cta" type="button" aria-label={`${isLocked ? 'Разблокировать' : 'Заблокировать'} кран ${tap.display_name}`} on:click|stopPropagation={() => emit('toggle-lock')}>
         {isLocked ? 'Разблокировать' : 'Блокировать'}
       </button>
     {/if}
 
-    {#if canShowPrimaryDetailsAction}
-      <button class="cta" on:click|stopPropagation={() => emit('open-detail')}>{primaryDetailActionLabel}</button>
+    {#if secondaryAction}
+      <button
+        class="cta"
+        type="button"
+        aria-label={secondaryAction.ariaLabel}
+        on:click|stopPropagation={() => emit(secondaryAction.event)}
+      >{secondaryAction.label}</button>
     {/if}
 
     {#if canShowHistory}
-      <button class="cta" on:click|stopPropagation={() => emit('open-history')}>История</button>
+      <button class="cta" type="button" aria-label={`Открыть историю сессий для ${tap.display_name}`} on:click|stopPropagation={() => emit('open-history')}>История</button>
     {/if}
   </div>
 </div>
