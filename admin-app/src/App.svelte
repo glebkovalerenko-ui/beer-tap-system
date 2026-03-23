@@ -98,8 +98,14 @@
 
   const supportNav = [
     {
+      href: '#/settings',
+      label: 'Настройки',
+      description: 'Редкие административные действия и управление параметрами продукта.',
+      visible: (permissions) => permissions.settings_manage,
+    },
+    {
       href: '#/help',
-      label: 'Справка и поддержка',
+      label: 'Справка / регламенты',
       description: 'Регламенты смены, SOP и сервисные entry-point\'ы для старшего/инженера.',
       visible: (permissions) => permissions.system_health_view,
     },
@@ -196,8 +202,9 @@
 
         {#if visibleSupportNav.length > 0}
           <div class="support-block">
-            <div class="nav-title">Поддержка</div>
-            <nav aria-label="Поддержка и регламенты">
+            <div class="nav-title">Настройки и справка</div>
+            <p>Внизу собраны редкие административные действия и отдельный вход в справку / регламенты, чтобы не смешивать их с operator shell.</p>
+            <nav aria-label="Настройки, поддержка и регламенты">
               {#each visibleSupportNav as item}
                 <a href={item.href} class="support-link">
                   <strong>{item.label}</strong>
