@@ -14,7 +14,7 @@
   export let canMarkLost = true;
   export let canOpenVisit = true;
   export let canOpenHistory = true;
-  export let canEdit = true;
+  export let canManageProfile = true;
 
   const dispatch = createEventDispatcher();
   let showSecondary = false;
@@ -44,15 +44,13 @@
   <div class="detail-header">
     <div>
       <h3>{guestDisplayName}</h3>
-      <p>{isOperatorVariant ? 'Компактный операторский контекст после lookup' : (guest.phone_number || 'Телефон не указан')}</p>
+      <p>{isOperatorVariant ? 'Операторский summary после быстрого lookup' : (guest.phone_number || 'Телефон не указан')}</p>
     </div>
     <div class="header-actions">
       {#if !isOperatorVariant}
         <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
           {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
         </button>
-      {:else}
-        {#if canEdit}<button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать</button>{/if}
       {/if}
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
     </div>
@@ -62,7 +60,6 @@
     <div>
       <span class="label">Имя</span>
       <strong>{guestDisplayName}</strong>
-      <div class="subtle">{guest.phone_number || 'Телефон не указан'}</div>
     </div>
     <div>
       <span class="label">Статус карты</span>
@@ -145,6 +142,18 @@
     {/if}
   </section>
 
+  {#if isOperatorVariant && canManageProfile}
+    <section class="info-block management-callout">
+      <div class="section-head">
+        <h4>Management path</h4>
+      </div>
+      <p class="hint">Редактирование профиля и мастер-данные вынесены глубже и не конкурируют с lookup-flow.</p>
+      <div class="management-actions">
+        <button class="ghost-btn" on:click={() => dispatch('open-management')}>Открыть управление гостем</button>
+      </div>
+    </section>
+  {/if}
+
   {#if !isOperatorVariant && showSecondary}
     <section class="info-block secondary-block">
       <div class="section-head">
@@ -226,6 +235,8 @@
   .close-btn { border-radius: 999px; width: 40px; min-width: 40px; padding: 0; font-size: 1.3rem; }
   .secondary-block { background: #fbfdff; }
   .compact { align-items: center; }
+  .management-callout { background: #fbfdff; }
+  .management-actions { display: flex; justify-content: flex-start; }
   @media (max-width: 720px) {
     .detail-header, .section-head { flex-direction: column; }
   }

@@ -17,6 +17,10 @@
   export let openNewVisitLabel = 'Открыть новый визит';
   export let actions = [];
   export let selectedActionId = '';
+  export let searchQuery = '';
+  export let searchPlaceholder = 'Номер телефона / идентификатор';
+  export let searchResults = [];
+  export let searchResultLabel = 'Совпадения';
 
   const dispatch = createEventDispatcher();
 
@@ -28,6 +32,10 @@
     const uid = uidInput.trim();
     if (!uid) return;
     dispatch('lookup', { uid });
+  }
+
+  function handleSearchInput(event) {
+    dispatch('search-change', { value: event.currentTarget.value });
   }
 
   function handleUidRead(event) {
@@ -65,8 +73,40 @@
         />
         <button on:click={submitManualLookup} disabled={loading || !uidInput.trim()}>Найти UID</button>
       </div>
+      <div class="search-entry">
+        <input
+          type="text"
+          value={searchQuery}
+          placeholder={searchPlaceholder}
+          on:input={handleSearchInput}
+        />
+      </div>
     </div>
   </div>
+
+  {#if searchQuery.trim()}
+    <div class="search-results">
+      <div class="search-results-head">
+        <strong>{searchResultLabel}</strong>
+        <span>{searchResults.length}</span>
+      </div>
+      {#if searchResults.length > 0}
+        <div class="search-result-list">
+          {#each searchResults as item}
+            <button class="search-result-item" on:click={() => dispatch('open-guest', { guestId: item.guest_id })}>
+              <div>
+                <strong>{item.label}</strong>
+                <small>{item.meta}</small>
+              </div>
+              <span>{item.trailing}</span>
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <p class="search-empty">Ничего не найдено. Проверьте номер, UID или другой идентификатор.</p>
+      {/if}
+    </div>
+  {/if}
 
   {#if result}
     <div class="lookup-result">
@@ -174,7 +214,37 @@
   .lookup-head p { color: var(--text-secondary); }
   .lookup-entry { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
   .uid-entry { display: flex; gap: 0.5rem; flex: 1 1 320px; }
+  .search-entry { flex: 1 1 260px; }
   .uid-entry input { flex: 1 1 auto; }
+  .search-entry input { width: 100%; }
+  .search-results {
+    border: 1px solid var(--border-soft, #dbe4f0);
+    border-radius: 12px;
+    background: #fff;
+    padding: 0.85rem;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .search-results-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .search-result-list { display: grid; gap: 0.5rem; }
+  .search-result-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    text-align: left;
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 0.75rem;
+  }
+  .search-result-item small, .search-empty { color: var(--text-secondary); }
   .lookup-result {
     border: 1px solid var(--border-soft, #dbe4f0);
     border-radius: 14px;
