@@ -3,7 +3,6 @@
 
   export let taps = [];
   export let canControl = false;
-  export let canMaintain = false;
   export let canDisplayOverride = false;
 </script>
 
@@ -14,7 +13,6 @@
         <TapCard
           {tap}
           {canControl}
-          {canMaintain}
           {canDisplayOverride}
           on:open-detail
           on:assign
