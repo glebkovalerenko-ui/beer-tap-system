@@ -281,6 +281,17 @@
       uiStore.notifyWarning('Пометить lost можно из активного визита с привязанной картой.');
       return;
     }
+
+    const approved = await uiStore.confirm({
+      title: 'Пометить карту как lost',
+      message: 'Карта будет помечена lost, текущий рабочий сценарий переключится на перевыпуск, и оператору потребуется считать новую карту для переноса контекста активной сессии.',
+      confirmText: 'Пометить как lost',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+
+    if (!approved) return;
+
     try {
       await visitStore.reportLostCard({ visitId, reason: 'operator_marked_lost', comment: null });
       const uid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid;
