@@ -9,6 +9,7 @@
   import { visitStore } from '../stores/visitStore.js';
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { formatDateTimeRu, formatTimeRu, formatVolumeRu } from '../lib/formatters.js';
+  import { formatHealthPill, healthStateLabel, healthTone } from '../lib/healthStatus.js';
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
 
@@ -304,10 +305,10 @@
     </article>
     <article class="health-overview" data-tone={$systemStore.health.overall}>
       <span class="eyebrow">Состояние системы</span>
-      <strong>{$systemStore.health.overall}</strong>
+      <strong>{healthStateLabel($systemStore.health.overall, 'overall')}</strong>
       <div class="health-pills">
         {#each healthItems as item}
-          <span class="health-pill {item.state}">{item.label}: {item.state}</span>
+          <span class="health-pill {healthTone(item.state)}">{formatHealthPill(item)}</span>
         {/each}
       </div>
     </article>
