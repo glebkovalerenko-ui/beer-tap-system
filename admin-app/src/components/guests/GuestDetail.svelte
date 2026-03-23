@@ -8,6 +8,7 @@
   export let cardLookup = null;
   export let recentEvents = [];
   export let lastTapLabel = '—';
+  export let variant = 'full';
 
   const dispatch = createEventDispatcher();
   let showSecondary = false;
@@ -29,31 +30,42 @@
   $: transactions = Array.isArray(guest?.transactions) ? guest.transactions.slice(0, 4) : [];
   $: activity = Array.isArray(recentActivity) ? recentActivity.slice(0, 4) : [];
   $: operatorEvents = Array.isArray(recentEvents) ? recentEvents.slice(0, 5) : [];
+  $: isOperatorVariant = variant === 'operator';
+  $: guestDisplayName = `${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`.trim();
 </script>
 
-<div class="detail-container">
+<div class="detail-container" class:operator={isOperatorVariant}>
   <div class="detail-header">
     <div>
-      <h3>{`${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`}</h3>
-      <p>{guest.phone_number || 'Телефон не указан'}</p>
+      <h3>{guestDisplayName}</h3>
+      <p>{isOperatorVariant ? 'Компактный операторский контекст после lookup' : (guest.phone_number || 'Телефон не указан')}</p>
     </div>
     <div class="header-actions">
-      <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
-        {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
-      </button>
+      {#if !isOperatorVariant}
+        <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
+          {showSecondary ? 'Скрыть детали' : 'Мастер-данные'}
+        </button>
+      {:else}
+        <button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать</button>
+      {/if}
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
     </div>
   </div>
 
-  <section class="hero ui-card">
+  <section class="hero ui-card" class:operator={isOperatorVariant}>
     <div>
-      <span class="label">Баланс</span>
-      <strong class="balance">{formatRubAmount(guest.balance)}</strong>
+      <span class="label">Имя</span>
+      <strong>{guestDisplayName}</strong>
+      <div class="subtle">{guest.phone_number || 'Телефон не указан'}</div>
     </div>
     <div>
       <span class="label">Статус карты</span>
       <strong class={`card-status ${cardStatusTone}`}>{cardStatusLabel}</strong>
       <div class="subtle">{primaryCard?.card_uid || cardLookup?.card_uid || 'Карта не привязана'}</div>
+    </div>
+    <div>
+      <span class="label">Баланс</span>
+      <strong class:is-compact-balance={isOperatorVariant} class="balance">{formatRubAmount(guest.balance)}</strong>
     </div>
     <div>
       <span class="label">Активный визит</span>
@@ -66,44 +78,26 @@
         {/if}
       </div>
     </div>
+    <div>
+      <span class="label">Последний кран</span>
+      <strong>{lastTapLabel}</strong>
+    </div>
     <div class="hero-actions">
       <button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>
-      <button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>
-      <button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Пометить lost</button>
-      <button on:click={() => dispatch('open-history')}>Открыть историю</button>
-      <button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit}>Открыть активную сессию</button>
+      <button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Блокировать' : 'Разблокировать'}</button>
+      <button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Lost / перевыпуск</button>
+      <button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit}>Активная сессия</button>
+      <button on:click={() => dispatch('open-history')}>История</button>
     </div>
   </section>
 
   <section class="info-block">
     <div class="section-head">
-      <h4>Операторская сводка</h4>
+      <h4>Последние события</h4>
       <span class:active={guest.is_active} class:inactive={!guest.is_active} class="guest-state">
         {guest.is_active ? 'Гость активен' : 'Гость заблокирован'}
       </span>
     </div>
-    <div class="summary-grid">
-      <div>
-        <span class="label">Имя</span>
-        <strong>{`${guest.last_name} ${guest.first_name}`}</strong>
-      </div>
-      <div>
-        <span class="label">Последний кран</span>
-        <strong>{lastTapLabel}</strong>
-      </div>
-      <div>
-        <span class="label">Карт у гостя</span>
-        <strong>{cards.length}</strong>
-      </div>
-      <div>
-        <span class="label">Активный визит</span>
-        <strong>{activeVisit?.status || cardLookup?.active_visit ? 'Открыт' : 'Нет'}</strong>
-      </div>
-    </div>
-  </section>
-
-  <section class="info-block">
-    <h4>Последние события</h4>
     {#if operatorEvents.length > 0}
       <ul class="event-list">
         {#each operatorEvents as item, index (`event-${index}`)}
@@ -145,7 +139,7 @@
     {/if}
   </section>
 
-  {#if showSecondary}
+  {#if !isOperatorVariant && showSecondary}
     <section class="info-block secondary-block">
       <div class="section-head">
         <h4>Мастер-данные и редактирование</h4>
@@ -202,15 +196,17 @@
     gap: 1rem;
     padding: 1rem;
   }
+  .hero.operator { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
   .hero-actions { grid-column: 1 / -1; }
   .label { font-size: 0.78rem; color: #64748b; display: block; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; }
   .balance { font-size: 1.9rem; color: #155e4a; }
+  .balance.is-compact-balance { font-size: 1.45rem; }
   .card-status.ok { color: #15803d; }
   .card-status.warning { color: #b45309; }
   .card-status.danger { color: #b91c1c; }
   .card-status.muted { color: #64748b; }
   .info-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.95rem; display: grid; gap: 0.8rem; }
-  .summary-grid, .secondary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
+  .secondary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
   .event-list, .card-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
   .event-list li, .card-list li {
     display: flex; justify-content: space-between; gap: 1rem; align-items: start;
@@ -224,4 +220,7 @@
   .close-btn { border-radius: 999px; width: 40px; min-width: 40px; padding: 0; font-size: 1.3rem; }
   .secondary-block { background: #fbfdff; }
   .compact { align-items: center; }
+  @media (max-width: 720px) {
+    .detail-header, .section-head { flex-direction: column; }
+  }
 </style>
