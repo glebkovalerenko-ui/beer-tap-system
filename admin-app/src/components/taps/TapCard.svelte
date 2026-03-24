@@ -44,28 +44,21 @@
     dispatch(name, { tap });
   }
 
-  function handleCardKeydown(event) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      emit('open-detail');
-    }
-  }
 </script>
 
-<div
+<article
   class={`tap-card layout-${operatorMeta.layout || 'stacked'} tone-${stateTheme} container-${operatorMeta.containerStyle || 'alert'} badge-${operatorMeta.badgeStyle || 'callout'} icon-${operatorMeta.iconShape || 'alert'}`}
   data-state={stateKey}
-  role="button"
-  tabindex="0"
-  on:click={() => emit('open-detail')}
-  on:keydown={handleCardKeydown}
 >
   <div class="card-header">
     <div>
       <div class="eyebrow">Tap #{tap.tap_id}</div>
       <h3>{tap.display_name}</h3>
     </div>
-    <div class="state-badge" aria-label={`Статус: ${operations.productStateLabel}`}>
+    <div
+      class="state-badge"
+      aria-label={`Статус крана: ${operations.productStateLabel || 'Нет данных'}. Системный статус: ${operations.liveStatus || 'Нет данных'}.`}
+    >
       <span class="badge-icon" aria-hidden="true">{operatorMeta.icon}</span>
       <span>{operations.productStateLabel}</span>
     </div>
@@ -118,7 +111,10 @@
 
     <section class="systems-grid">
       {#each statusPills as item}
-        <article class={`system-pill ${item.tone || 'ok'}`}>
+        <article
+          class={`system-pill ${item.tone || 'ok'}`}
+          aria-label={`${item.label}: ${item.value || 'Нет данных'}`}
+        >
           <span>{item.label}</span>
           <strong>{item.value || 'Нет данных'}</strong>
         </article>
@@ -147,14 +143,14 @@
   </div>
 
   <div class="card-actions" class:multi-line={actionCount > 2}>
-    <button class="cta primary" type="button" aria-label={`Открыть карточку крана ${tap.display_name}`} on:click|stopPropagation={() => emit('open-detail')}>Открыть</button>
+    <button class="cta primary" type="button" aria-label={`Открыть карточку крана ${tap.display_name}`} on:click={() => emit('open-detail')}>Открыть</button>
 
     {#if canShowStop}
-      <button class="cta danger" type="button" aria-label={`Остановить налив на ${tap.display_name}`} on:click|stopPropagation={() => emit('stop-pour')}>Стоп</button>
+      <button class="cta danger" type="button" aria-label={`Остановить налив на ${tap.display_name}`} on:click={() => emit('stop-pour')}>Стоп</button>
     {/if}
 
     {#if canShowLockToggle}
-      <button class="cta" type="button" aria-label={`${isLocked ? 'Разблокировать' : 'Заблокировать'} кран ${tap.display_name}`} on:click|stopPropagation={() => emit('toggle-lock')}>
+      <button class="cta" type="button" aria-label={`${isLocked ? 'Разблокировать' : 'Заблокировать'} кран ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
         {isLocked ? 'Разблокировать' : 'Блокировать'}
       </button>
     {/if}
@@ -164,15 +160,15 @@
         class="cta"
         type="button"
         aria-label={secondaryAction.ariaLabel}
-        on:click|stopPropagation={() => emit(secondaryAction.event)}
+        on:click={() => emit(secondaryAction.event)}
       >{secondaryAction.label}</button>
     {/if}
 
     {#if canShowHistory}
-      <button class="cta" type="button" aria-label={`Открыть историю сессий для ${tap.display_name}`} on:click|stopPropagation={() => emit('open-history')}>История</button>
+      <button class="cta" type="button" aria-label={`Открыть историю сессий для ${tap.display_name}`} on:click={() => emit('open-history')}>История</button>
     {/if}
   </div>
-</div>
+</article>
 
 <style>
   .tap-card {
@@ -185,7 +181,6 @@
     display: grid;
     gap: 1rem;
     text-align: left;
-    cursor: pointer;
   }
   .tap-card:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08); }
   .tap-card.layout-live { border-width: 2px; }
