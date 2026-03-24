@@ -55,6 +55,7 @@ export const SESSION_COPY = {
 };
 
 export const TAP_COPY = {
+  tapNumber: 'Кран №',
   liveState: 'Текущее состояние',
   liveSignals: 'Сигналы системы',
   sessionAndGuest: 'Текущая сессия',
@@ -70,6 +71,17 @@ export const TAP_COPY = {
   connectivityOnline: 'На связи',
   connectivityOffline: 'Нет связи',
   backendNoData: 'Нет данных от системы',
+  operatorActionsTitle: 'Операторские действия',
+  serviceActionsTitle: 'Сервисные действия',
+  lockTap: 'Заблокировать кран',
+  unlockTap: 'Разблокировать кран',
+  controller: 'Контроллер',
+  display: 'Экран',
+  keySignal: 'Ключевой сигнал',
+  lockAt: 'Блокировка с',
+  waitingForLock: 'Ожидает блокировку',
+  heartbeat: 'Heartbeat',
+  sync: 'Синхронизация',
 };
 
 export const COMMON_COPY = {

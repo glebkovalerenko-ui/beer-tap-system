@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
 
   import { formatDateTimeRu, formatRubAmount, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
+  import { TAP_COPY } from '../../lib/operatorLabels.js';
 
   export let tap;
   export let canControl = false;
@@ -23,9 +24,9 @@
   $: canShowKegAction = canControl;
   $: canShowHistory = Boolean(tap?.tap_id);
   $: statusPills = [
-    { label: 'Controller', value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
-    { label: 'Display', value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
-    { label: 'Reader', value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
+    { label: TAP_COPY.controller, value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
+    { label: TAP_COPY.display, value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
+    { label: TAP_COPY.reader, value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
   ];
   $: secondaryAction = canShowScreen
     ? { label: 'Экран', ariaLabel: `Открыть настройки экрана для ${tap.display_name}`, event: 'display-settings' }
@@ -52,7 +53,7 @@
 >
   <div class="card-header">
     <div>
-      <div class="eyebrow">Tap #{tap.tap_id}</div>
+      <div class="eyebrow">{TAP_COPY.tapNumber}{tap.tap_id}</div>
       <h3>{tap.display_name}</h3>
     </div>
     <div
@@ -87,7 +88,7 @@
         <p>{operations.beverageStyle || 'Без стиля / контента'}</p>
       </div>
       <div class="meta-block telemetry-chip">
-        <span class="meta-label">Ключевая cue</span>
+        <span class="meta-label">{TAP_COPY.keySignal}</span>
         <strong>{operatorMeta.shortLabel}</strong>
         <p>{operatorMeta.eyebrow || operatorState}</p>
       </div>
@@ -129,7 +130,7 @@
         </div>
         <strong>{session.guestName}</strong>
         <div class="session-grid">
-          <span>{session.lockedAt ? `Lock ${formatDateTimeRu(session.lockedAt)}` : 'Ожидает lock'}</span>
+          <span>{session.lockedAt ? `${TAP_COPY.lockAt} ${formatDateTimeRu(session.lockedAt)}` : TAP_COPY.waitingForLock}</span>
           <span>{operations.currentPour?.volumeMl ? formatVolumeRu(operations.currentPour.volumeMl) : '0 мл'}</span>
           <span>{operations.currentPour?.amount ? formatRubAmount(operations.currentPour.amount) : '0 ₽'}</span>
         </div>
@@ -137,8 +138,8 @@
     {/if}
 
     <section class="footer-meta">
-      <span>Heartbeat: {operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'нет данных'}</span>
-      <span>Sync: {operations.syncState?.label || 'нет данных'}</span>
+      <span>{TAP_COPY.heartbeat}: {operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'нет данных'}</span>
+      <span>{TAP_COPY.sync}: {operations.syncState?.label || 'нет данных'}</span>
     </section>
   </div>
 
@@ -150,8 +151,8 @@
     {/if}
 
     {#if canShowLockToggle}
-      <button class="cta" type="button" aria-label={`${isLocked ? 'Разблокировать' : 'Заблокировать'} кран ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
-        {isLocked ? 'Разблокировать' : 'Блокировать'}
+      <button class="cta" type="button" aria-label={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
+        {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
       </button>
     {/if}
 
