@@ -277,7 +277,7 @@
   <section class="hero ui-card">
     <div class="hero-copy">
       <span class="eyebrow">Сегодня</span>
-      <h1>Главное за текущую смену</h1>
+      <h1>Сегодня</h1>
       <p>Сначала — живое операционное состояние, затем дневные итоги по продажам и наливам.</p>
     </div>
     <div class="hero-actions">
