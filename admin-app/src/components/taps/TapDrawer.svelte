@@ -310,7 +310,7 @@
           <article class="actions-panel">
             <div class="section-head compact">
               <div>
-                <h4>Operator actions</h4>
+                <h4>{TAP_COPY.operatorActionsTitle}</h4>
                 <p>Команды для текущей смены и реакции на ситуацию по крану.</p>
               </div>
             </div>
@@ -319,8 +319,8 @@
                 <button class="primary danger" type="button" on:click={() => emit('stop-pour')}>Остановить налив</button>
               {/if}
               {#if canControl}
-                <button class="secondary" type="button" on:click={() => emit('toggle-lock')}>
-                  {isLocked ? 'Разблокировать кран' : 'Заблокировать кран'}
+                <button class="secondary" type="button" aria-label={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
+                  {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
                 </button>
               {/if}
               {#if canDisplayOverride}
@@ -334,8 +334,8 @@
             <article class="actions-panel service-panel">
               <div class="section-head compact">
                 <div>
-                  <h4>Service actions</h4>
-                  <p>Maintenance/service операции доступны только после открытия деталей.</p>
+                  <h4>{TAP_COPY.serviceActionsTitle}</h4>
+                  <p>Сервисные операции доступны только после открытия деталей.</p>
                 </div>
               </div>
               <div class="action-list">
@@ -666,4 +666,3 @@
     }
   }
 </style>
-
