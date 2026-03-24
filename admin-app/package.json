@@ -17,7 +17,8 @@
     "smoke:cards-guests:lost-reissue": "node scripts/cards_guests/lost_reissue_smoke.mjs",
     "smoke:cards-guests:quick-actions": "node scripts/cards_guests/quick_actions_smoke.mjs",
     "smoke:cards-guests:recent-events": "node scripts/cards_guests/recent_events_smoke.mjs",
-    "test:session-date-filters": "node --test src/components/sessions/sessionDateFilters.test.js"
+    "test:session-date-filters": "node --test src/components/sessions/sessionDateFilters.test.js",
+    "smoke:navigation-ia": "node scripts/navigation_ia_smoke.mjs"
   },
   "license": "MIT",
   "dependencies": {

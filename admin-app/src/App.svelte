@@ -48,7 +48,7 @@
   const primaryNav = [
     {
       href: '#/today',
-      label: 'Сейчас в смене',
+      label: 'Сегодня',
       description: 'Открыть текущие задачи, очередь внимания и быстрые действия смены.',
       visible: (permissions) => permissions.taps_view || permissions.sessions_view,
     },

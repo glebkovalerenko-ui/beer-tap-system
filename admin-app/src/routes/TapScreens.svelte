@@ -121,13 +121,13 @@
 
 {#if !$roleStore.permissions.display_override}
   <section class="ui-card restricted">
-    <h1>Гостевые экраны кранов</h1>
+    <h1>Экраны кранов</h1>
     <p>Текущая роль не предусматривает доступ к обзору гостевых экранов кранов.</p>
   </section>
 {:else}
   <div class="page-header">
     <div>
-      <h1>Гостевой экран конкретного крана</h1>
+      <h1>Экраны кранов</h1>
       <p>Ниже видно, какой сценарий, брендирование и runtime-состояние сейчас видит гость на каждом tap display.</p>
     </div>
   </div>
