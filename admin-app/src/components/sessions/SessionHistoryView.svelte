@@ -224,7 +224,7 @@
 <style>
   .history-layout { display: grid; gap: 1rem; }
   .content-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(380px, 0.9fr); gap: 1rem; align-items: start; }
-  .focus-banner { border: 1px solid #bfdbfe; border-radius: 12px; padding: 0.85rem 1rem; color: #1d4ed8; background: #eff6ff; }
+  .focus-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.85rem 1rem; color: var(--state-neutral-text); background: var(--state-neutral-bg); }
 
   :global(.filters-panel),
   :global(.list-panel),
@@ -267,7 +267,7 @@
   :global(.meta-grid) { flex-wrap: wrap; }
   :global(.completion-pill) { font-weight: 600; color: #0f172a; }
   :global(.drawer) { position: sticky; top: 0; min-height: 320px; max-height: 85vh; overflow: auto; }
-  :global(.drawer-open) { border-color: #bfdbfe; }
+  :global(.drawer-open) { border-color: var(--state-neutral-border); }
   :global(.stats-grid) { flex-wrap: wrap; }
   :global(.stats-grid article), :global(.summary-section), :global(.empty-drawer) { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.85rem; }
   :global(.stats-grid article) { flex: 1 1 180px; display: grid; gap: 0.35rem; }
@@ -276,7 +276,7 @@
   :global(.timeline p), :global(.drawer-head h2), :global(.drawer-head p), :global(.list-head h3), :global(.list-head p), :global(.summary-section p), :global(.filters-title h2), :global(.filters-title p), :global(.empty-drawer h2), :global(.empty-drawer p), :global(.nested-summary strong) { margin: 0; }
   :global(.time) { min-width: 132px; color: var(--text-secondary, #64748b); font-size: 0.85rem; }
   :global(.counter), :global(.state) { border-radius: 999px; padding: 0.2rem 0.65rem; background: #f1f5f9; color: #475569; }
-  :global(.state.active) { background: #dcfce7; color: #166534; }
+  :global(.state.active) { background: var(--state-success-bg); color: var(--state-success-text); }
   :global(dl) { display: grid; gap: 0.5rem; margin: 0; }
   :global(.display-context-grid) { grid-template-columns: 1fr; }
   :global(.override-list) { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; }

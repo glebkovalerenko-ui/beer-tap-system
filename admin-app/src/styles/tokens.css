@@ -10,6 +10,22 @@
   --success: #198754;
   --warning: #d98d00;
   --danger: #d9534f;
+  --state-neutral-bg: #eef2ff;
+  --state-neutral-text: #1e3a8a;
+  --state-neutral-border: #bfdbfe;
+  --state-neutral: var(--state-neutral-bg);
+  --state-success-bg: #dcfce7;
+  --state-success-text: #166534;
+  --state-success-border: #86efac;
+  --state-success: var(--state-success-bg);
+  --state-warning-bg: #fff7e6;
+  --state-warning-text: #9a6700;
+  --state-warning-border: #facc15;
+  --state-warning: var(--state-warning-bg);
+  --state-critical-bg: #fdecec;
+  --state-critical-text: #b42318;
+  --state-critical-border: #fda29b;
+  --state-critical: var(--state-critical-bg);
   --radius-md: 10px;
   --radius-sm: 8px;
   --shadow-sm: 0 2px 10px rgba(23, 35, 61, 0.08);
@@ -25,9 +41,9 @@
   --tap-status-hero-bg: rgba(255,255,255,0.88);
   --tap-status-hero-border: #e2e8f0;
   --tap-status-hero-radius: 14px;
-  --tap-status-badge-bg: #e5e7eb;
+  --tap-status-badge-bg: var(--state-neutral-bg);
   --tap-status-badge-border: transparent;
-  --tap-status-badge-text: #475569;
+  --tap-status-badge-text: var(--state-neutral-text);
   --tap-status-badge-radius: 999px;
   --tap-status-badge-padding: 0.45rem 0.7rem;
   --tap-status-icon-bg: rgba(255,255,255,0.6);
@@ -36,34 +52,34 @@
 }
 
 [data-state='ready'] {
-  --tap-status-card-border: #bbf7d0;
+  --tap-status-card-border: var(--state-success-border);
   --tap-status-hero-bg: linear-gradient(180deg, rgba(240, 253, 244, 0.95), rgba(255, 255, 255, 0.92));
-  --tap-status-hero-border: #bbf7d0;
-  --tap-status-badge-bg: #dcfce7;
-  --tap-status-badge-text: #166534;
+  --tap-status-hero-border: var(--state-success-border);
+  --tap-status-badge-bg: var(--state-success-bg);
+  --tap-status-badge-text: var(--state-success-text);
   --tap-status-icon-bg: rgba(255,255,255,0.75);
 }
 
 [data-state='pouring'] {
-  --tap-status-card-border: #fca5a5;
+  --tap-status-card-border: var(--state-critical-border);
   --tap-status-card-shadow: 0 0 0 1px rgba(248, 113, 113, 0.12);
   --tap-status-hero-bg: linear-gradient(180deg, rgba(254, 242, 242, 0.98), rgba(255, 255, 255, 0.94));
-  --tap-status-hero-border: #fecaca;
-  --tap-status-badge-bg: #fee2e2;
-  --tap-status-badge-text: #b91c1c;
+  --tap-status-hero-border: var(--state-critical-border);
+  --tap-status-badge-bg: var(--state-critical-bg);
+  --tap-status-badge-text: var(--state-critical-text);
   --tap-status-icon-bg: rgba(255,255,255,0.78);
 }
 
 [data-state='needs_help'] {
-  --tap-status-card-border: #fcd34d;
+  --tap-status-card-border: var(--state-warning-border);
   --tap-status-hero-bg: linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(255, 255, 255, 0.94));
-  --tap-status-hero-border: #fcd34d;
-  --tap-status-badge-bg: #fffbeb;
-  --tap-status-badge-border: #fcd34d;
-  --tap-status-badge-text: #92400e;
+  --tap-status-hero-border: var(--state-warning-border);
+  --tap-status-badge-bg: var(--state-warning-bg);
+  --tap-status-badge-border: var(--state-warning-border);
+  --tap-status-badge-text: var(--state-warning-text);
   --tap-status-badge-radius: 14px;
   --tap-status-badge-padding: 0.5rem 0.75rem;
-  --tap-status-icon-bg: #fef3c7;
+  --tap-status-icon-bg: var(--state-warning-bg);
   --tap-status-icon-border: #f59e0b;
   --tap-status-icon-radius: 10px;
 }
@@ -84,13 +100,13 @@
 }
 
 [data-state='syncing'] {
-  --tap-status-card-border: #93c5fd;
+  --tap-status-card-border: var(--state-neutral-border);
   --tap-status-hero-bg: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.94));
-  --tap-status-hero-border: #93c5fd;
-  --tap-status-badge-bg: #dbeafe;
-  --tap-status-badge-text: #1d4ed8;
+  --tap-status-hero-border: var(--state-neutral-border);
+  --tap-status-badge-bg: var(--state-neutral-bg);
+  --tap-status-badge-text: var(--state-neutral-text);
   --tap-status-icon-bg: rgba(255,255,255,0.9);
-  --tap-status-icon-border: #93c5fd;
+  --tap-status-icon-border: var(--state-neutral-border);
 }
 
 [data-state='no_keg'] {
