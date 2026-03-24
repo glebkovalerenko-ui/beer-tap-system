@@ -537,6 +537,7 @@
             on:openSession={openSession}
             on:openSystem={openSystem}
             on:claimIncident={(event) => openActionForm(event, 'claim')}
+            on:openCloseForm={(event) => openActionForm(event, 'close')}
             on:escalateIncident={(event) => openActionForm(event, 'escalate')}
             on:openActionForm={(event) => openActionForm(event, 'note')}
           />
