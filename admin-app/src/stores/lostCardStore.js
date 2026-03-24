@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
 import { logError, normalizeError } from '../lib/errorUtils';
+import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 function toErrorMessage(context, error) {
   logError(context, error);
@@ -70,6 +71,7 @@ function createLostCardStore() {
         update((s) => ({ ...s, loading: false }));
         return result;
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         const message = toErrorMessage('lostCardStore.restoreLostCard', error);
         update((s) => ({ ...s, loading: false, error: message }));
         throw new Error(message);

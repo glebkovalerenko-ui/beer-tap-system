@@ -1,7 +1,9 @@
 import { writable } from 'svelte/store';
-import { auditTrailStore } from './auditTrailStore.js';
+import { invoke } from '@tauri-apps/api/core';
 
-const STORAGE_KEY = 'admin_role';
+import { auditTrailStore } from './auditTrailStore.js';
+import { sessionStore } from './sessionStore.js';
+import { decodeJwtClaims, mapBackendClaimsToRoleState } from '../lib/permissionsAdapter.js';
 
 const PERMISSIONS = {
   taps_view: 'Доступ к обзору кранов и рабочему экрану оператора.',
@@ -24,104 +26,80 @@ const PERMISSIONS = {
   role_switch: 'Переключение рабочей роли без доступа к остальным debug-инструментам.',
 };
 
-const ROLES = {
-  operator: {
-    label: 'Оператор',
-    permissions: {
-      taps_view: true,
-      taps_control: false,
-      sessions_view: true,
-      cards_lookup: true,
-      cards_open_active_session: true,
-      cards_history_view: true,
-      cards_top_up: false,
-      cards_block_manage: false,
-      cards_reissue_manage: false,
-      incidents_view: true,
-      incidents_manage: false,
-      system_health_view: true,
-      system_engineering_actions: false,
-      maintenance_actions: false,
-      display_override: false,
-      settings_manage: false,
-      debug_tools: false,
-      role_switch: false,
-    },
-  },
-  shift_lead: {
-    label: 'Старший смены',
-    permissions: {
-      taps_view: true,
-      taps_control: true,
-      sessions_view: true,
-      cards_lookup: true,
-      cards_open_active_session: true,
-      cards_history_view: true,
-      cards_top_up: true,
-      cards_block_manage: true,
-      cards_reissue_manage: true,
-      incidents_view: true,
-      incidents_manage: true,
-      system_health_view: true,
-      system_engineering_actions: false,
-      maintenance_actions: true,
-      display_override: false,
-      settings_manage: false,
-      debug_tools: false,
-      role_switch: false,
-    },
-  },
-  engineer_owner: {
-    label: 'Инженер / владелец',
-    permissions: {
-      taps_view: true,
-      taps_control: true,
-      sessions_view: true,
-      cards_lookup: true,
-      cards_open_active_session: true,
-      cards_history_view: true,
-      cards_top_up: true,
-      cards_block_manage: true,
-      cards_reissue_manage: true,
-      incidents_view: true,
-      incidents_manage: true,
-      system_health_view: true,
-      system_engineering_actions: true,
-      maintenance_actions: true,
-      display_override: true,
-      settings_manage: true,
-      debug_tools: true,
-      role_switch: true,
-    },
-  },
-};
+const ROLES = Object.freeze({
+  operator: { label: 'Оператор' },
+  shift_lead: { label: 'Старший смены' },
+  engineer_owner: { label: 'Инженер / владелец' },
+});
 
-function getInitialRole() {
-  if (typeof localStorage === 'undefined') {
-    return 'engineer_owner';
-  }
-
-  const savedRole = localStorage.getItem(STORAGE_KEY);
-  return ROLES[savedRole] ? savedRole : 'engineer_owner';
-}
+const EMPTY_ROLE_STATE = mapBackendClaimsToRoleState({ role: 'operator', permissions: [] });
 
 function createRoleStore() {
-  const initialRole = getInitialRole();
-  const { subscribe, set } = writable({ key: initialRole, ...ROLES[initialRole] });
+  const { subscribe, set, update } = writable({
+    ...EMPTY_ROLE_STATE,
+    source: 'bootstrap',
+  });
+
+  let activeToken = null;
+
+  async function hydrateFromBackend(token) {
+    if (!token) {
+      set({ ...EMPTY_ROLE_STATE, source: 'anonymous' });
+      return;
+    }
+
+    activeToken = token;
+    const jwtClaims = decodeJwtClaims(token);
+    if (jwtClaims) {
+      set({
+        ...mapBackendClaimsToRoleState(jwtClaims),
+        source: 'jwt',
+      });
+    }
+
+    try {
+      const profile = await invoke('get_current_user_profile', { token });
+      if (activeToken !== token) {
+        return;
+      }
+      set({
+        ...mapBackendClaimsToRoleState(profile),
+        source: 'backend_profile',
+      });
+    } catch {
+      // JWT fallback already applied.
+    }
+  }
+
+  sessionStore.subscribe((session) => {
+    hydrateFromBackend(session?.token || null);
+  });
 
   return {
     subscribe,
     roles: ROLES,
     permissions: PERMISSIONS,
-    hasPermission: (roleKey, permissionKey) => Boolean(ROLES[roleKey]?.permissions?.[permissionKey]),
+    hasPermission: (roleState, permissionKey) => Boolean(roleState?.permissions?.[permissionKey]),
     setRole: (roleKey) => {
-      if (!ROLES[roleKey]) return;
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, roleKey);
-      }
-      set({ key: roleKey, ...ROLES[roleKey] });
-      auditTrailStore.add('Смена роли', `Активная рабочая роль: ${ROLES[roleKey].label}`);
-    }
+      update((state) => {
+        if (!state.permissions?.role_switch) {
+          return state;
+        }
+        const next = mapBackendClaimsToRoleState({ role: roleKey, permissions: state.profile?.permissions || [] });
+        auditTrailStore.add('Смена роли (локальный override)', `Активная рабочая роль: ${next.label}`);
+        return {
+          ...next,
+          source: 'local_override',
+          profile: {
+            ...(state.profile || {}),
+            role: next.key,
+          },
+        };
+      });
+    },
+    refresh: async () => {
+      await hydrateFromBackend(activeToken);
+    },
   };
 }
 

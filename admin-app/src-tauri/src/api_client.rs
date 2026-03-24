@@ -76,6 +76,14 @@ struct TokenResponse {
     access_token: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CurrentUserProfile {
+    pub username: Option<String>,
+    pub full_name: Option<String>,
+    pub role: Option<String>,
+    pub permissions: Vec<String>,
+}
+
 // --- Cards ---
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Card {
@@ -1056,6 +1064,19 @@ pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListIt
     if response.status().is_success() {
         response
             .json::<Vec<IncidentListItem>>()
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_current_user_profile(token: &str) -> Result<CurrentUserProfile, String> {
+    let url = build_api_url("me");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response
+            .json::<CurrentUserProfile>()
             .await
             .map_err(|e| e.to_string())
     } else {

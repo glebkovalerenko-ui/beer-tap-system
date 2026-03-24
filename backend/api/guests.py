@@ -64,6 +64,7 @@ def assign_or_register_card_to_guest(
     guest_id: uuid.UUID,
     card_assign: schemas.CardAssign,
     db: Session = Depends(get_db),
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("cards_reissue_manage"))] = None,
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
     db_guest = guest_crud.get_guest(db, guest_id=guest_id)
@@ -91,6 +92,7 @@ def unassign_card_from_guest(
     guest_id: uuid.UUID,
     card_uid: str,
     db: Session = Depends(get_db),
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("cards_reissue_manage"))] = None,
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
     return guest_crud.unassign_card_from_guest(db=db, guest_id=guest_id, card_uid=card_uid)

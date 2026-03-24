@@ -13,7 +13,11 @@ router = APIRouter(
 )
 
 @router.post("/", response_model=schemas.Tap, status_code=status.HTTP_201_CREATED, summary="Добавить новый кран")
-def create_tap(tap: schemas.TapCreate, db: Session = Depends(get_db)):
+def create_tap(
+    tap: schemas.TapCreate,
+    _permission_guard: dict = Depends(security.require_permissions("settings_manage")),
+    db: Session = Depends(get_db),
+):
     """
     Добавляет новый физический кран в систему.
     По умолчанию создается со статусом 'locked' (заблокирован).
@@ -37,14 +41,23 @@ def read_tap(tap_id: int, db: Session = Depends(get_db)):
     return tap_crud.get_tap(db, tap_id=tap_id)
 
 @router.put("/{tap_id}", response_model=schemas.Tap, summary="Обновить информацию о кране")
-def update_tap(tap_id: int, tap_update: schemas.TapUpdate, db: Session = Depends(get_db)):
+def update_tap(
+    tap_id: int,
+    tap_update: schemas.TapUpdate,
+    _permission_guard: dict = Depends(security.require_permissions("taps_control")),
+    db: Session = Depends(get_db),
+):
     """
     Обновляет информацию о кране (например, его отображаемое имя или статус).
     """
     return tap_crud.update_tap(db=db, tap_id=tap_id, tap_update=tap_update)
 
 @router.delete("/{tap_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить кран")
-def delete_tap(tap_id: int, db: Session = Depends(get_db)):
+def delete_tap(
+    tap_id: int,
+    _permission_guard: dict = Depends(security.require_permissions("settings_manage")),
+    db: Session = Depends(get_db),
+):
     """
     Удаляет кран из системы.
 
@@ -55,7 +68,12 @@ def delete_tap(tap_id: int, db: Session = Depends(get_db)):
     return # Возвращаем 204 No Content
 
 @router.put("/{tap_id}/keg", response_model=schemas.Tap, summary="Назначить кегу на кран")
-def assign_keg(tap_id: int, assignment: schemas.TapAssignKeg, db: Session = Depends(get_db)):
+def assign_keg(
+    tap_id: int,
+    assignment: schemas.TapAssignKeg,
+    _permission_guard: dict = Depends(security.require_permissions("taps_control")),
+    db: Session = Depends(get_db),
+):
     """
     Привязывает указанную кегу к крану.
 
@@ -71,7 +89,11 @@ def assign_keg(tap_id: int, assignment: schemas.TapAssignKeg, db: Session = Depe
     return tap_crud.assign_keg_to_tap(db=db, tap_id=tap_id, keg_id=assignment.keg_id)
 
 @router.delete("/{tap_id}/keg", response_model=schemas.Tap, summary="Снять кегу с крана")
-def unassign_keg(tap_id: int, db: Session = Depends(get_db)):
+def unassign_keg(
+    tap_id: int,
+    _permission_guard: dict = Depends(security.require_permissions("taps_control")),
+    db: Session = Depends(get_db),
+):
     """
     Снимает текущую кегу с крана.
 
@@ -91,6 +113,7 @@ def read_tap_display_config(tap_id: int, db: Session = Depends(get_db)):
 def update_tap_display_config(
     tap_id: int,
     tap_display_config: schemas.TapDisplayConfigUpsert,
+    _permission_guard: dict = Depends(security.require_permissions("display_override")),
     db: Session = Depends(get_db),
 ):
     config = display_crud.upsert_tap_display_config(db=db, tap_id=tap_id, payload=tap_display_config)

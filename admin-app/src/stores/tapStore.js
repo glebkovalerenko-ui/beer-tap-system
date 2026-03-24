@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { displayAdminGetJson, displayAdminPutJson } from '../lib/displayAdminApi.js';
 import { logError, normalizeError } from '../lib/errorUtils.js';
+import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 import { sessionStore } from './sessionStore.js';
 
 /** @typedef {import('../../../src-tauri/src/api_client').Tap} Tap */
@@ -632,6 +633,7 @@ function createTapStore() {
 
         return updatedTap;
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         throw new Error(toErrorMessage('tapStore.assignKegToTap', error));
       }
     },
@@ -647,6 +649,7 @@ function createTapStore() {
         }));
         return updatedTap;
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         throw new Error(toErrorMessage('tapStore.unassignKegFromTap', error));
       }
     },
@@ -663,6 +666,7 @@ function createTapStore() {
         }));
         return updatedTap;
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         throw new Error(toErrorMessage('tapStore.updateTapStatus', error));
       }
     },
@@ -683,6 +687,7 @@ function createTapStore() {
       try {
         return await displayAdminPutJson(`/api/taps/${tapId}/display-config`, payload);
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         throw new Error(toErrorMessage('tapStore.updateTapDisplayConfig', error));
       }
     },

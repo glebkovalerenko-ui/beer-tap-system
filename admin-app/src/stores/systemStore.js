@@ -3,6 +3,7 @@ import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
 import { logError, normalizeError } from '../lib/errorUtils';
+import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 function toErrorMessage(context, error) {
   logError(context, error);
@@ -150,6 +151,7 @@ const createSystemStore = () => {
       const summary = await invoke('set_emergency_stop', { token, value: enabled ? 'true' : 'false' });
       applySummary(summary);
     } catch (err) {
+      notifyForbiddenIfNeeded(err);
       const message = toErrorMessage('systemStore.setEmergencyStop', err);
       update((store) => ({ ...store, loading: false, error: message }));
       throw new Error(message);

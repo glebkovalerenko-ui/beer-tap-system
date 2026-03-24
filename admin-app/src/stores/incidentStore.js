@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
 import { logError, normalizeError } from '../lib/errorUtils.js';
+import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 const POLL_INTERVAL_MS = 10000;
 
@@ -77,6 +78,7 @@ function createIncidentStore() {
       mergeIncident(item);
       return item;
     } catch (error) {
+      notifyForbiddenIfNeeded(error);
       const message = toErrorMessage(context, error);
       update((state) => ({ ...state, actionLoading: false, actionError: message }));
       throw new Error(message);

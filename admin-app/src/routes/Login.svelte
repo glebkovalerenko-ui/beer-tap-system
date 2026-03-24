@@ -4,7 +4,6 @@
   import ServerSettingsModal from '../components/system/ServerSettingsModal.svelte';
   import { getApiBaseUrl, initializeBackendBaseUrl } from '../lib/config.js';
   import { normalizeErrorMessage } from '../lib/errorUtils';
-  import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
 
   let username = 'admin';
@@ -52,9 +51,6 @@
         throw new Error('Ошибка входа: сервер вернул пустой токен.');
       }
 
-      // Dev/test-safe default: force the full engineer role after login.
-      // If production behavior diverges later, gate this behind a feature flag or dev config.
-      roleStore.setRole('engineer_owner');
       sessionStore.setToken(token);
     } catch (loginError) {
       error = normalizeErrorMessage(

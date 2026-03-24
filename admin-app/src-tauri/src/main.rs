@@ -70,6 +70,23 @@ impl From<hex::FromHexError> for AppError {
     }
 }
 
+async fn ensure_permission(token: &str, permission: &str) -> Result<(), AppError> {
+    let profile = api_client::get_current_user_profile(token)
+        .await
+        .map_err(AppError::from)?;
+    let has_permission = profile
+        .permissions
+        .iter()
+        .any(|entry| entry.trim() == permission);
+    if has_permission {
+        return Ok(());
+    }
+    Err(AppError::from(format!(
+        "HTTP 403 Forbidden: missing permission {}",
+        permission
+    )))
+}
+
 #[derive(Clone, serde::Serialize, PartialEq, Eq)]
 pub struct CardStatusPayload {
     uid: Option<String>,
@@ -398,6 +415,15 @@ async fn get_incidents(
 }
 
 #[tauri::command]
+async fn get_current_user_profile(
+    token: String,
+) -> Result<api_client::CurrentUserProfile, AppError> {
+    api_client::get_current_user_profile(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn claim_incident(
     token: String,
     incident_id: String,
@@ -427,6 +453,7 @@ async fn escalate_incident(
     incident_id: String,
     payload: api_client::IncidentEscalationPayload,
 ) -> Result<api_client::IncidentListItem, AppError> {
+    ensure_permission(&token, "incidents_manage").await?;
     info!("[COMMAND]     incident escalate {}", incident_id);
     api_client::escalate_incident(&token, &incident_id, &payload)
         .await
@@ -439,6 +466,7 @@ async fn close_incident(
     incident_id: String,
     payload: api_client::IncidentClosePayload,
 ) -> Result<api_client::IncidentListItem, AppError> {
+    ensure_permission(&token, "incidents_manage").await?;
     info!("[COMMAND]     incident close {}", incident_id);
     api_client::close_incident(&token, &incident_id, &payload)
         .await
@@ -470,6 +498,7 @@ async fn assign_keg_to_tap(
     tap_id: i32,
     keg_id: String,
 ) -> Result<api_client::Tap, AppError> {
+    ensure_permission(&token, "taps_control").await?;
     info!("[COMMAND]     ID: {}   ID: {}", keg_id, tap_id);
     api_client::assign_keg_to_tap(&token, tap_id, &keg_id)
         .await
@@ -478,6 +507,7 @@ async fn assign_keg_to_tap(
 
 #[tauri::command]
 async fn unassign_keg_from_tap(token: String, tap_id: i32) -> Result<api_client::Tap, AppError> {
+    ensure_permission(&token, "taps_control").await?;
     info!("[COMMAND]       ID: {}", tap_id);
     api_client::unassign_keg_from_tap(&token, tap_id)
         .await
@@ -490,6 +520,7 @@ async fn update_tap(
     tap_id: i32,
     payload: api_client::TapUpdatePayload,
 ) -> Result<api_client::Tap, AppError> {
+    ensure_permission(&token, "taps_control").await?;
     info!("[COMMAND]     ID: {}", tap_id);
     api_client::update_tap(&token, tap_id, &payload)
         .await
@@ -511,6 +542,7 @@ async fn set_emergency_stop(
     token: String,
     value: String,
 ) -> Result<api_client::SystemOperationalSummary, AppError> {
+    ensure_permission(&token, "maintenance_actions").await?;
     info!("[COMMAND]     Emergency Stop  '{}'", value);
     let payload = api_client::SystemStateUpdatePayload { value };
     api_client::set_emergency_stop(&token, &payload)
@@ -757,6 +789,7 @@ async fn restore_lost_card(
     token: String,
     card_uid: String,
 ) -> Result<api_client::LostCardRestoreResponse, AppError> {
+    ensure_permission(&token, "cards_reissue_manage").await?;
     api_client::restore_lost_card(&token, &card_uid)
         .await
         .map_err(AppError::from)
@@ -825,6 +858,7 @@ fn main() {
             get_flow_summary,
             get_today_summary,
             get_incidents,
+            get_current_user_profile,
             claim_incident,
             add_incident_note,
             escalate_incident,

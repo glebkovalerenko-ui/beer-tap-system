@@ -115,6 +115,29 @@ Legend:
 
 ---
 
+## L. RBAC smoke matrix (operator / shift_lead / engineer_owner)
+
+Проверить каждый сценарий минимум на 3 ролях, где `403` всегда сопровождается toast:
+**«Действие недоступно для текущей роли»**.
+
+| Сценарий | operator | shift_lead | engineer_owner |
+| --- | --- | --- | --- |
+| Просмотр очереди инцидентов | ✅ | ✅ | ✅ |
+| `escalate_incident` / `close_incident` | ❌ (403 + toast) | ✅ | ✅ |
+| `set_emergency_stop` | ❌ (403 + toast) | ✅ | ✅ |
+| `assign_keg_to_tap` / `unassign_keg_from_tap` / `update_tap` | ❌ (403 + toast) | ✅ | ✅ |
+| `update_tap_display_config` (tap screens override) | ❌ (403 + toast) | ❌ (403 + toast) | ✅ |
+| `restore_lost_card`, card reissue/bind flows | ❌ (403 + toast) | ✅ | ✅ |
+
+Минимальные шаги smoke для каждой строки:
+1. Войти под целевой ролью.
+2. Выполнить action из UI (или через bridge-инициированное действие).
+3. Подтвердить, что backend возвращает ожидаемый статус (`200/201` или `403`).
+4. Для `403` убедиться в едином UX: toast с текстом про недоступность действия для текущей роли.
+5. Проверить отсутствие побочного изменения данных после `403`.
+
+---
+
 ## Execution notes
 
 - Date:

@@ -50,6 +50,7 @@ def add_incident_note(
 def escalate_incident(
     incident_id: str,
     payload: schemas.IncidentEscalationPayload,
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("incidents_manage"))],
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)] = None,
     db: Session = Depends(get_db),
 ):
@@ -61,6 +62,7 @@ def escalate_incident(
 def close_incident(
     incident_id: str,
     payload: schemas.IncidentClosePayload,
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("incidents_manage"))],
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)] = None,
     db: Session = Depends(get_db),
 ):
