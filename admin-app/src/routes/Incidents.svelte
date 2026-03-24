@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import Modal from '../components/common/Modal.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
+  import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
   import { roleStore } from '../stores/roleStore.js';
@@ -64,6 +65,19 @@
       visitStore.fetchActiveVisits().catch(() => {});
       systemStore.fetchSystemStatus().catch(() => {});
       hasLoadedContext = true;
+    }
+
+    const focusedIncidentId = sessionStorage.getItem('incidents.focusIncidentId');
+    if (focusedIncidentId) {
+      const parsed = Number.parseInt(focusedIncidentId, 10);
+      selectedIncidentId = Number.isNaN(parsed) ? focusedIncidentId : parsed;
+      sessionStorage.removeItem('incidents.focusIncidentId');
+    }
+
+    const focusedSource = sessionStorage.getItem('incidents.focusSource');
+    if (focusedSource) {
+      filters = { ...filters, query: focusedSource };
+      sessionStorage.removeItem('incidents.focusSource');
     }
   });
 
@@ -340,17 +354,13 @@
 
   function openTap(event) {
     const item = event.detail.item;
-    if (item.tapId) {
-      sessionStorage.setItem('incidents.focusTapId', String(item.tapId));
-    }
-    window.location.hash = '/taps';
+    navigateWithFocus({ target: 'tap', tapId: item.tapId, source: item.tapLabel || item.sourceLabel });
   }
 
   function openSession(event) {
     const item = event.detail.item;
     if (item.sessionMatch?.visit_id) {
-      sessionStorage.setItem('visits.lookupVisitId', item.sessionMatch.visit_id);
-      window.location.hash = '/sessions';
+      navigateWithFocus({ target: 'session', visitId: item.sessionMatch.visit_id, source: item.tapLabel || item.sourceLabel });
       return;
     }
     if (item.tapId) {
@@ -363,8 +373,7 @@
 
   function openSystem(event) {
     const item = event.detail.item;
-    sessionStorage.setItem('system.focusSource', item.sourceLabel || item.source || 'incident');
-    window.location.hash = '/system';
+    navigateWithFocus({ target: 'system', source: item.sourceLabel || item.source || 'incident', tapId: item.tapId, incidentId: item.incident_id });
   }
 
   $: canViewIncidents = $roleStore.permissions.incidents_view;
@@ -374,6 +383,7 @@
   $: incidentActionReadOnlyReason = !canManageIncidents
     ? 'Для текущей роли доступен просмотр, переходы к крану/сессии и эскалация по маршруту смены без прямой фиксации действий в этом разделе.'
     : ($incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.');
+  $: incidentActionPlan = getActionPlan('incident');
 
   function openActionForm(event, suggestedAction = 'note') {
     const item = event.detail?.item || event;
@@ -544,6 +554,35 @@
               <strong>{selectedIncident.accountability.closedAt ? formatDateTimeRu(selectedIncident.accountability.closedAt) : 'Ещё открыт'}</strong>
               <small>{selectedIncident.closed_at ? 'Время закрытия подтверждено системой.' : 'Ожидает подтверждения закрытия от системы.'}</small>
             </article>
+          </section>
+
+          <section class="detail-section next-step-panel">
+            <div class="section-head">
+              <h3>Следующий шаг</h3>
+            </div>
+            <p>
+              {selectedIncident.accountability.nextStep}
+              Рекомендация: <strong>{incidentActionPlan.recommendedOwnerState}</strong> · {incidentActionPlan.recommendedActionState}.
+            </p>
+            <div class="next-step-actions">
+              <button on:click={() => navigateWithFocus({
+                target: incidentActionPlan.primaryTarget,
+                incidentId: selectedIncident.incident_id,
+                tapId: selectedIncident.tapId,
+                source: selectedIncident.sourceLabel,
+              })}>{incidentActionPlan.primaryCta}</button>
+              <button
+                class="secondary"
+                on:click={() => navigateWithFocus({
+                  target: incidentActionPlan.secondaryCta.target,
+                  incidentId: selectedIncident.incident_id,
+                  tapId: selectedIncident.tapId,
+                  source: selectedIncident.sourceLabel,
+                })}
+              >
+                {incidentActionPlan.secondaryCta.label}
+              </button>
+            </div>
           </section>
 
           <section class="detail-section">
@@ -738,6 +777,8 @@
   .timeline-meta { min-width: 160px; display: grid; gap: 0.5rem; text-align: right; }
   .timeline-meta.compact { min-width: auto; }
   .timeline a { color: #1d4ed8; text-decoration: none; font-weight: 600; }
+  .next-step-panel p { margin: 0; }
+  .next-step-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .state-flow { display: grid; gap: 0.75rem; list-style: none; padding-left: 0; counter-reset: flow; }
   .state-flow li { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.9rem 1rem; background: #fff; }
   .state-flow li.active { border-color: #2563eb; background: #eff6ff; }
