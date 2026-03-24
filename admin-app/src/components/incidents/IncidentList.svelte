@@ -18,8 +18,25 @@
 
   function actionLabel(item) {
     if (item.status === 'new') return 'Взять в работу';
-    if (item.status === 'in_progress') return 'Закрыть';
+    if (item.status === 'in_progress') return 'Открыть форму закрытия';
     return 'Закрыт';
+  }
+
+  function actionType(item) {
+    if (item.status === 'new') return 'claim';
+    if (item.status === 'in_progress') return 'close';
+    return 'closed';
+  }
+
+  function onMainAction(item) {
+    const type = actionType(item);
+    if (type === 'claim') {
+      emit('claimIncident', item);
+      return;
+    }
+    if (type === 'close') {
+      emit('openCloseForm', item);
+    }
   }
 </script>
 
@@ -79,16 +96,27 @@
                 </div>
 
                 <div class="card-actions">
-                  <button
-                    class="secondary"
-                    disabled={!actionCapabilities.claim || readOnly || item.status === 'closed'}
-                    title={!actionCapabilities.claim ? (actionCapabilityReasons.claim || 'Действие недоступно') : ''}
-                    on:click|stopPropagation={() => emit('claimIncident', item)}
-                  >
-                    {actionLabel(item)}
-                  </button>
-                  {#if !actionCapabilities.claim && actionCapabilityReasons.claim}
-                    <small class="action-reason">{actionCapabilityReasons.claim}</small>
+                  {#if actionType(item) === 'closed'}
+                    <span class="signal-badge">{actionLabel(item)}</span>
+                  {:else}
+                    <button
+                      class="secondary"
+                      disabled={readOnly || (actionType(item) === 'claim' ? !actionCapabilities.claim : (!actionCapabilities.close && !actionCapabilities.note))}
+                      title={actionType(item) === 'claim'
+                        ? (!actionCapabilities.claim ? (actionCapabilityReasons.claim || 'Действие недоступно') : '')
+                        : (!actionCapabilities.close && !actionCapabilities.note
+                          ? (actionCapabilityReasons.close || actionCapabilityReasons.note || 'Действие недоступно')
+                          : '')}
+                      on:click|stopPropagation={() => onMainAction(item)}
+                    >
+                      {actionLabel(item)}
+                    </button>
+                    {#if actionType(item) === 'claim' && !actionCapabilities.claim && actionCapabilityReasons.claim}
+                      <small class="action-reason">{actionCapabilityReasons.claim}</small>
+                    {/if}
+                    {#if actionType(item) === 'close' && !actionCapabilities.close && !actionCapabilities.note && (actionCapabilityReasons.close || actionCapabilityReasons.note)}
+                      <small class="action-reason">{actionCapabilityReasons.close || actionCapabilityReasons.note}</small>
+                    {/if}
                   {/if}
 
                   <button
