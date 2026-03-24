@@ -6,6 +6,7 @@
   import { shiftStore } from '../../stores/shiftStore.js';
   import { formatDateTimeRu } from '../../lib/formatters.js';
   import { SESSION_COPY } from '../../lib/operatorLabels.js';
+  import { matchesSessionDateRange, resolveDateBounds } from './sessionDateFilters.js';
 
   const DEFAULT_FILTERS = {
     periodPreset: 'today',
@@ -251,6 +252,8 @@
   }
 
   function matchesFilters(item) {
+    const dateBounds = resolveDateBounds(filters, getPeriodBounds);
+    if (!matchesSessionDateRange(item, dateBounds)) return false;
     if (filters.tapId) {
       const tapNeedle = String(filters.tapId).trim();
       const taps = (item.taps || []).map((tap) => String(tap));
