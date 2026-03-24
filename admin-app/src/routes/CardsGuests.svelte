@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { guestStore } from '../stores/guestStore.js';
+  import { sessionStore } from '../stores/sessionStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
   import { roleStore } from '../stores/roleStore.js';
@@ -50,10 +51,16 @@
   $: hasManagementAccess = canToggleBlock || canReissue;
 
   $: {
-    if (!initialLoadAttempted) {
+    if ($sessionStore.token && !initialLoadAttempted) {
       guestStore.fetchGuests();
       visitStore.fetchActiveVisits();
       initialLoadAttempted = true;
+    }
+  }
+
+  $: {
+    if (!$sessionStore.token && initialLoadAttempted) {
+      initialLoadAttempted = false;
     }
   }
 
