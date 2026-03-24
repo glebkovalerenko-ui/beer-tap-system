@@ -301,3 +301,46 @@ POS Workspace
 - [ ] E: Есть undo/incident путь после денежной операции.
 - [ ] F: Shift open/close и quick report отображаются в shell.
 - [ ] Все ошибки дают понятный next best action.
+
+---
+
+## 3) Cards & Guests route decomposition (operator-first)
+
+Для `admin-app/src/routes/CardsGuests.svelte` применена модульная декомпозиция сценариев, чтобы route оставался тонким контейнером (layout + wiring + навигация в `/sessions`).
+
+### Scenario modules
+
+- `lookup` — поиск по UID/телефону/идентификатору, нормализация lookup-результатов и выбор стартового сценария (`check-card`/`reissue`).
+  - Код: `src/lib/cardsGuests/scenarios/lookup.js`.
+  - Owner-зона: **Operator flow / identification**.
+- `topup` — preconditions и permission-gating для пополнения (`cards_top_up`, выбранный гость, открытая смена).
+  - Код: `src/lib/cardsGuests/scenarios/topup.js`.
+  - Owner-зона: **Cashier/finance operations**.
+- `lost_reissue` — валидация перевыпуска, derive target visit, тексты статусов для Lost/Reissue path.
+  - Код: `src/lib/cardsGuests/scenarios/lost_reissue.js`.
+  - Owner-зона: **Management controls / card lifecycle**.
+- `quick_actions` — сборка action-list для lookup summary c учётом прав и контекста визита.
+  - Код: `src/lib/cardsGuests/scenarios/quick_actions.js`.
+  - Owner-зона: **Operator UX orchestration**.
+- `recent_events` — компоновка краткой временной ленты (lost, визит, наливы, транзакции).
+  - Код: `src/lib/cardsGuests/scenarios/recent_events.js`.
+  - Owner-зона: **Guest timeline / observability**.
+
+### Workflow orchestrator
+
+- `src/stores/cardsGuestsWorkflowStore.js` хранит workflow-state сценария:
+  - `pendingScenario`,
+  - `selectedLookup`,
+  - `selectedGuestId`,
+  - `reissueStatus`,
+  - permissions-derived gating (`canAccessCardsGuests`, `canOpenVisit`, `canViewHistory`, `canTopUp`, `canToggleBlock`, `canReissue`).
+
+### Local checks (unit/smoke)
+
+Для каждого сценарного блока добавлены локальные smoke-проверки с валидными и ошибочными ветками:
+- `scripts/cards_guests/lookup_smoke.mjs`
+- `scripts/cards_guests/topup_smoke.mjs`
+- `scripts/cards_guests/lost_reissue_smoke.mjs`
+- `scripts/cards_guests/quick_actions_smoke.mjs`
+- `scripts/cards_guests/recent_events_smoke.mjs`
+
