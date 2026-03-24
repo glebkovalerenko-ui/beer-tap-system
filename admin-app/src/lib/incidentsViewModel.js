@@ -1,0 +1,334 @@
+/**
+ * @typedef {'new'|'in_progress'|'closed'} IncidentStatus
+ */
+
+/**
+ * @typedef {{
+ *  incident_id: string|number,
+ *  tap?: string,
+ *  type?: string,
+ *  priority?: string,
+ *  status?: IncidentStatus|string,
+ *  source?: string,
+ *  created_at?: string,
+ *  owner?: string,
+ *  operator?: string,
+ *  escalated_at?: string,
+ *  last_action?: string,
+ *  note_action?: string,
+ *  last_action_at?: string,
+ *  closed_at?: string
+ * }} IncidentLike
+ */
+
+/** @typedef {{ tap_id?: string|number, display_name?: string, operations?: any, keg?: any, status?: string }} TapLike */
+/** @typedef {{ visit_id?: string|number, taps?: Array<string|number>, active_tap_id?: string|number, operator_name?: string, operator_status?: string, guest_full_name?: string, has_incident?: boolean, incident_count?: number, opened_at?: string, last_event_at?: string }} VisitLike */
+
+/** @typedef {{ owner: string|null, ownerLabel: string, ownerBadge: string, ownerState: string, acknowledgedAt: string|null, lastEscalatedAt: string|null, closedAt: string|null, lastActionLabel: string, nextStep: string, stateFlow: Array<{key: IncidentStatus, label: string, description: string, active: boolean, done: boolean}> }} IncidentAccountability */
+
+/** @typedef {{
+ * tapLabel: string,
+ * tapId: string|number|null,
+ * tapHref: string|null,
+ * sessionMatch: VisitLike|null,
+ * sessionHref: string,
+ * systemHref: string,
+ * sourceLabel: string,
+ * typeLabel: string,
+ * priorityLabel: string,
+ * statusLabel: string,
+ * operatorInitials: string,
+ * accountability: IncidentAccountability,
+ * summary: string,
+ * narrative: string[],
+ * impact: string[],
+ * relatedEvents: any[],
+ * actionsTaken: any[],
+ * tapContext: TapLike|null,
+ * systemState: string,
+ * openIncidentCount: number,
+ * backendStatusIsAuthoritative: true
+ * } & IncidentLike} IncidentViewModel
+ */
+
+export const SECTION_ORDER = ['new', 'in_progress', 'closed'];
+
+/** @param {string|number|null|undefined} value */
+function titleCase(value) {
+  if (!value) return '—';
+  const text = String(value).replaceAll('_', ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** @param {string|null|undefined} name */
+function initials(name) {
+  return (name || '—')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('');
+}
+
+/** @param {string|number|Date|null|undefined} createdAt @param {string} range */
+export function timeMatches(createdAt, range) {
+  if (range === 'all') return true;
+  const created = new Date(createdAt || 0);
+  if (Number.isNaN(created.getTime())) return false;
+  const now = Date.now();
+  const diff = now - created.getTime();
+  if (range === '24h') return diff <= 24 * 60 * 60 * 1000;
+  if (range === '7d') return diff <= 7 * 24 * 60 * 60 * 1000;
+  if (range === '30d') return diff <= 30 * 24 * 60 * 60 * 1000;
+  return true;
+}
+
+/** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {IncidentAccountability} accountability */
+function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
+  const happened = incident.status === 'closed'
+    ? 'закрыт и подтверждён системой.'
+    : incident.status === 'in_progress'
+      ? 'в работе и требует подтверждённого результата.'
+      : 'ещё ждёт назначения ответственного оператора.';
+
+  return [
+    `${titleCase(incident.type)} на ${tapMatch?.display_name || incident.tap || 'непривязанном кране'} ${happened}`,
+    accountability.owner
+      ? `Ответственный оператор: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
+      : 'Ответственный оператор не назначен — это нужно исправить следующим действием в системе.',
+    tapMatch?.operations?.productStateLabel
+      ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без уточнения от системы'}.`
+      : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и сессии.',
+    sessionMatch
+      ? `Связанная сессия #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
+      : 'Связанная сессия не найдена — стоит проверить журнал сессий и сигналы системы.',
+  ];
+}
+
+/** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch */
+function deriveImpact(incident, tapMatch, sessionMatch) {
+  const impact = [];
+  if (incident.priority === 'critical') impact.push('риск остановки продаж или несанкционированного пролива');
+  if (incident.priority === 'high') impact.push('требует быстрого вмешательства смены');
+  if (tapMatch?.operations?.currentPour?.isActive) impact.push('по крану прямо сейчас фиксируется поток');
+  if (tapMatch?.operations?.heartbeat?.isStale) impact.push('heartbeat устарел');
+  if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории сессии уже есть инцидент (${sessionMatch.incident_count || 1})`);
+  if (impact.length === 0) impact.push('локальное влияние ограничено одним краном и требует подтверждения оператором');
+  return impact;
+}
+
+/** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {{openTap:string, openSystem:string}} incidentCopy */
+function deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy) {
+  const events = [];
+  for (const item of tapMatch?.operations?.operatorHistory || []) {
+    events.push({
+      id: `tap-${item.id}`,
+      time: item.happenedAt,
+      title: item.title,
+      description: item.description,
+      href: item.sessionAction?.href || '#/taps',
+      label: item.sessionAction?.label || incidentCopy.openTap,
+    });
+  }
+
+  if (sessionMatch) {
+    events.push({
+      id: `session-${sessionMatch.visit_id}`,
+      time: sessionMatch.last_event_at || sessionMatch.opened_at,
+      title: `Сессия #${sessionMatch.visit_id}`,
+      description: `${sessionMatch.operator_status || 'Статус неизвестен'} · taps: ${sessionMatch.taps?.join(', ') || '—'}`,
+      href: '#/sessions/history',
+      label: 'Открыть историю сессии',
+    });
+  }
+
+  if (!events.length) {
+    events.push({
+      id: `incident-${incident.incident_id}`,
+      time: incident.created_at,
+      title: 'Инцидент зарегистрирован',
+      description: 'Пока доступны только сводные данные системы по инциденту.',
+      href: '#/system',
+      label: incidentCopy.openSystem,
+    });
+  }
+
+  return events.slice(0, 6);
+}
+
+/** @param {IncidentLike} incident @param {VisitLike|null} sessionMatch @returns {IncidentAccountability} */
+function deriveAccountability(incident, sessionMatch) {
+  const owner = incident.owner || incident.operator || sessionMatch?.operator_name || null;
+  const lastEscalatedAt = incident.escalated_at || (incident.source === 'system_state' ? incident.created_at : null);
+  const lastActionLabel = incident.last_action || incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
+  const nextStep = incident.status === 'new'
+    ? 'Назначить ответственного и перевести инцидент в работу.'
+    : incident.status === 'in_progress'
+      ? 'Зафиксировать действие, при необходимости передать на разбор и закрыть только после подтверждения системы.'
+      : 'Проверить, что closure note и таймлайн содержат итог разбора.';
+
+  return {
+    owner,
+    ownerLabel: owner || 'Не назначен',
+    ownerBadge: owner ? `Ответственный: ${owner}` : 'Ответственный не назначен',
+    ownerState: owner ? 'assigned' : 'unassigned',
+    acknowledgedAt: incident.last_action_at || (incident.status !== 'new' ? incident.created_at : null) || null,
+    lastEscalatedAt: lastEscalatedAt || null,
+    closedAt: incident.closed_at || (incident.status === 'closed' ? incident.created_at : null) || null,
+    lastActionLabel,
+    nextStep,
+    stateFlow: [
+      {
+        key: 'new',
+        label: 'Новый',
+        description: 'Инцидент поступил из системы и ждёт первичной обработки.',
+        active: incident.status === 'new',
+        done: incident.status !== 'new',
+      },
+      {
+        key: 'in_progress',
+        label: 'В работе',
+        description: owner
+          ? `Ответственный ${owner} ведёт разбор.`
+          : 'Нужно назначить ответственного, чтобы зафиксировать работу по инциденту.',
+        active: incident.status === 'in_progress',
+        done: incident.status === 'closed',
+      },
+      {
+        key: 'closed',
+        label: 'Закрыт',
+        description: incident.status === 'closed'
+          ? 'Система уже подтвердила закрытие — статус считается итоговым.'
+          : 'Закрытие допустимо только после подтверждения системы.',
+        active: incident.status === 'closed',
+        done: incident.status === 'closed',
+      },
+    ],
+  };
+}
+
+/** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {IncidentAccountability} accountability */
+function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
+  const actions = [];
+  if (accountability.owner) {
+    actions.push({
+      kind: 'owner',
+      title: `Ответственный: ${accountability.owner}`,
+      detail: accountability.lastActionLabel,
+      time: accountability.acknowledgedAt,
+    });
+  }
+  if (accountability.lastEscalatedAt) {
+    actions.push({
+      kind: 'escalation',
+      title: 'Эскалация в system context',
+      detail: 'Передача на разбор видна как сигнал системы; без подтверждённого действия её нельзя считать завершённой.',
+      time: accountability.lastEscalatedAt,
+    });
+  }
+  if (incident.note_action || incident.last_action) {
+    actions.push({
+      kind: 'note',
+      title: 'Последнее подтверждённое действие',
+      detail: incident.note_action || incident.last_action,
+      time: incident.last_action_at || incident.created_at,
+    });
+  }
+  if (tapMatch?.operations?.heartbeat?.isStale) {
+    actions.push({
+      kind: 'signal',
+      title: 'Автоматический сигнал',
+      detail: `Последний heartbeat ${tapMatch.operations.heartbeat.minutesAgo} мин назад.`,
+      time: tapMatch.operations.heartbeat.at,
+    });
+  }
+  if (sessionMatch?.incident_count) {
+    actions.push({
+      kind: 'history',
+      title: 'Есть след в истории сессий',
+      detail: `В связанной сессии отмечен инцидент: ${sessionMatch.incident_count}.`,
+      time: sessionMatch.last_event_at || sessionMatch.opened_at,
+    });
+  }
+  return actions;
+}
+
+/** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike[]} activeVisits */
+function matchSession(incident, tapMatch, activeVisits) {
+  return (activeVisits || []).find((visit) => {
+    const tapIds = visit.taps || [];
+    const incidentTapId = tapMatch?.tap_id;
+    return (incidentTapId && (visit.active_tap_id === incidentTapId || tapIds.includes(String(incidentTapId)) || tapIds.includes(incidentTapId)))
+      || (incident.tap && tapIds.includes(incident.tap));
+  }) || null;
+}
+
+/**
+ * @param {{ incidents: IncidentLike[], taps: TapLike[], activeVisits: VisitLike[], systemState: string, openIncidentCount: number, incidentCopy: {openTap:string, openSystem:string}, priorityLabels: Record<string,string>, statusLabels: Record<string,string> }} input
+ * @returns {IncidentViewModel[]}
+ */
+export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemState, openIncidentCount, incidentCopy, priorityLabels, statusLabels }) {
+  return (incidents || []).map((incident) => {
+    const tapMatch = (taps || []).find((tap) => String(tap.tap_id) === String(incident.tap) || tap.display_name === incident.tap) || null;
+    const sessionMatch = matchSession(incident, tapMatch, activeVisits);
+    const accountability = deriveAccountability(incident, sessionMatch);
+    const tapLabel = tapMatch?.display_name || incident.tap || '—';
+
+    return {
+      ...incident,
+      tapLabel,
+      tapId: tapMatch?.tap_id || null,
+      tapHref: tapMatch ? '#/taps' : null,
+      sessionMatch,
+      sessionHref: sessionMatch ? '#/sessions/history' : '#/sessions',
+      systemHref: '#/system',
+      sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
+      typeLabel: titleCase(incident.type),
+      priorityLabel: priorityLabels[String(incident.priority)] || titleCase(incident.priority),
+      statusLabel: statusLabels[String(incident.status)] || titleCase(incident.status),
+      operatorInitials: initials(accountability.owner),
+      accountability,
+      summary: buildNarrative(incident, tapMatch, sessionMatch, accountability)[0],
+      narrative: buildNarrative(incident, tapMatch, sessionMatch, accountability),
+      impact: deriveImpact(incident, tapMatch, sessionMatch),
+      relatedEvents: deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy),
+      actionsTaken: deriveActionsTaken(incident, tapMatch, sessionMatch, accountability),
+      tapContext: tapMatch,
+      systemState,
+      openIncidentCount,
+      backendStatusIsAuthoritative: true,
+    };
+  });
+}
+
+/** @param {IncidentViewModel[]} enrichedItems */
+export function buildFilterOptions(enrichedItems) {
+  return {
+    priorities: Array.from(new Set(enrichedItems.map((item) => item.priority))).filter(Boolean),
+    statuses: Array.from(new Set(enrichedItems.map((item) => item.status))).filter(Boolean),
+    types: Array.from(new Set(enrichedItems.map((item) => item.type))).filter(Boolean),
+    taps: Array.from(new Set(enrichedItems.map((item) => item.tapLabel))).filter(Boolean),
+  };
+}
+
+/** @param {IncidentViewModel[]} enrichedItems @param {{priority:string,status:string,type:string,tap:string,time:string,query:string}} filters */
+export function filterIncidents(enrichedItems, filters) {
+  return enrichedItems.filter((item) => {
+    const query = filters.query.trim().toLowerCase();
+    return (filters.priority === 'all' || item.priority === filters.priority)
+      && (filters.status === 'all' || item.status === filters.status)
+      && (filters.type === 'all' || item.type === filters.type)
+      && (filters.tap === 'all' || item.tapLabel === filters.tap)
+      && timeMatches(item.created_at, filters.time)
+      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary].join(' ').toLowerCase().includes(query));
+  });
+}
+
+/** @param {IncidentViewModel[]} filteredItems @param {Record<string,string>} sectionLabels */
+export function groupIncidentsByStatus(filteredItems, sectionLabels) {
+  return SECTION_ORDER.map((status) => ({
+    key: status,
+    label: sectionLabels[status],
+    items: filteredItems.filter((item) => item.status === status),
+  }));
+}

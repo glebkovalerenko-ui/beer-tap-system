@@ -1,5 +1,4 @@
 <script>
-  // @ts-nocheck
   import { onMount } from 'svelte';
 
   import Modal from '../components/common/Modal.svelte';
@@ -7,6 +6,7 @@
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
   import TapDrawer from '../components/taps/TapDrawer.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
+  import { resolveSessionHistoryTargets } from '../lib/tapWorkspaceHelpers.js';
   import { beverageStore } from '../stores/beverageStore.js';
   import { kegStore } from '../stores/kegStore.js';
   import { pourStore } from '../stores/pourStore.js';
@@ -18,10 +18,22 @@
 
   let initialLoadAttempted = false;
   let isAssignModalOpen = false;
+  /** @type {any} */
   let tapToAssign = null;
   let isAssigning = false;
+  /** @type {any} */
   let selectedTap = null;
   let isTapDrawerOpen = false;
+  /** @type {any} */
+  let permissions = {};
+  /** @type {any[]} */
+  let taps = [];
+  $: permissions = /** @type {any} */ ($roleStore.permissions || {});
+  $: taps = /** @type {any[]} */ ($tapStore.taps || []);
+
+  /** @typedef {import('../lib/tapWorkspaceHelpers.js').TapWorkspaceOpenHistoryPayload} TapHistoryPayload */
+  /** @typedef {CustomEvent<{ tap: any }>} TapDetailEvent */
+  /** @typedef {CustomEvent<{ kegId: string|number }>} AssignSaveEvent */
 
   $: if ($sessionStore.token && !initialLoadAttempted) {
     tapStore.fetchTaps();
@@ -37,7 +49,7 @@
   });
 
   $: if (selectedTap) {
-    selectedTap = $tapStore.taps.find((item) => item.tap_id === selectedTap.tap_id) || selectedTap;
+    selectedTap = taps.find((item) => item.tap_id === selectedTap.tap_id) || selectedTap;
   }
 
   onMount(() => {
@@ -45,7 +57,7 @@
     if (focusTapId) {
       sessionStorage.removeItem('incidents.focusTapId');
       const openTapWhenReady = () => {
-        const target = $tapStore.taps.find((item) => String(item.tap_id) === String(focusTapId));
+        const target = taps.find((item) => String(item.tap_id) === String(focusTapId));
         if (target) {
           selectTap(target);
           return true;
@@ -63,16 +75,17 @@
     }
   });
 
+  /** @param {any} tap */
   function selectTap(tap) {
     selectedTap = tap;
     isTapDrawerOpen = true;
   }
 
+  /** @param {CustomEvent<TapHistoryPayload>} event */
   function openSessionFromTap(event) {
-    const visitId = event.detail.visitId || event.detail.tap?.operations?.activeSessionSummary?.visitId || null;
-    const tapId = event.detail.tap?.tap_id || event.detail.tapId || null;
+    const { visitId, tapId } = resolveSessionHistoryTargets(event.detail);
     if (visitId) {
-      sessionStorage.setItem('visits.lookupVisitId', visitId);
+      sessionStorage.setItem('visits.lookupVisitId', String(visitId));
     }
     if (tapId) {
       sessionStorage.setItem('sessions.history.tapId', String(tapId));
@@ -80,31 +93,36 @@
     window.location.hash = '#/sessions/history';
   }
 
+  /** @param {string} permissionKey @param {string} message */
   function requirePermission(permissionKey, message) {
-    if ($roleStore.permissions[permissionKey]) {
+    if (permissions[permissionKey]) {
       return true;
     }
     uiStore.notifyWarning(message);
     return false;
   }
 
+  /** @param {any} tap */
   function openTapDisplayRoute(tap) {
     if (!requirePermission('display_override', 'Настройки экрана доступны только management / engineering ролям.')) return;
     sessionStorage.setItem('tapScreens.focusTapId', String(tap.tap_id));
     window.location.hash = '#/tap-screens';
   }
 
+  /** @param {TapDetailEvent} event */
   function handleOpenAssignModal(event) {
     if (!requirePermission('taps_control', 'Назначение кеги доступно только ролям с управлением кранами.')) return;
     tapToAssign = event.detail.tap;
     isAssignModalOpen = true;
   }
 
+  /** @param {TapDetailEvent} event */
   function handleOpenTapDisplaySettings(event) {
     openTapDisplayRoute(event.detail.tap);
   }
 
 
+  /** @param {any} tap @param {string} nextStatus @param {string} title @param {{permissionKey?: string, deniedMessage?: string, message?: string, confirmText?: string, danger?: boolean}} [options] */
   async function handleTapStatusChange(tap, nextStatus, title, options = {}) {
     const permissionKey = options.permissionKey || (nextStatus === 'cleaning' ? 'maintenance_actions' : 'taps_control');
     const deniedMessage = options.deniedMessage || (permissionKey === 'maintenance_actions'
@@ -129,6 +147,7 @@
     }
   }
 
+  /** @param {any} tap */
   async function handleStopPour(tap) {
     if (!tap?.operations?.activeSessionSummary) {
       uiStore.notifyWarning('На этом кране нет активной сессии для остановки.');
@@ -143,6 +162,7 @@
     });
   }
 
+  /** @param {any} tap */
   async function handleUnassignTap(tap) {
     if (!tap.keg) return;
     if (!requirePermission('taps_control', 'Снятие кеги доступно только ролям с управлением кранами.')) return;
@@ -165,6 +185,7 @@
     }
   }
 
+  /** @param {AssignSaveEvent} event */
   async function handleSaveAssign(event) {
     const { kegId } = event.detail;
     if (!kegId) {
@@ -187,7 +208,7 @@
   }
 </script>
 
-{#if !$roleStore.permissions.taps_view}
+{#if !permissions.taps_view}
   <section class="ui-card restricted">
     <h1>Краны</h1>
     <p>Текущая роль не предусматривает доступ к рабочей зоне кранов.</p>
@@ -214,9 +235,9 @@
       <p class="error">Ошибка загрузки кранов: {$tapStore.error}</p>
     {:else}
       <TapGrid
-        taps={$tapStore.taps}
-        canControl={$roleStore.permissions.taps_control}
-        canDisplayOverride={$roleStore.permissions.display_override}
+        taps={taps}
+        canControl={permissions.taps_control}
+        canDisplayOverride={permissions.display_override}
         on:open-detail={(event) => selectTap(event.detail.tap)}
         on:assign={handleOpenAssignModal}
         on:display-settings={handleOpenTapDisplaySettings}
@@ -257,9 +278,9 @@
   >
     <TapDrawer
       tap={selectedTap}
-      canDisplayOverride={$roleStore.permissions.display_override}
-      canControl={$roleStore.permissions.taps_control}
-      canMaintain={$roleStore.permissions.maintenance_actions}
+      canDisplayOverride={permissions.display_override}
+      canControl={permissions.taps_control}
+      canMaintain={permissions.maintenance_actions}
       on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
       on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}
