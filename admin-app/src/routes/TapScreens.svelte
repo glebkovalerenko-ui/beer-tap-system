@@ -1,22 +1,31 @@
 <script>
-  // @ts-nocheck
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
 
   import Modal from '../components/common/Modal.svelte';
   import TapDisplaySettingsModal from '../components/taps/TapDisplaySettingsModal.svelte';
   import { buildTapGuestDisplaySnapshot } from '../lib/formatters.js';
+  import { getPendingDisplayConfigTaps, runtimeClass } from '../lib/tapScreenHelpers.js';
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
 
   let initialLoadAttempted = false;
+  /** @type {any} */
   let focusedTap = null;
   let isTapDisplayModalOpen = false;
+  /** @type {Record<string|number, any>} */
   let displayConfigs = {};
+  /** @type {Record<string|number, string>} */
   let displayConfigErrors = {};
   const requestedTapConfigIds = new Set();
+  /** @type {any} */
+  let permissions = {};
+  /** @type {any[]} */
+  let taps = [];
+  $: permissions = /** @type {any} */ ($roleStore.permissions || {});
+  $: taps = /** @type {any[]} */ ($tapStore.taps || []);
 
   $: if ($sessionStore.token && !initialLoadAttempted) {
     tapStore.fetchTaps();
@@ -24,11 +33,11 @@
   }
 
   $: if (focusedTap) {
-    focusedTap = $tapStore.taps.find((item) => item.tap_id === focusedTap.tap_id) || focusedTap;
+    focusedTap = taps.find((item) => item.tap_id === focusedTap.tap_id) || focusedTap;
   }
 
-  $: if ($roleStore.permissions.display_override && $tapStore.taps.length) {
-    hydrateDisplayConfigs($tapStore.taps);
+  $: if (permissions.display_override && taps.length) {
+    hydrateDisplayConfigs(taps);
   }
 
   onMount(() => {
@@ -42,7 +51,7 @@
     if (focusTapId) {
       sessionStorage.removeItem('tapScreens.focusTapId');
       const openWhenReady = () => {
-        const target = $tapStore.taps.find((item) => String(item.tap_id) === String(focusTapId));
+        const target = taps.find((item) => String(item.tap_id) === String(focusTapId));
         if (target) {
           openDisplaySettings(target);
           return true;
@@ -60,8 +69,9 @@
     }
   });
 
+  /** @param {Array<{tap_id: string|number}>} taps */
   async function hydrateDisplayConfigs(taps) {
-    const pending = taps.filter((tap) => !requestedTapConfigIds.has(tap.tap_id));
+    const pending = getPendingDisplayConfigTaps(taps, requestedTapConfigIds);
     if (!pending.length) return;
 
     pending.forEach((tap) => requestedTapConfigIds.add(tap.tap_id));
@@ -76,14 +86,15 @@
       } catch (error) {
         displayConfigErrors = {
           ...displayConfigErrors,
-          [tap.tap_id]: error?.message || 'Не удалось загрузить guest-facing override.',
+          [tap.tap_id]: String((typeof error === 'object' && error && 'message' in error ? error.message : '') || 'Не удалось загрузить guest-facing override.'),
         };
       }
     }));
   }
 
+  /** @param {any} tap */
   function openDisplaySettings(tap) {
-    if (!$roleStore.permissions.display_override) {
+    if (!permissions.display_override) {
       uiStore.notifyWarning('Настройки экрана доступны только management / engineering ролям.');
       return;
     }
@@ -96,6 +107,7 @@
     focusedTap = null;
   }
 
+  /** @param {CustomEvent<{config?: any}>} event */
   function handleDisplaySettingsSaved(event) {
     if (focusedTap?.tap_id && event.detail?.config) {
       displayConfigs = {
@@ -108,18 +120,14 @@
     closeDisplaySettings();
   }
 
+  /** @param {any} tap */
   function snapshotFor(tap) {
     return buildTapGuestDisplaySnapshot(tap, displayConfigs[tap.tap_id]);
   }
 
-  function runtimeClass(state) {
-    if (['critical', 'error', 'offline'].includes(state)) return 'critical';
-    if (['warning', 'degraded', 'unknown'].includes(state)) return 'warning';
-    return 'ok';
-  }
 </script>
 
-{#if !$roleStore.permissions.display_override}
+{#if !permissions.display_override}
   <section class="ui-card restricted">
     <h1>Экраны кранов</h1>
     <p>Текущая роль не предусматривает доступ к обзору гостевых экранов кранов.</p>
@@ -148,7 +156,7 @@
       <p>Краны не найдены в системе.</p>
     {:else}
       <div class="display-list">
-        {#each $tapStore.taps as tap (tap.tap_id)}
+        {#each taps as tap (tap.tap_id)}
           {@const snapshot = snapshotFor(tap)}
           <article class="display-card ui-card">
             <div class="display-card__head">

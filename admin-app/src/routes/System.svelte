@@ -1,5 +1,4 @@
 <script>
-  // @ts-nocheck
   import { onMount } from 'svelte';
   import { roleStore } from '../stores/roleStore.js';
   import { systemStore } from '../stores/systemStore.js';
@@ -7,9 +6,23 @@
 
   let incidentFocusSource = '';
 
-  $: canViewHealth = $roleStore.permissions.system_health_view;
-  $: canUseEngineeringActions = $roleStore.permissions.system_engineering_actions;
-  $: canManageSystemSettings = $roleStore.permissions.settings_manage;
+  
+  /** @type {{ canViewHealth: boolean, canUseEngineeringActions: boolean, canManageSystemSettings: boolean }} */
+  let systemPermissions = {
+    canViewHealth: false,
+    canUseEngineeringActions: false,
+    canManageSystemSettings: false,
+  };
+
+  /** @type {any} */
+  let permissions = {};
+
+  $: permissions = /** @type {any} */ ($roleStore.permissions || {});
+  $: systemPermissions = {
+    canViewHealth: Boolean(permissions.system_health_view),
+    canUseEngineeringActions: Boolean(permissions.system_engineering_actions),
+    canManageSystemSettings: Boolean(permissions.settings_manage),
+  };
 
   onMount(() => {
     incidentFocusSource = sessionStorage.getItem('system.focusSource') || '';
@@ -19,7 +32,7 @@
   });
 </script>
 
-{#if !canViewHealth}
+{#if !systemPermissions.canViewHealth}
   <section class="ui-card restricted">
     <h1>Система</h1>
     <p>Раздел с operational health, устройствами и синхронизацией доступен оператору, старшему смены и инженеру по назначенным правам.</p>
@@ -42,8 +55,8 @@
     </div>
     <SystemHealthSummary
       summary={$systemStore}
-      canUseEngineeringActions={canUseEngineeringActions}
-      canManageSystemSettings={canManageSystemSettings}
+      canUseEngineeringActions={systemPermissions.canUseEngineeringActions}
+      canManageSystemSettings={systemPermissions.canManageSystemSettings}
     />
   </section>
 {/if}

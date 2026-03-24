@@ -1,11 +1,11 @@
 <script>
-  // @ts-nocheck
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
   import Modal from '../components/common/Modal.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
+  import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
@@ -24,13 +24,13 @@
     query: '',
   };
 
-  const SECTION_ORDER = ['new', 'in_progress', 'closed'];
   const SECTION_LABELS = {
     new: 'Новые',
     in_progress: 'В работе',
     closed: 'Закрытые',
   };
 
+  /** @type {Record<string, string>} */
   const PRIORITY_LABELS = {
     low: 'Низкий',
     medium: 'Средний',
@@ -38,6 +38,7 @@
     critical: 'Критический',
   };
 
+  /** @type {Record<string, string>} */
   const STATUS_LABELS = {
     new: 'Новый',
     in_progress: 'В работе',
@@ -46,6 +47,7 @@
 
   let hasLoadedContext = false;
   let filters = { ...DEFAULT_FILTERS };
+  /** @type {any} */
   let selectedIncidentId = null;
   let isActionModalOpen = false;
   let actionForm = {
@@ -81,261 +83,46 @@
     }
   });
 
+
+
+  /** @param {string|number|null|undefined} value */
   function titleCase(value) {
     if (!value) return '—';
     const text = String(value).replaceAll('_', ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-  function initials(name) {
-    return (name || '—')
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() || '')
-      .join('');
-  }
+  /** @type {import('../lib/incidentsViewModel.js').IncidentViewModel[]} */
+  let enrichedItems = [];
 
-  function timeMatches(createdAt, range) {
-    if (range === 'all') return true;
-    const created = new Date(createdAt);
-    if (Number.isNaN(created.getTime())) return false;
-    const now = Date.now();
-    const diff = now - created.getTime();
-    if (range === '24h') return diff <= 24 * 60 * 60 * 1000;
-    if (range === '7d') return diff <= 7 * 24 * 60 * 60 * 1000;
-    if (range === '30d') return diff <= 30 * 24 * 60 * 60 * 1000;
-    return true;
-  }
+  /** @type {any} */
+  let filterOptions = { priorities: [], statuses: [], types: [], taps: [] };
 
-  function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
-    const happened = incident.status === 'closed'
-      ? 'закрыт и подтверждён системой.'
-      : incident.status === 'in_progress'
-        ? 'в работе и требует подтверждённого результата.'
-        : 'ещё ждёт назначения ответственного оператора.';
+  /** @type {any} */
+  let permissions = {};
 
-    return [
-      `${titleCase(incident.type)} на ${tapMatch?.display_name || incident.tap || 'непривязанном кране'} ${happened}`,
-      accountability.owner
-        ? `Ответственный оператор: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
-        : 'Ответственный оператор не назначен — это нужно исправить следующим действием в системе.',
-      tapMatch?.operations?.productStateLabel
-        ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без уточнения от системы'}.`
-        : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и сессии.',
-      sessionMatch
-        ? `Связанная сессия #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
-        : 'Связанная сессия не найдена — стоит проверить журнал сессий и сигналы системы.',
-    ];
-  }
+  /** @type {import('../lib/incidentsViewModel.js').IncidentViewModel[]} */
+  let filteredItems = [];
 
-  function deriveImpact(incident, tapMatch, sessionMatch) {
-    const impact = [];
-    if (incident.priority === 'critical') impact.push('риск остановки продаж или несанкционированного пролива');
-    if (incident.priority === 'high') impact.push('требует быстрого вмешательства смены');
-    if (tapMatch?.operations?.currentPour?.isActive) impact.push('по крану прямо сейчас фиксируется поток');
-    if (tapMatch?.operations?.heartbeat?.isStale) impact.push('heartbeat устарел');
-    if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории сессии уже есть инцидент (${sessionMatch.incident_count || 1})`);
-    if (impact.length === 0) impact.push('локальное влияние ограничено одним краном и требует подтверждения оператором');
-    return impact;
-  }
+  /** @type {{key: string, label: string, items: import('../lib/incidentsViewModel.js').IncidentViewModel[]}[]} */
+  let groupedItems = [];
 
-  function deriveRelatedEvents(incident, tapMatch, sessionMatch) {
-    const events = [];
-    for (const item of tapMatch?.operations?.operatorHistory || []) {
-      events.push({
-        id: `tap-${item.id}`,
-        time: item.happenedAt,
-        title: item.title,
-        description: item.description,
-        href: item.sessionAction?.href || '#/taps',
-        label: item.sessionAction?.label || INCIDENT_COPY.openTap,
-      });
-    }
-
-    if (sessionMatch) {
-      events.push({
-        id: `session-${sessionMatch.visit_id}`,
-        time: sessionMatch.last_event_at || sessionMatch.opened_at,
-        title: `Сессия #${sessionMatch.visit_id}`,
-        description: `${sessionMatch.operator_status || 'Статус неизвестен'} · taps: ${sessionMatch.taps?.join(', ') || '—'}`,
-        href: '#/sessions/history',
-        label: 'Открыть историю сессии',
-      });
-    }
-
-    if (!events.length) {
-      events.push({
-        id: `incident-${incident.incident_id}`,
-        time: incident.created_at,
-        title: 'Инцидент зарегистрирован',
-        description: 'Пока доступны только сводные данные системы по инциденту.',
-        href: '#/system',
-        label: INCIDENT_COPY.openSystem,
-      });
-    }
-
-    return events.slice(0, 6);
-  }
-
-  function deriveAccountability(incident, sessionMatch) {
-    const owner = incident.owner || incident.operator || sessionMatch?.operator_name || null;
-    const lastEscalatedAt = incident.escalated_at || (incident.source === 'system_state' ? incident.created_at : null);
-    const lastActionLabel = incident.last_action || incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
-    const nextStep = incident.status === 'new'
-      ? 'Назначить ответственного и перевести инцидент в работу.'
-      : incident.status === 'in_progress'
-        ? 'Зафиксировать действие, при необходимости передать на разбор и закрыть только после подтверждения системы.'
-        : 'Проверить, что closure note и таймлайн содержат итог разбора.';
-
-    return {
-      owner,
-      ownerLabel: owner || 'Не назначен',
-      ownerBadge: owner ? `Ответственный: ${owner}` : 'Ответственный не назначен',
-      ownerState: owner ? 'assigned' : 'unassigned',
-      acknowledgedAt: incident.last_action_at || (incident.status !== 'new' ? incident.created_at : null),
-      lastEscalatedAt,
-      closedAt: incident.closed_at || (incident.status === 'closed' ? incident.created_at : null),
-      lastActionLabel,
-      nextStep,
-      stateFlow: [
-        {
-          key: 'new',
-          label: 'Новый',
-          description: 'Инцидент поступил из системы и ждёт первичной обработки.',
-          active: incident.status === 'new',
-          done: incident.status !== 'new',
-        },
-        {
-          key: 'in_progress',
-          label: 'В работе',
-          description: owner
-            ? `Ответственный ${owner} ведёт разбор.`
-            : 'Нужно назначить ответственного, чтобы зафиксировать работу по инциденту.',
-          active: incident.status === 'in_progress',
-          done: incident.status === 'closed',
-        },
-        {
-          key: 'closed',
-          label: 'Закрыт',
-          description: incident.status === 'closed'
-            ? 'Система уже подтвердила закрытие — статус считается итоговым.'
-            : 'Закрытие допустимо только после подтверждения системы.',
-          active: incident.status === 'closed',
-          done: incident.status === 'closed',
-        },
-      ],
-    };
-  }
-
-  function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
-    const actions = [];
-    if (accountability.owner) {
-      actions.push({
-        kind: 'owner',
-        title: `Ответственный: ${accountability.owner}`,
-        detail: accountability.lastActionLabel,
-        time: accountability.acknowledgedAt,
-      });
-    }
-    if (accountability.lastEscalatedAt) {
-      actions.push({
-        kind: 'escalation',
-        title: 'Эскалация в system context',
-        detail: 'Передача на разбор видна как сигнал системы; без подтверждённого действия её нельзя считать завершённой.',
-        time: accountability.lastEscalatedAt,
-      });
-    }
-    if (incident.note_action || incident.last_action) {
-      actions.push({
-        kind: 'note',
-        title: 'Последнее подтверждённое действие',
-        detail: incident.note_action || incident.last_action,
-        time: incident.last_action_at || incident.created_at,
-      });
-    }
-    if (tapMatch?.operations?.heartbeat?.isStale) {
-      actions.push({
-        kind: 'signal',
-        title: 'Автоматический сигнал',
-        detail: `Последний heartbeat ${tapMatch.operations.heartbeat.minutesAgo} мин назад.`,
-        time: tapMatch.operations.heartbeat.at,
-      });
-    }
-    if (sessionMatch?.incident_count) {
-      actions.push({
-        kind: 'history',
-        title: 'Есть след в истории сессий',
-        detail: `В связанной сессии отмечен инцидент: ${sessionMatch.incident_count}.`,
-        time: sessionMatch.last_event_at || sessionMatch.opened_at,
-      });
-    }
-    return actions;
-  }
-
-  function matchSession(incident, tapMatch) {
-    return ($visitStore.activeVisits || []).find((visit) => {
-      const tapIds = visit.taps || [];
-      const incidentTapId = tapMatch?.tap_id;
-      return (incidentTapId && (visit.active_tap_id === incidentTapId || tapIds.includes(String(incidentTapId)) || tapIds.includes(incidentTapId)))
-        || (incident.tap && tapIds.includes(incident.tap));
-    }) || null;
-  }
-
-  $: enrichedItems = ($incidentStore.items || []).map((incident) => {
-    const tapMatch = ($tapStore.taps || []).find((tap) => String(tap.tap_id) === String(incident.tap) || tap.display_name === incident.tap) || null;
-    const sessionMatch = matchSession(incident, tapMatch);
-    const accountability = deriveAccountability(incident, sessionMatch);
-    const tapLabel = tapMatch?.display_name || incident.tap || '—';
-
-    return {
-      ...incident,
-      tapLabel,
-      tapId: tapMatch?.tap_id || null,
-      tapHref: tapMatch ? '#/taps' : null,
-      sessionMatch,
-      sessionHref: sessionMatch ? '#/sessions/history' : '#/sessions',
-      systemHref: '#/system',
-      sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
-      typeLabel: titleCase(incident.type),
-      priorityLabel: PRIORITY_LABELS[incident.priority] || titleCase(incident.priority),
-      statusLabel: STATUS_LABELS[incident.status] || titleCase(incident.status),
-      operatorInitials: initials(accountability.owner),
-      accountability,
-      summary: buildNarrative(incident, tapMatch, sessionMatch, accountability)[0],
-      narrative: buildNarrative(incident, tapMatch, sessionMatch, accountability),
-      impact: deriveImpact(incident, tapMatch, sessionMatch),
-      relatedEvents: deriveRelatedEvents(incident, tapMatch, sessionMatch),
-      actionsTaken: deriveActionsTaken(incident, tapMatch, sessionMatch, accountability),
-      tapContext: tapMatch,
-      systemState: $systemStore.overallState,
-      openIncidentCount: $systemStore.openIncidentCount,
-      backendStatusIsAuthoritative: true,
-    };
+  $: enrichedItems = buildEnrichedIncidents({
+    incidents: $incidentStore.items,
+    taps: $tapStore.taps,
+    activeVisits: $visitStore.activeVisits,
+    systemState: $systemStore.overallState,
+    openIncidentCount: $systemStore.openIncidentCount,
+    incidentCopy: INCIDENT_COPY,
+    priorityLabels: PRIORITY_LABELS,
+    statusLabels: STATUS_LABELS,
   });
 
-  $: filterOptions = {
-    priorities: Array.from(new Set(enrichedItems.map((item) => item.priority))).filter(Boolean),
-    statuses: Array.from(new Set(enrichedItems.map((item) => item.status))).filter(Boolean),
-    types: Array.from(new Set(enrichedItems.map((item) => item.type))).filter(Boolean),
-    taps: Array.from(new Set(enrichedItems.map((item) => item.tapLabel))).filter(Boolean),
-  };
+  $: filterOptions = /** @type {any} */ (buildFilterOptions(enrichedItems));
 
-  $: filteredItems = enrichedItems.filter((item) => {
-    const query = filters.query.trim().toLowerCase();
-    return (filters.priority === 'all' || item.priority === filters.priority)
-      && (filters.status === 'all' || item.status === filters.status)
-      && (filters.type === 'all' || item.type === filters.type)
-      && (filters.tap === 'all' || item.tapLabel === filters.tap)
-      && timeMatches(item.created_at, filters.time)
-      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary].join(' ').toLowerCase().includes(query));
-  });
+  $: filteredItems = filterIncidents(enrichedItems, filters);
 
-  $: groupedItems = SECTION_ORDER.map((status) => ({
-    key: status,
-    label: SECTION_LABELS[status],
-    items: filteredItems.filter((item) => item.status === status),
-  }));
+  $: groupedItems = groupIncidentsByStatus(filteredItems, SECTION_LABELS);
 
   $: if (filteredItems.length > 0 && !filteredItems.some((item) => item.incident_id === selectedIncidentId)) {
     selectedIncidentId = filteredItems[0].incident_id;
@@ -344,23 +131,28 @@
   $: selectedIncident = filteredItems.find((item) => item.incident_id === selectedIncidentId) || null;
   $: actionModalIncident = enrichedItems.find((item) => item.incident_id === actionForm.incidentId) || selectedIncident;
 
+
+  /** @typedef {CustomEvent<{ incidentId: string|number }>} SelectIncidentEvent */
   function resetFilters() {
     filters = { ...DEFAULT_FILTERS };
   }
 
+  /** @param {SelectIncidentEvent} event */
   function selectIncident(event) {
     selectedIncidentId = event.detail.incidentId;
   }
 
+  /** @param {any} event */
   function openTap(event) {
     const item = event.detail.item;
-    navigateWithFocus({ target: 'tap', tapId: item.tapId, source: item.tapLabel || item.sourceLabel });
+    navigateWithFocus(/** @type {any} */ ({ target: 'tap', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
   }
 
+  /** @param {any} event */
   function openSession(event) {
     const item = event.detail.item;
     if (item.sessionMatch?.visit_id) {
-      navigateWithFocus({ target: 'session', visitId: item.sessionMatch.visit_id, source: item.tapLabel || item.sourceLabel });
+      navigateWithFocus(/** @type {any} */ ({ target: 'session', visitId: item.sessionMatch.visit_id || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
       return;
     }
     if (item.tapId) {
@@ -371,19 +163,23 @@
     window.location.hash = '/sessions/history';
   }
 
+  /** @param {any} event */
   function openSystem(event) {
     const item = event.detail.item;
-    navigateWithFocus({ target: 'system', source: item.sourceLabel || item.source || 'incident', tapId: item.tapId, incidentId: item.incident_id });
+    navigateWithFocus(/** @type {any} */ ({ target: 'system', source: item.sourceLabel || item.source || 'incident', tapId: item.tapId, incidentId: item.incident_id }));
   }
 
-  $: canViewIncidents = $roleStore.permissions.incidents_view;
+  $: permissions = /** @type {any} */ ($roleStore.permissions || {});
+  $: canViewIncidents = Boolean(permissions.incidents_view);
   $: incidentActionCapabilitiesRaw = $incidentStore.capabilities || {};
+  /** @type {Record<string, boolean>} */
   $: incidentActionCapabilities = {
     claim: Boolean(incidentActionCapabilitiesRaw.claim?.enabled),
     escalate: Boolean(incidentActionCapabilitiesRaw.escalate?.enabled),
     close: Boolean(incidentActionCapabilitiesRaw.close?.enabled),
     note: Boolean(incidentActionCapabilitiesRaw.note?.enabled),
   };
+  /** @type {Record<string, string|null>} */
   $: incidentActionCapabilityReasons = {
     claim: incidentActionCapabilitiesRaw.claim?.reason || null,
     escalate: incidentActionCapabilitiesRaw.escalate?.reason || null,
@@ -394,8 +190,9 @@
   $: incidentActionReadOnlyReason = $incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.';
   $: incidentActionPlan = getActionPlan('incident');
 
+  /** @param {any} event */
   function openActionForm(event, suggestedAction = 'note') {
-    const item = event.detail?.item || event;
+    const item = event?.detail?.item || event;
     if (incidentActionReadOnly) return;
     const allowedActions = ['claim', 'note', 'escalate', 'close'].filter((action) => incidentActionCapabilities[action]);
     const resolvedAction = allowedActions.includes(suggestedAction) ? suggestedAction : (allowedActions[0] || 'note');
@@ -442,7 +239,8 @@
       }
       closeActionForm();
     } catch (error) {
-      uiStore.notifyWarning(error.message || 'Фиксация действия по инциденту сейчас недоступна.');
+      const errorMessage = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Фиксация действия по инциденту сейчас недоступна.';
+      uiStore.notifyWarning(errorMessage);
     }
   }
 </script>
@@ -582,20 +380,20 @@
               Рекомендация: <strong>{incidentActionPlan.recommendedOwnerState}</strong> · {incidentActionPlan.recommendedActionState}.
             </p>
             <div class="next-step-actions">
-              <button on:click={() => navigateWithFocus({
+              <button on:click={() => navigateWithFocus(/** @type {any} */ ({
                 target: incidentActionPlan.primaryTarget,
-                incidentId: selectedIncident.incident_id,
-                tapId: selectedIncident.tapId,
-                source: selectedIncident.sourceLabel,
-              })}>{incidentActionPlan.primaryCta}</button>
+                incidentId: selectedIncident.incident_id || undefined,
+                tapId: selectedIncident.tapId || undefined,
+                source: selectedIncident.sourceLabel || undefined,
+              }))}>{incidentActionPlan.primaryCta}</button>
               <button
                 class="secondary"
-                on:click={() => navigateWithFocus({
+                on:click={() => navigateWithFocus(/** @type {any} */ ({
                   target: incidentActionPlan.secondaryCta.target,
-                  incidentId: selectedIncident.incident_id,
-                  tapId: selectedIncident.tapId,
-                  source: selectedIncident.sourceLabel,
-                })}
+                  incidentId: selectedIncident.incident_id || undefined,
+                  tapId: selectedIncident.tapId || undefined,
+                  source: selectedIncident.sourceLabel || undefined,
+                }))}
               >
                 {incidentActionPlan.secondaryCta.label}
               </button>
