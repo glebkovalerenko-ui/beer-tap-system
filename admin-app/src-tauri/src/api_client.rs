@@ -383,6 +383,23 @@ pub struct SessionNarrativeEvent {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SessionDisplayContext {
+    pub available: bool,
+    pub source: String,
+    pub tap_id: Option<i32>,
+    pub tap_name: Option<String>,
+    pub display_state: Option<String>,
+    pub availability_label: Option<String>,
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub maintenance_mode: Option<String>,
+    pub fallback_mode: Option<String>,
+    pub important_overrides: Vec<String>,
+    pub note: Option<String>,
+    pub incident_link: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SessionHistoryListItem {
     pub visit_id: String,
     pub guest_id: String,
@@ -412,6 +429,7 @@ pub struct SessionHistoryDetail {
     #[serde(flatten)]
     pub summary: SessionHistoryListItem,
     pub narrative: Vec<SessionNarrativeEvent>,
+    pub display_context: Option<SessionDisplayContext>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

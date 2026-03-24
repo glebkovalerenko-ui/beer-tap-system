@@ -42,3 +42,27 @@ def test_session_history_returns_active_and_detail(client):
     payload = detail_resp.json()
     assert payload['visit_id'] == visit_id
     assert payload['narrative'][0]['kind'] == 'open'
+
+
+def test_session_history_detail_returns_display_context_placeholder_when_not_saved(client):
+    headers = _login(client)
+    guest_resp = client.post(
+        '/api/guests/',
+        headers=headers,
+        json={
+            'last_name': 'Display',
+            'first_name': 'Context',
+            'patronymic': 'P',
+            'phone_number': '+79990001123',
+            'date_of_birth': '1991-01-01',
+            'id_document': 'HIST-002',
+        },
+    )
+    assert guest_resp.status_code == 201
+    visit_id = client.post('/api/visits/open', headers=headers, json={'guest_id': guest_resp.json()['guest_id']}).json()['visit_id']
+
+    detail_resp = client.get(f'/api/visits/history/{visit_id}', headers=headers)
+    assert detail_resp.status_code == 200
+    payload = detail_resp.json()
+    assert payload['display_context']['available'] is False
+    assert 'не был сохранён' in payload['display_context']['note']

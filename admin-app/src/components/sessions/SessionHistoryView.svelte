@@ -92,6 +92,7 @@
       ? `Журнал сфокусирован на кране ${focusTapId}.`
       : '';
   $: detailNarrativeGroups = detail ? groupedNarrative(detail) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
+  $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary) : [];
   $: if (focusVisitId && !focusResolved && !$visitStore.historyLoading && (!$visitStore.loading || activeItems.length > 0 || historyItems.length > 0)) {
     resolveFocusVisit();
@@ -371,6 +372,42 @@
     ].filter(Boolean);
   }
 
+  function buildDisplayContext(detailPayload) {
+    const context = detailPayload?.display_context;
+    if (!context?.available) {
+      return {
+        available: false,
+        title: 'Что видел гость',
+        placeholder: context?.note || 'Display context не был сохранён для этой сессии.',
+        incidentLink: context?.incident_link || (detailPayload?.summary?.has_incident
+          ? 'По этой сессии есть incident narrative, но связать его с экраном нельзя: display context не был сохранён.'
+          : ''),
+        fields: [],
+        overrides: [],
+        note: context?.note || '',
+      };
+    }
+
+    const fields = [
+      { label: 'Display state / availability', value: context.availability_label || context.display_state || '—' },
+      { label: 'Guest-facing title', value: context.title || '—' },
+      { label: 'Guest-facing subtitle', value: context.subtitle || '—' },
+      { label: 'Maintenance режим', value: context.maintenance_mode || 'Не использовался / не восстановлен' },
+      { label: 'Fallback режим', value: context.fallback_mode || 'Не использовался / не восстановлен' },
+    ];
+
+    return {
+      available: true,
+      title: 'Что видел гость',
+      placeholder: '',
+      incidentLink: context.incident_link || '',
+      note: context.note || '',
+      fields,
+      overrides: context.important_overrides || [],
+      tapLabel: context.tap_name ? `${context.tap_name}${context.tap_id ? ` · tap #${context.tap_id}` : ''}` : (context.tap_id ? `Tap #${context.tap_id}` : ''),
+    };
+  }
+
   function groupedNarrative(detailPayload) {
     const source = detailPayload?.narrative?.length ? detailPayload.narrative : fallbackNarrative(detailPayload.summary);
     const timeline = source.map((event) => ({
@@ -608,6 +645,43 @@
           {/if}
         </section>
 
+        <section class="timeline-section display-context-section">
+          <h3>{detailDisplayContext.title}</h3>
+          {#if detailDisplayContext.tapLabel}
+            <p class="muted">Контекст для {detailDisplayContext.tapLabel}.</p>
+          {/if}
+          {#if detailDisplayContext.available}
+            <dl class="display-context-grid">
+              {#each detailDisplayContext.fields as field}
+                <div><dt>{field.label}</dt><dd>{field.value}</dd></div>
+              {/each}
+            </dl>
+            <div class="summary-section nested-summary">
+              <strong>Важные override-поля</strong>
+              {#if detailDisplayContext.overrides.length}
+                <ul class="override-list">
+                  {#each detailDisplayContext.overrides as override}
+                    <li>{override}</li>
+                  {/each}
+                </ul>
+              {:else}
+                <p class="muted">Override-поля не влияли на guest-facing поведение.</p>
+              {/if}
+              {#if detailDisplayContext.note}
+                <p class="muted">{detailDisplayContext.note}</p>
+              {/if}
+              {#if detailDisplayContext.incidentLink}
+                <p>{detailDisplayContext.incidentLink}</p>
+              {/if}
+            </div>
+          {:else}
+            <p class="muted">{detailDisplayContext.placeholder}</p>
+            {#if detailDisplayContext.incidentLink}
+              <p>{detailDisplayContext.incidentLink}</p>
+            {/if}
+          {/if}
+        </section>
+
         <section class="timeline-section">
           <h3>{SESSION_COPY.operatorActions}</h3>
           {#if detailOperatorActions.length}
@@ -660,11 +734,14 @@
   .stats-grid article { flex: 1 1 180px; display: grid; gap: 0.35rem; }
   .timeline { list-style: none; padding: 0; margin: 0; }
   .timeline li { align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.75rem; }
-  .timeline p, .drawer-head h2, .drawer-head p, .list-head h3, .list-head p, .summary-section p, .filters-title h2, .filters-title p, .empty-drawer h2, .empty-drawer p { margin: 0; }
+  .timeline p, .drawer-head h2, .drawer-head p, .list-head h3, .list-head p, .summary-section p, .filters-title h2, .filters-title p, .empty-drawer h2, .empty-drawer p, .nested-summary strong { margin: 0; }
   .time { min-width: 132px; color: var(--text-secondary, #64748b); font-size: 0.85rem; }
   .counter, .state { border-radius: 999px; padding: 0.2rem 0.65rem; background: #f1f5f9; color: #475569; }
   .state.active { background: #dcfce7; color: #166534; }
   dl { display: grid; gap: 0.5rem; margin: 0; }
+  .display-context-grid { grid-template-columns: 1fr; }
+  .override-list { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; }
+  .nested-summary { gap: 0.65rem; }
   .compact-list { gap: 0.5rem; }
   @media (max-width: 1100px) {
     .content-grid { grid-template-columns: 1fr; }
