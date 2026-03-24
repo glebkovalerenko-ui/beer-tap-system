@@ -9,6 +9,7 @@
 
 ## Core system docs
 
+- `docs/operator/state-model.md`: unified TapState/SessionState/IncidentState transitions and UI↔backend status dictionary.
 - `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`: consolidated architecture for the frozen M1-M7 stage.
 - `docs/architecture/OPERATIONAL_MODEL_V1.md`: operational invariants and state transitions.
 - `docs/API_REFERENCE.md`: practical API contract for admin flows and controller sync.
