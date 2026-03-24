@@ -1,6 +1,5 @@
 <script>
   // @ts-nocheck
-  import { get } from 'svelte/store';
   import { onMount } from 'svelte';
 
   import Modal from '../components/common/Modal.svelte';
@@ -42,15 +41,6 @@
   }
 
   onMount(() => {
-    const token = get(sessionStore).token;
-    if (token && !initialLoadAttempted) {
-      tapStore.fetchTaps();
-      kegStore.fetchKegs();
-      beverageStore.fetchBeverages();
-      visitStore.fetchActiveVisits().catch(() => {});
-      initialLoadAttempted = true;
-    }
-
     const focusTapId = sessionStorage.getItem('incidents.focusTapId');
     if (focusTapId) {
       sessionStorage.removeItem('incidents.focusTapId');
