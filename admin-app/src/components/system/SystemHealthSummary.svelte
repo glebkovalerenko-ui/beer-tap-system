@@ -1,5 +1,6 @@
 <script>
   import { roleStore } from '../../stores/roleStore.js';
+  import { ACTION_LABELS, getActionPlan, navigateWithFocus } from '../../lib/actionRouting.js';
   export let summary = { subsystems: [], health: { sections: {} }, generatedAt: null, error: null };
   export let canUseEngineeringActions = false;
   export let canManageSystemSettings = false;
@@ -9,43 +10,43 @@
   const toneLabel = (state) => state === 'ok' ? 'В норме' : state === 'warning' || state === 'degraded' || state === 'unknown' ? 'Нужно проверить' : 'Требуется вмешательство';
   const isProblemState = (state) => PROBLEM_STATES.includes(state);
 
-  function navigateTo(path) {
-    window.location.hash = path;
-  }
-
   function focusTap(device) {
     const tapId = device?.tap_id || device?.tap || device?.device_id || null;
-    if (tapId) {
-      sessionStorage.setItem('incidents.focusTapId', String(tapId));
-    }
-    navigateTo('/taps');
+    navigateWithFocus({ target: 'tap', tapId, source: device?.label || device?.name || device?.subsystem });
   }
 
   function focusSystem(source) {
-    if (source) {
-      sessionStorage.setItem('system.focusSource', source);
-    }
-    navigateTo('/system');
+    navigateWithFocus({ target: 'system', source: source || 'System details' });
+  }
+
+  function focusIncidents(item, source) {
+    navigateWithFocus({
+      target: 'incident',
+      tapId: item?.tap_id || item?.tap || null,
+      incidentId: item?.incident_id || item?.related_incident_id || item?.incident?.incident_id || null,
+      source: source || item?.label || item?.name || item?.subsystem || 'System details',
+    });
   }
 
   function buildActionLink(type, item, fallbackLabel) {
+    const source = item?.label || item?.name || item?.subsystem || 'System details';
     if (type === 'tap') {
       return {
-        label: fallbackLabel || 'Открыть кран',
+        label: fallbackLabel || ACTION_LABELS.tap,
         action: () => focusTap(item),
       };
     }
 
     if (type === 'incident') {
       return {
-        label: fallbackLabel || ($roleStore.permissions.incidents_view ? 'Открыть инциденты' : 'Открыть систему'),
-        action: () => ($roleStore.permissions.incidents_view ? navigateTo('/incidents') : focusSystem(item?.label || item?.name || 'System details')),
+        label: fallbackLabel || ACTION_LABELS.incident,
+        action: () => ($roleStore.permissions.incidents_view ? focusIncidents(item, source) : focusSystem(source)),
       };
     }
 
     return {
-      label: fallbackLabel || 'Открыть sync details',
-      action: () => focusSystem(item?.label || item?.name || 'Sync details'),
+      label: fallbackLabel || ACTION_LABELS.checkSync,
+      action: () => focusSystem(source),
     };
   }
 
@@ -60,6 +61,7 @@
     const sourceName = item?.name || context.name || '';
 
     if (context.kind === 'subsystem') {
+      const plan = getActionPlan(`${sourceName}_offline`);
       switch (sourceName) {
         case 'backend':
         case 'api':
@@ -71,8 +73,8 @@
             escalate: 'Эскалируйте инженеру сразу, если сводка не обновляется или точка не может подтвердить действие.',
             nextStep: 'Зафиксируйте масштаб проблемы и откройте список инцидентов для назначения ответственного.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('incident', item, 'К инцидентам'),
-            secondaryAction: buildActionLink('sync', item, 'К sync details'),
+            primaryAction: buildActionLink('incident', item, plan.primaryCta),
+            secondaryAction: buildActionLink('sync', item, plan.secondaryCta.label),
           };
         case 'sync':
         case 'sync-service':
@@ -85,8 +87,8 @@
             escalate: 'Эскалируйте, если задержка держится дольше одного цикла обновления или влияет на несколько точек.',
             nextStep: 'Перейдите в детали синхронизации и посмотрите, какие очереди или каналы отстают.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('sync', item, 'К sync details'),
-            secondaryAction: buildActionLink('incident', item, 'Открыть инциденты'),
+            primaryAction: buildActionLink('sync', item, plan.primaryCta),
+            secondaryAction: buildActionLink('incident', item, plan.secondaryCta.label),
           };
         case 'controller':
         case 'controllers': {
@@ -98,8 +100,8 @@
             escalate: 'Эскалируйте, если кран не возвращается в норму после базовой проверки на месте.',
             nextStep: 'Начните с первого проблемного крана и подтвердите, локальная это проблема или массовая.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, 'Открыть проблемный кран'),
-            secondaryAction: buildActionLink('incident', item, 'К инцидентам'),
+            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, ACTION_LABELS.tap),
+            secondaryAction: buildActionLink('incident', item, ACTION_LABELS.assignOwner),
           };
         }
         case 'display-agent':
@@ -114,8 +116,8 @@
             escalate: 'Эскалируйте, если экран недоступен на нескольких точках или не восстанавливается после локальной проверки.',
             nextStep: 'Перейдите к конкретному крану, чтобы проверить экран и связанный контекст точки.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, 'Открыть кран'),
-            secondaryAction: buildActionLink('incident', item, 'К инцидентам'),
+            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, ACTION_LABELS.tap),
+            secondaryAction: buildActionLink('incident', item, ACTION_LABELS.incident),
           };
         }
         case 'reader':
@@ -131,8 +133,8 @@
             escalate: 'Эскалируйте, если проблема повторяется на нескольких кранах или мешает началу сессий.',
             nextStep: 'Откройте кран с проблемным считывателем и сверяйте ситуацию на месте.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, 'Открыть кран'),
-            secondaryAction: buildActionLink('incident', item, 'К инцидентам'),
+            primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, ACTION_LABELS.tap),
+            secondaryAction: buildActionLink('incident', item, ACTION_LABELS.incident),
           };
         }
         default:
@@ -143,8 +145,8 @@
             escalate: 'Эскалируйте, если операторская проверка не объясняет причину или влияние расширяется.',
             nextStep: 'Зафиксируйте наблюдение и откройте связанный контекст для дальнейшего разбора.',
             detail: sourceDetail,
-            primaryAction: buildActionLink('incident', item, 'К инцидентам'),
-            secondaryAction: buildActionLink('sync', item, 'К деталям'),
+            primaryAction: buildActionLink('incident', item, ACTION_LABELS.incident),
+            secondaryAction: buildActionLink('sync', item, ACTION_LABELS.checkSync),
           };
       }
     }
@@ -153,7 +155,7 @@
       const subsystem = (item?.subsystem || context.parentLabel || '').toLowerCase();
       const tapLabel = item?.tap || item?.device_id || label;
       const incidentId = item?.incident_id || item?.related_incident_id || item?.incident?.incident_id || null;
-      const incidentLabel = incidentId ? `Инцидент #${incidentId}` : 'К инцидентам';
+      const incidentLabel = incidentId ? `${ACTION_LABELS.incident} #${incidentId}` : ACTION_LABELS.incident;
       if (subsystem.includes('контрол')) {
         return {
           whatBroken: `${tapLabel}: контроллер отвечает нестабильно.`,
@@ -162,7 +164,7 @@
           escalate: 'Эскалируйте, если кран недоступен для налива или не восстанавливает связь.',
           nextStep: 'Проверьте именно этот кран и сверяйте с открытыми инцидентами по точке.',
           detail: sourceDetail,
-          primaryAction: buildActionLink('tap', item, 'Открыть кран'),
+          primaryAction: buildActionLink('tap', item, ACTION_LABELS.tap),
           secondaryAction: buildActionLink('incident', item, incidentLabel),
         };
       }
@@ -175,7 +177,7 @@
           escalate: 'Эскалируйте, если экран остаётся пустым или показывает неактуальный сценарий.',
           nextStep: 'Перейдите к крану и подтвердите состояние экрана на месте.',
           detail: sourceDetail,
-          primaryAction: buildActionLink('tap', item, 'Открыть кран'),
+          primaryAction: buildActionLink('tap', item, ACTION_LABELS.tap),
           secondaryAction: buildActionLink('incident', item, incidentLabel),
         };
       }
@@ -188,7 +190,7 @@
           escalate: 'Эскалируйте, если проблема повторяется после базовой локальной проверки.',
           nextStep: 'Перейдите к крану и сравните состояние устройства с инцидентами по этой точке.',
           detail: sourceDetail,
-          primaryAction: buildActionLink('tap', item, 'Открыть кран'),
+          primaryAction: buildActionLink('tap', item, ACTION_LABELS.tap),
           secondaryAction: buildActionLink('incident', item, incidentLabel),
         };
       }
@@ -200,7 +202,7 @@
         escalate: 'Эскалируйте, если проблема сохраняется после первой проверки.',
         nextStep: 'Перейдите к крану и затем в инциденты, если нужен общий разбор.',
         detail: sourceDetail,
-        primaryAction: buildActionLink('tap', item, 'Открыть кран'),
+        primaryAction: buildActionLink('tap', item, ACTION_LABELS.tap),
         secondaryAction: buildActionLink('incident', item, incidentLabel),
       };
     }
@@ -240,8 +242,8 @@
       escalate: 'Эскалируйте, если проблема подтверждается.',
       nextStep: 'Перейдите в связанный раздел.',
       detail: sourceDetail,
-      primaryAction: buildActionLink('incident', item, 'К инцидентам'),
-      secondaryAction: buildActionLink('sync', item, 'К деталям'),
+      primaryAction: buildActionLink('incident', item, ACTION_LABELS.incident),
+      secondaryAction: buildActionLink('sync', item, ACTION_LABELS.checkSync),
     };
   }
 
@@ -331,7 +333,7 @@
                     <div><dt>На что влияет</dt><dd>{item.operatorCopy.impact}</dd></div>
                     <div><dt>Что проверить первым</dt><dd>{item.operatorCopy.firstCheck}</dd></div>
                     <div><dt>Когда эскалировать</dt><dd>{item.operatorCopy.escalate}</dd></div>
-                    <div><dt>Recommended next step</dt><dd>{item.operatorCopy.nextStep}</dd></div>
+                    <div><dt>Следующий шаг</dt><dd>{item.operatorCopy.nextStep}</dd></div>
                   </dl>
                   <div class="action-links">
                     <button class="link-btn" on:click={item.operatorCopy.primaryAction.action}>{item.operatorCopy.primaryAction.label}</button>
@@ -362,7 +364,7 @@
                     <div><dt>На что влияет</dt><dd>{item.operatorCopy.impact}</dd></div>
                     <div><dt>Что проверить первым</dt><dd>{item.operatorCopy.firstCheck}</dd></div>
                     <div><dt>Когда эскалировать</dt><dd>{item.operatorCopy.escalate}</dd></div>
-                    <div><dt>Recommended next step</dt><dd>{item.operatorCopy.nextStep}</dd></div>
+                    <div><dt>Следующий шаг</dt><dd>{item.operatorCopy.nextStep}</dd></div>
                   </dl>
                   <div class="action-links">
                     <button class="link-btn" on:click={item.operatorCopy.primaryAction.action}>{item.operatorCopy.primaryAction.label}</button>
@@ -419,7 +421,7 @@
           <div class="checklist">
             <div><strong>Что проверить первым</strong><span>{subsystem.operatorCopy.firstCheck}</span></div>
             <div><strong>Когда эскалировать</strong><span>{subsystem.operatorCopy.escalate}</span></div>
-            <div><strong>Recommended next step</strong><span>{subsystem.operatorCopy.nextStep}</span></div>
+            <div><strong>Следующий шаг</strong><span>{subsystem.operatorCopy.nextStep}</span></div>
           </div>
           <div class="action-links">
             <button class="link-btn" on:click={subsystem.operatorCopy.primaryAction.action}>{subsystem.operatorCopy.primaryAction.label}</button>
@@ -433,7 +435,7 @@
                     <strong>{device.tap || device.device_id}</strong>
                     <span>{device.operatorCopy.whatBroken}</span>
                   </div>
-                  <button class="inline-link" on:click={device.operatorCopy.primaryAction.action}>К крану</button>
+                  <button class="inline-link" on:click={device.operatorCopy.primaryAction.action}>{ACTION_LABELS.tap}</button>
                 </li>
               {/each}
             </ul>
@@ -457,9 +459,9 @@
           <p>{item.operatorCopy.body}</p>
           {#if isProblemState(item.state)}
             <div class="action-links compact-links">
-              <button class="link-btn" on:click={() => focusSystem(item.label || item.name)}>Открыть sync details</button>
+              <button class="link-btn" on:click={() => focusSystem(item.label || item.name)}>{ACTION_LABELS.checkSync}</button>
               {#if $roleStore.permissions.incidents_view}
-                <button class="link-btn secondary" on:click={() => navigateTo('/incidents')}>Посмотреть инциденты</button>
+                <button class="link-btn secondary" on:click={() => focusIncidents(item, item.label || item.name)}>{ACTION_LABELS.incident}</button>
               {/if}
             </div>
           {/if}

@@ -10,6 +10,7 @@
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { formatDateTimeRu, formatTimeRu, formatVolumeRu } from '../lib/formatters.js';
   import { formatHealthPill, healthStateLabel, healthTone } from '../lib/healthStatus.js';
+  import { ACTION_LABELS, getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
 
@@ -21,65 +22,27 @@
   const severityWeight = { critical: 0, warning: 1, info: 2 };
   const incidentPriorityWeight = { critical: 0, high: 1, medium: 2, low: 3 };
 
-  function navigateTo(path) {
-    window.location.hash = path;
-  }
-
-  function focusTap(tapId) {
-    if (tapId) {
-      sessionStorage.setItem('incidents.focusTapId', String(tapId));
-    }
-    navigateTo('/taps');
-  }
-
-  function focusVisit(visitId) {
-    if (visitId) {
-      sessionStorage.setItem('visits.lookupVisitId', visitId);
-    }
-    navigateTo('/sessions');
-  }
-
-  function focusSystem(source) {
-    if (source) {
-      sessionStorage.setItem('system.focusSource', source);
-    }
-    navigateTo('/system');
-  }
-
   function openTap(item) {
-    focusTap(item.tap_id);
+    navigateWithFocus({ target: 'tap', tapId: item.tap_id, source: item.tap_name || item.title });
     uiStore.notifySuccess(`Переход к крану ${item.tap_name || item.title || item.tap_id || ''}`.trim());
   }
 
   function openSession(item) {
     const visitId = item.visit_id || item.active_session?.visit_id || item.operations?.activeSessionSummary?.visitId || null;
-    focusVisit(visitId);
+    navigateWithFocus({ target: 'session', visitId, source: item.tap_name || item.title });
   }
 
   function openActionTarget(item) {
     if (!item) return;
 
-    if (item.target === 'session') {
-      focusVisit(item.visitId);
-      return;
-    }
-
-    if (item.target === 'system') {
-      focusSystem(item.systemSource || item.title || item.label);
-      return;
-    }
-
-    if (item.target === 'tap') {
-      focusTap(item.tapId || item.tap_id);
-      return;
-    }
-
-    if (item.target === 'incident') {
-      navigateTo(item.href || '/incidents');
-      return;
-    }
-
-    navigateTo(item.href || '/today');
+    navigateWithFocus({
+      target: item.target,
+      tapId: item.tapId || item.tap_id,
+      visitId: item.visitId,
+      source: item.systemSource || item.title || item.label,
+      incidentId: item.incidentId,
+      href: item.href || '/today',
+    });
   }
 
   function dismissEvent(item) {
@@ -140,27 +103,24 @@
   }
 
 
-  function actionLabelForTarget(target) {
-    switch (target) {
-      case 'tap':
-        return 'Открыть кран';
-      case 'session':
-        return 'Открыть сессию';
-      case 'system':
-        return 'Открыть систему';
-      case 'incident':
-        return $roleStore.permissions.incidents_manage ? 'Открыть и обработать' : 'Открыть инцидент';
-      default:
-        return 'Открыть контекст';
+  function actionLabelForTarget(target, kind = 'default') {
+    const plan = getActionPlan(kind);
+    if (target === 'system' && plan.primaryCta === ACTION_LABELS.checkSync) {
+      return ACTION_LABELS.checkSync;
     }
+    return ACTION_LABELS[target] || ACTION_LABELS.context;
   }
 
   function buildActionItem(item) {
-    const target = item.target || 'system';
+    const plan = getActionPlan(item.kind || (item.target === 'incident' ? 'incident' : 'default'));
+    const target = item.target || plan.primaryTarget || 'system';
     return {
       ...item,
       target,
-      actionLabel: actionLabelForTarget(target),
+      actionLabel: item.actionLabel || actionLabelForTarget(target, item.kind),
+      secondaryCta: item.secondaryCta || plan.secondaryCta,
+      recommendedOwnerState: item.recommendedOwnerState || plan.recommendedOwnerState,
+      recommendedActionState: item.recommendedActionState || plan.recommendedActionState,
     };
   }
 
