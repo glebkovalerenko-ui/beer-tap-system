@@ -56,6 +56,7 @@ def list_lost_cards(
 def restore_lost_card(
     card_uid: str,
     db: Session = Depends(get_db),
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("cards_reissue_manage"))] = None,
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
     restored_uid = lost_card_crud.restore_lost_card(db=db, card_uid=card_uid)

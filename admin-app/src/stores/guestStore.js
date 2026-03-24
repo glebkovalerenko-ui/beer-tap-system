@@ -3,6 +3,7 @@ import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore';
 import { logError, normalizeError } from '../lib/errorUtils';
+import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 function toErrorMessage(context, error) {
   logError(context, error);
@@ -86,6 +87,7 @@ function createGuestStore() {
           return { ...s, guests: updatedGuests };
         });
       } catch (error) {
+        notifyForbiddenIfNeeded(error);
         const errorMessage = toErrorMessage('guestStore.bindCardToGuest', error);
         update((s) => ({ ...s, error: errorMessage }));
         throw new Error(errorMessage);

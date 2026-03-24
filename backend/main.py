@@ -86,8 +86,27 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
             status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect username or password"
         )
     
-    access_token = security.create_access_token(data={"sub": user["username"]})
+    role = user.get("role", "operator")
+    access_token = security.create_access_token(
+        data={
+            "sub": user["username"],
+            "role": role,
+            "permissions": sorted(security.ROLE_PERMISSIONS.get(role, set())),
+        }
+    )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/api/me", tags=["System"])
+async def get_me(
+    current_user: Annotated[dict, Depends(security.get_current_user)],
+):
+    return {
+        "username": current_user.get("username"),
+        "full_name": current_user.get("full_name"),
+        "role": current_user.get("role"),
+        "permissions": current_user.get("permissions", []),
+    }
 
 @app.post("/api/sync/pours", response_model=schemas.SyncResponse, tags=["Controllers"])
 @app.post("/api/sync/pours/", response_model=schemas.SyncResponse, tags=["Controllers"])

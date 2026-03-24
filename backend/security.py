@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import logging
 from jose import JWTError, jwt
-from typing import Annotated
+from typing import Annotated, Any
 from sqlalchemy.orm import Session
 
 from fastapi import Depends, HTTPException, status, Request, BackgroundTasks
@@ -27,8 +27,68 @@ FAKE_USERS_DB = {
     "admin": {
         "username": "admin",
         "full_name": "Admin User",
-        "hashed_password": "fake_password"
-    }
+        "hashed_password": "fake_password",
+        "role": "engineer_owner",
+    },
+    "shift_lead": {
+        "username": "shift_lead",
+        "full_name": "Shift Lead User",
+        "hashed_password": "fake_password",
+        "role": "shift_lead",
+    },
+    "operator": {
+        "username": "operator",
+        "full_name": "Operator User",
+        "hashed_password": "fake_password",
+        "role": "operator",
+    },
+}
+
+ROLE_PERMISSIONS = {
+    "operator": {
+        "taps_view",
+        "sessions_view",
+        "cards_lookup",
+        "cards_open_active_session",
+        "cards_history_view",
+        "incidents_view",
+        "system_health_view",
+    },
+    "shift_lead": {
+        "taps_view",
+        "taps_control",
+        "sessions_view",
+        "cards_lookup",
+        "cards_open_active_session",
+        "cards_history_view",
+        "cards_top_up",
+        "cards_block_manage",
+        "cards_reissue_manage",
+        "incidents_view",
+        "incidents_manage",
+        "system_health_view",
+        "maintenance_actions",
+    },
+    "engineer_owner": {
+        "taps_view",
+        "taps_control",
+        "sessions_view",
+        "cards_lookup",
+        "cards_open_active_session",
+        "cards_history_view",
+        "cards_top_up",
+        "cards_block_manage",
+        "cards_reissue_manage",
+        "incidents_view",
+        "incidents_manage",
+        "system_health_view",
+        "system_engineering_actions",
+        "maintenance_actions",
+        "display_override",
+        "settings_manage",
+        "debug_tools",
+        "role_switch",
+    },
 }
 
 # --- ОСНОВНАЯ ЛОГИКА (без изменений) ---
@@ -46,6 +106,12 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def _permissions_for_role(role: str | None) -> set[str]:
+    if not role:
+        return set()
+    return set(ROLE_PERMISSIONS.get(role, set()))
 
 def _normalize_token(value: str | None) -> str:
     if value is None:
@@ -148,7 +214,21 @@ def _authenticate_bearer_user(token: str | None) -> dict:
     user = get_user(username)
     if user is None:
         raise credentials_exception
-    return user
+
+    role = payload.get("role") or user.get("role") or "operator"
+    payload_permissions = payload.get("permissions")
+    permission_set = set()
+    if isinstance(payload_permissions, list):
+        permission_set = {str(item).strip() for item in payload_permissions if str(item).strip()}
+    if not permission_set:
+        permission_set = _permissions_for_role(role)
+
+    return {
+        "username": username,
+        "full_name": user.get("full_name"),
+        "role": role,
+        "permissions": sorted(permission_set),
+    }
 
 def _maybe_schedule_audit_log(
     *,
@@ -236,3 +316,34 @@ async def get_display_reader(
     if display_principal is not None:
         return display_principal
     return await get_current_user(request, background_tasks, token, db)
+
+
+def require_permissions(*required_permissions: str):
+    required = [permission.strip() for permission in required_permissions if permission and permission.strip()]
+
+    async def dependency(
+        current_user: Annotated[dict, Depends(get_current_user)],
+    ) -> dict:
+        if not required:
+            return current_user
+
+        granted = {
+            str(item).strip()
+            for item in (current_user or {}).get("permissions", [])
+            if str(item).strip()
+        }
+        missing = [permission for permission in required if permission not in granted]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "forbidden",
+                    "message": "Action is not available for current role",
+                    "required_permissions": required,
+                    "missing_permissions": missing,
+                    "role": (current_user or {}).get("role"),
+                },
+            )
+        return current_user
+
+    return dependency

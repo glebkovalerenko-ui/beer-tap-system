@@ -24,6 +24,7 @@ def get_system_status(db: Session = Depends(get_db)):
 @router.post("/emergency_stop", response_model=schemas.SystemOperationalSummary, summary="Включить/выключить экстренную остановку")
 def set_emergency_stop(
     state_update: schemas.SystemStateUpdate,
+    _permission_guard: Annotated[dict, Depends(security.require_permissions("maintenance_actions"))],
     current_user: Annotated[schemas.Guest, Depends(security.get_current_user)],
     db: Session = Depends(get_db),
 ):
