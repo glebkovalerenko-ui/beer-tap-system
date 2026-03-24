@@ -377,21 +377,32 @@
   }
 
   $: canViewIncidents = $roleStore.permissions.incidents_view;
-  $: canManageIncidents = $roleStore.permissions.incidents_manage;
-  $: incidentActionCapabilities = canManageIncidents ? $incidentStore.capabilities : { claim: false, escalate: false, close: false, note: false };
-  $: incidentActionReadOnly = $incidentStore.readOnly || !canManageIncidents;
-  $: incidentActionReadOnlyReason = !canManageIncidents
-    ? 'Для текущей роли доступен просмотр, переходы к крану/сессии и эскалация по маршруту смены без прямой фиксации действий в этом разделе.'
-    : ($incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.');
+  $: incidentActionCapabilitiesRaw = $incidentStore.capabilities || {};
+  $: incidentActionCapabilities = {
+    claim: Boolean(incidentActionCapabilitiesRaw.claim?.enabled),
+    escalate: Boolean(incidentActionCapabilitiesRaw.escalate?.enabled),
+    close: Boolean(incidentActionCapabilitiesRaw.close?.enabled),
+    note: Boolean(incidentActionCapabilitiesRaw.note?.enabled),
+  };
+  $: incidentActionCapabilityReasons = {
+    claim: incidentActionCapabilitiesRaw.claim?.reason || null,
+    escalate: incidentActionCapabilitiesRaw.escalate?.reason || null,
+    close: incidentActionCapabilitiesRaw.close?.reason || null,
+    note: incidentActionCapabilitiesRaw.note?.reason || null,
+  };
+  $: incidentActionReadOnly = $incidentStore.readOnly;
+  $: incidentActionReadOnlyReason = $incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.';
   $: incidentActionPlan = getActionPlan('incident');
 
   function openActionForm(event, suggestedAction = 'note') {
     const item = event.detail?.item || event;
-    if (!canManageIncidents) return;
+    if (incidentActionReadOnly) return;
+    const allowedActions = ['claim', 'note', 'escalate', 'close'].filter((action) => incidentActionCapabilities[action]);
+    const resolvedAction = allowedActions.includes(suggestedAction) ? suggestedAction : (allowedActions[0] || 'note');
 
     actionForm = {
       incidentId: item.incident_id,
-      action: suggestedAction,
+      action: resolvedAction,
       owner: item.accountability?.owner || item.operator || '',
       note: item.note_action || '',
       escalationReason: '',
@@ -409,6 +420,10 @@
   async function submitActionForm() {
     const item = actionModalIncident;
     if (!item) return;
+    if (!incidentActionCapabilities[actionForm.action]) {
+      uiStore.notifyWarning(incidentActionCapabilityReasons[actionForm.action] || 'Действие недоступно для текущей роли/окружения.');
+      return;
+    }
 
     try {
       if (actionForm.action === 'claim') {
@@ -439,7 +454,7 @@
     <div class="page-header">
       <div>
         <h1>Инциденты</h1>
-        <p>{canManageIncidents ? 'Оператор видит подтверждённый статус инцидента, ответственного и может фиксировать действия прямо из очереди.' : 'Оператор видит actionable очередь инцидентов, может фильтровать, открывать кран или сессию и эскалировать кейс дальше по маршруту смены без прямых mutation-действий.'}</p>
+        <p>{incidentActionReadOnly ? 'Оператор видит очередь инцидентов и причины недоступности mutation-действий в текущем окружении.' : 'Оператор видит подтверждённый статус инцидента, ответственного и может фиксировать действия прямо из очереди.'}</p>
       </div>
       <div class="header-stats">
         <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
@@ -515,6 +530,7 @@
             groupedItems={groupedItems}
             selectedIncidentId={selectedIncidentId}
             actionCapabilities={incidentActionCapabilities}
+            actionCapabilityReasons={incidentActionCapabilityReasons}
             readOnly={incidentActionReadOnly}
             on:select={selectIncident}
             on:openTap={openTap}
@@ -588,7 +604,7 @@
           <section class="detail-section">
             <div class="section-head">
               <h3>{INCIDENT_COPY.stateFlow}</h3>
-              {#if canManageIncidents}<button class="link" on:click={() => openActionForm(selectedIncident, selectedIncident.status === 'new' ? 'claim' : 'note')}>{INCIDENT_COPY.actionForm}</button>{/if}
+              {#if !incidentActionReadOnly}<button class="link" on:click={() => openActionForm(selectedIncident, selectedIncident.status === 'new' ? 'claim' : 'note')}>{INCIDENT_COPY.actionForm}</button>{/if}
             </div>
             <ol class="state-flow">
               {#each selectedIncident.accountability.stateFlow as step}
@@ -640,15 +656,15 @@
             </ul>
           </section>
 
-          {#if !canManageIncidents}
+          {#if incidentActionReadOnly}
             <section class="detail-section viewer-guidance">
               <div class="section-head"><h3>Что может сделать оператор</h3></div>
-              <p>Для этой роли доступны просмотр очереди, фильтры и переходы в кран, сессию и system context. Если кейс требует вмешательства старшего смены или инженера, используйте связанный контекст и передайте инцидент дальше по регламенту.</p>
+              <p>{incidentActionReadOnlyReason} Доступны просмотр очереди, фильтры и переходы в связанный контекст.</p>
             </section>
           {/if}
 
           <section class="detail-section">
-            <div class="section-head"><h3>{INCIDENT_COPY.actionsTaken}</h3>{#if canManageIncidents}<button class="link" on:click={() => openActionForm(selectedIncident, 'note')}>{INCIDENT_COPY.actionForm}</button>{/if}</div>
+            <div class="section-head"><h3>{INCIDENT_COPY.actionsTaken}</h3>{#if !incidentActionReadOnly}<button class="link" on:click={() => openActionForm(selectedIncident, 'note')}>{INCIDENT_COPY.actionForm}</button>{/if}</div>
             {#if selectedIncident.actionsTaken.length}
               <ul class="timeline compact">
                 {#each selectedIncident.actionsTaken as action}
@@ -672,7 +688,7 @@
     </div>
   </section>
 
-  {#if canManageIncidents && isActionModalOpen && actionModalIncident}
+  {#if isActionModalOpen && actionModalIncident}
     <Modal on:close={closeActionForm}>
       <div slot="header">
         <h2>{INCIDENT_COPY.actionFormTitle} · #{actionModalIncident.incident_id}</h2>
@@ -685,10 +701,10 @@
             <label>
               <span>Действие</span>
               <select bind:value={actionForm.action} disabled={incidentActionReadOnly}>
-                <option value="claim">Взять в работу</option>
-                <option value="note">Добавить заметку</option>
-                <option value="escalate">Эскалировать</option>
-                <option value="close">Закрыть</option>
+                <option value="claim" disabled={!incidentActionCapabilities.claim}>Взять в работу</option>
+                <option value="note" disabled={!incidentActionCapabilities.note}>Добавить заметку</option>
+                <option value="escalate" disabled={!incidentActionCapabilities.escalate}>Эскалировать</option>
+                <option value="close" disabled={!incidentActionCapabilities.close}>Закрыть</option>
               </select>
             </label>
             <label>
@@ -697,6 +713,9 @@
             </label>
           </div>
           <p class="muted">Текущий статус в системе: <strong>{actionModalIncident.statusLabel}</strong>. После сохранения карточка обновится подтверждёнными данными без сброса выбранного инцидента.</p>
+          {#if incidentActionReadOnly}
+            <p class="muted">{incidentActionReadOnlyReason}</p>
+          {/if}
         </section>
 
         <section class="detail-section compact-panel">

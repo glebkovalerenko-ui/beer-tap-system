@@ -10,6 +10,12 @@ def _login(client):
     return {'Authorization': f"Bearer {response.json()['access_token']}"}
 
 
+def _login_as(client, username: str):
+    response = client.post('/api/token', data={'username': username, 'password': 'fake_password'})
+    assert response.status_code == 200
+    return {'Authorization': f"Bearer {response.json()['access_token']}"}
+
+
 def test_incidents_and_system_summary(client, db_session):
     headers = _login(client)
 
@@ -41,8 +47,10 @@ def test_incidents_and_system_summary(client, db_session):
     incidents = client.get('/api/incidents/', headers=headers)
     assert incidents.status_code == 200
     payload = incidents.json()
-    assert any(item['type'] == 'emergency_stop' for item in payload)
-    assert any(item['type'] == 'closed_valve_flow' for item in payload)
+    assert payload['mutation_capabilities']['claim']['enabled'] is True
+    assert payload['mutation_capabilities']['escalate']['enabled'] is True
+    assert any(item['type'] == 'emergency_stop' for item in payload['items'])
+    assert any(item['type'] == 'closed_valve_flow' for item in payload['items'])
 
     summary = client.get('/api/system/status', headers=headers)
     assert summary.status_code == 200
@@ -116,3 +124,21 @@ def test_incident_mutation_endpoints_persist_overlay_and_audit(client, db_sessio
     assert 'incident_note' in audit_actions
     assert 'incident_escalate' in audit_actions
     assert 'incident_close' in audit_actions
+
+
+def test_incident_capabilities_hide_unexecutable_actions_for_operator_role(client):
+    headers = _login_as(client, 'operator')
+    incidents = client.get('/api/incidents/', headers=headers)
+    assert incidents.status_code == 200
+    payload = incidents.json()
+
+    for action in ('claim', 'note', 'escalate', 'close'):
+        assert payload['mutation_capabilities'][action]['enabled'] is False
+        assert payload['mutation_capabilities'][action]['reason'] == 'Эскалация недоступна для роли Оператор.'
+
+    forbidden_claim = client.post(
+        '/api/incidents/system-emergency-stop/claim',
+        headers=headers,
+        json={'owner': 'Operator', 'note': 'Попытка без прав'},
+    )
+    assert forbidden_claim.status_code == 403

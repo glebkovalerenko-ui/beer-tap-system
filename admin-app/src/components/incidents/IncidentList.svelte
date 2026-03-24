@@ -7,6 +7,7 @@
   export let groupedItems = [];
   export let selectedIncidentId = null;
   export let actionCapabilities = {};
+  export let actionCapabilityReasons = {};
   export let readOnly = false;
 
   const dispatch = createEventDispatcher();
@@ -78,24 +79,38 @@
                 </div>
 
                 <div class="card-actions">
-                  {#if actionCapabilities.claim}
-                    <button
-                      class="secondary"
-                      disabled={readOnly || item.status === 'closed'}
-                      on:click|stopPropagation={() => emit('claimIncident', item)}
-                    >
-                      {actionLabel(item)}
-                    </button>
+                  <button
+                    class="secondary"
+                    disabled={!actionCapabilities.claim || readOnly || item.status === 'closed'}
+                    title={!actionCapabilities.claim ? (actionCapabilityReasons.claim || 'Действие недоступно') : ''}
+                    on:click|stopPropagation={() => emit('claimIncident', item)}
+                  >
+                    {actionLabel(item)}
+                  </button>
+                  {#if !actionCapabilities.claim && actionCapabilityReasons.claim}
+                    <small class="action-reason">{actionCapabilityReasons.claim}</small>
                   {/if}
-                  {#if actionCapabilities.escalate}
-                    <button
-                      class="secondary warning"
-                      disabled={readOnly}
-                      on:click|stopPropagation={() => emit('escalateIncident', item)}
-                    >Эскалировать</button>
+
+                  <button
+                    class="secondary warning"
+                    disabled={!actionCapabilities.escalate || readOnly}
+                    title={!actionCapabilities.escalate ? (actionCapabilityReasons.escalate || 'Действие недоступно') : ''}
+                    on:click|stopPropagation={() => emit('escalateIncident', item)}
+                  >Эскалировать</button>
+                  {#if !actionCapabilities.escalate && actionCapabilityReasons.escalate}
+                    <small class="action-reason">{actionCapabilityReasons.escalate}</small>
                   {/if}
-                  {#if actionCapabilities.note || actionCapabilities.close}
-                    <button class="primary" on:click|stopPropagation={() => emit('openActionForm', item)}>{INCIDENT_COPY.actionForm}</button>
+
+                  <button
+                    class="primary"
+                    disabled={readOnly || (!actionCapabilities.note && !actionCapabilities.close)}
+                    title={!actionCapabilities.note && !actionCapabilities.close
+                      ? (actionCapabilityReasons.note || actionCapabilityReasons.close || 'Действие недоступно')
+                      : ''}
+                    on:click|stopPropagation={() => emit('openActionForm', item)}
+                  >{INCIDENT_COPY.actionForm}</button>
+                  {#if !actionCapabilities.note && !actionCapabilities.close && (actionCapabilityReasons.note || actionCapabilityReasons.close)}
+                    <small class="action-reason">{actionCapabilityReasons.note || actionCapabilityReasons.close}</small>
                   {/if}
                 </div>
               </article>
@@ -122,6 +137,7 @@
   .priority.critical { background: #fee2e2; color: #b91c1c; }
   .card-meta, .state-row { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.92rem; }
   .card-links, .card-actions { flex-wrap: wrap; }
+  .action-reason { flex-basis: 100%; color: #9a3412; }
   .card-links .link, .card-actions button { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; background: #fff; font: inherit; font-weight: 700; }
   .card-links .link { color: #1d4ed8; }
   .card-actions .primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
