@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from crud import lost_card_crud, pour_policy, system_crud
+from crud import display_crud, lost_card_crud, pour_policy, system_crud
 from pos_adapter import get_pos_adapter
 
 
@@ -85,6 +85,112 @@ def _build_insufficient_funds_detail(context: dict[str, int]) -> dict:
         "message": "Insufficient funds: top up guest balance before pouring.",
         "context": detail_context,
     }
+
+
+def _compact_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _derive_display_context(db: Session, *, tap_id: int | None, has_incident: bool, incident_count: int) -> schemas.SessionDisplayContext:
+    if tap_id is None:
+        return schemas.SessionDisplayContext(
+            available=False,
+            source="not_saved",
+            note="Display context не был сохранён для этой сессии.",
+            incident_link=(
+                f"В сессии есть инциденты ({incident_count}), но связать их с экраном нельзя: tap/display context не был сохранён."
+                if has_incident else None
+            ),
+        )
+
+    try:
+        snapshot = display_crud.build_display_snapshot(db, tap_id=tap_id)
+    except Exception:
+        return schemas.SessionDisplayContext(
+            available=False,
+            source="not_saved",
+            tap_id=tap_id,
+            note="Display context не был сохранён для этой сессии.",
+            incident_link=(
+                f"В сессии есть инциденты ({incident_count}), поэтому display context стоит проверять отдельно: исторический snapshot не сохранился."
+                if has_incident else None
+            ),
+        )
+
+    tap_status = snapshot.tap.status
+    enabled = snapshot.tap.enabled
+    has_assignment = snapshot.assignment.has_assignment
+    if not enabled:
+        display_state = "display_disabled"
+        availability_label = "Экран был отключён для гостя"
+    elif tap_status == "empty" or not has_assignment:
+        display_state = "fallback_empty"
+        availability_label = "Гость видел fallback для пустого или неназначенного крана"
+    elif tap_status in {"cleaning", "locked"}:
+        display_state = "maintenance"
+        availability_label = "Гость видел сервисный/недоступный экран"
+    else:
+        display_state = "beverage_spotlight"
+        availability_label = "Гость видел обычную карточку напитка"
+
+    title = None
+    subtitle = None
+    if display_state == "display_disabled":
+        title = _compact_text(snapshot.copy_block.maintenance_title) or _compact_text(snapshot.copy_block.fallback_title)
+        subtitle = _compact_text(snapshot.copy_block.maintenance_subtitle) or _compact_text(snapshot.copy_block.fallback_subtitle)
+    elif display_state == "fallback_empty":
+        title = _compact_text(snapshot.copy_block.fallback_title) or _compact_text(snapshot.presentation.brand_name) or _compact_text(snapshot.presentation.name)
+        subtitle = _compact_text(snapshot.copy_block.fallback_subtitle) or _compact_text(snapshot.presentation.description_short)
+    elif display_state == "maintenance":
+        title = _compact_text(snapshot.copy_block.maintenance_title) or _compact_text(snapshot.copy_block.fallback_title)
+        subtitle = _compact_text(snapshot.copy_block.maintenance_subtitle) or _compact_text(snapshot.copy_block.fallback_subtitle)
+    else:
+        title = _compact_text(snapshot.presentation.brand_name) or _compact_text(snapshot.presentation.name) or _compact_text(snapshot.copy_block.fallback_title)
+        subtitle = _compact_text(snapshot.presentation.description_short) or _compact_text(snapshot.copy_block.idle_instruction)
+
+    important_overrides = []
+    if snapshot.tap.enabled is False:
+        important_overrides.append("Tap display выключен на уровне крана")
+    if _compact_text(snapshot.copy_block.idle_instruction):
+        important_overrides.append(f"Idle instruction: {snapshot.copy_block.idle_instruction}")
+    if _compact_text(snapshot.theme.accent_color):
+        important_overrides.append(f"Accent color: {snapshot.theme.accent_color}")
+    if snapshot.theme.background_asset is not None:
+        important_overrides.append("Есть background override/asset для guest screen")
+    if snapshot.pricing.display_mode and snapshot.pricing.display_mode != "hidden":
+        important_overrides.append(f"Price mode: {snapshot.pricing.display_mode}")
+
+    maintenance_mode = None
+    fallback_mode = None
+    if display_state == "maintenance":
+        maintenance_mode = f"{title or 'Сервисный экран'} — {subtitle or 'без дополнительного описания'}"
+    if display_state in {"fallback_empty", "display_disabled"}:
+        fallback_mode = f"{title or 'Fallback экран'} — {subtitle or 'без дополнительного описания'}"
+
+    incident_link = None
+    if has_incident:
+        incident_link = (
+            f"В этой сессии есть инциденты ({incident_count}). Их narrative стоит читать вместе с контекстом экрана: {availability_label.lower()}."
+        )
+
+    return schemas.SessionDisplayContext(
+        available=True,
+        source="reconstructed_from_current_tap_config",
+        tap_id=snapshot.tap.tap_id,
+        tap_name=snapshot.tap.display_name,
+        display_state=display_state,
+        availability_label=availability_label,
+        title=title,
+        subtitle=subtitle,
+        maintenance_mode=maintenance_mode,
+        fallback_mode=fallback_mode,
+        important_overrides=important_overrides,
+        note="Контекст восстановлен по текущей конфигурации tap display; исторический snapshot сессии отдельно не сохранялся.",
+        incident_link=incident_link,
+    )
 
 
 def get_active_visit_by_guest_id(db: Session, guest_id: uuid.UUID):
@@ -626,6 +732,13 @@ def _build_session_history_item(db: Session, visit: models.Visit, include_narrat
     last_event_at = max([dt for dt in [visit.closed_at, last_pour_ended_at, last_sync_at, last_operator_action_at, visit.lock_set_at, visit.opened_at] if dt])
 
     item = schemas.SessionHistoryDetail if include_narrative else schemas.SessionHistoryListItem
+    display_context = _derive_display_context(
+        db,
+        tap_id=primary_tap_id,
+        has_incident=bool(incident_actions),
+        incident_count=len(incident_actions),
+    ) if include_narrative else None
+
     payload = dict(
         visit_id=visit.visit_id, guest_id=visit.guest_id, guest_full_name=full_name, phone_number=guest.phone_number if guest else None,
         card_uid=visit.card_uid, visit_status=visit.status, operator_status=operator_status, completion_source=completion_source,
@@ -660,6 +773,7 @@ def _build_session_history_item(db: Session, visit: models.Visit, include_narrat
         close_kind = 'abort' if operator_status == 'Прервана' else 'close'
         narrative.append(schemas.SessionNarrativeEvent(timestamp=visit.closed_at, kind=close_kind, title='Сессия завершена', description=f'Причина завершения: {visit.closed_reason or "не указана"}.', status=visit.status))
     payload['narrative'] = sorted(narrative, key=lambda item: item.timestamp)
+    payload['display_context'] = display_context
     return item(**payload)
 
 

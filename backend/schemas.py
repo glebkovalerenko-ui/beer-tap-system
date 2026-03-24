@@ -610,6 +610,22 @@ class SessionNarrativeEvent(BaseModel):
     actor_id: Optional[str] = None
 
 
+class SessionDisplayContext(BaseModel):
+    available: bool = False
+    source: str = "not_saved"
+    tap_id: Optional[int] = None
+    tap_name: Optional[str] = None
+    display_state: Optional[str] = None
+    availability_label: Optional[str] = None
+    title: Optional[str] = None
+    subtitle: Optional[str] = None
+    maintenance_mode: Optional[str] = None
+    fallback_mode: Optional[str] = None
+    important_overrides: list[str] = []
+    note: Optional[str] = None
+    incident_link: Optional[str] = None
+
+
 class SessionHistoryListItem(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
@@ -636,6 +652,7 @@ class SessionHistoryListItem(BaseModel):
 
 class SessionHistoryDetail(SessionHistoryListItem):
     narrative: list[SessionNarrativeEvent] = []
+    display_context: Optional[SessionDisplayContext] = None
 
 class VisitReportLostCardResponse(BaseModel):
     visit: Visit
