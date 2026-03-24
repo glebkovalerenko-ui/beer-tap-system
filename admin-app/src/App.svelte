@@ -44,6 +44,7 @@
     '*': Today,
   };
 
+  // NOTE: порядок primaryNav отражает operator workflow, а не технические домены.
   const primaryNav = [
     {
       href: '#/today',
@@ -70,28 +71,28 @@
       visible: (permissions) => permissions.cards_lookup,
     },
     {
-      href: '#/incidents',
-      label: 'Инциденты',
-      description: 'Фиксировать проблемы смены и отслеживать эскалации.',
-      visible: (permissions) => permissions.incidents_view,
-    },
-    {
-      href: '#/system',
-      label: 'Система',
-      description: 'Проверить health, устройства и синхронизацию, когда сервис проседает.',
-      visible: (permissions) => permissions.system_health_view,
-    },
-    {
       href: '#/kegs-beverages',
       label: 'Кеги и напитки',
       description: 'Рабочая подготовка ассортимента и линии налива.',
       visible: (permissions) => permissions.settings_manage,
     },
     {
+      href: '#/incidents',
+      label: 'Инциденты',
+      description: 'Фиксировать проблемы смены и отслеживать эскалации.',
+      visible: (permissions) => permissions.incidents_view,
+    },
+    {
       href: '#/tap-screens',
       label: 'Экраны кранов',
       description: 'Сервисное управление display-сценариями.',
       visible: (permissions) => permissions.display_override,
+    },
+    {
+      href: '#/system',
+      label: 'Система',
+      description: 'Проверить health, устройства и синхронизацию, когда сервис проседает.',
+      visible: (permissions) => permissions.system_health_view,
     },
   ];
 
