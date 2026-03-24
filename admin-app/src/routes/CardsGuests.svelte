@@ -8,8 +8,14 @@
   import { shiftStore } from '../stores/shiftStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { uiStore } from '../stores/uiStore.js';
+  import { cardsGuestsWorkflowStore } from '../stores/cardsGuestsWorkflowStore.js';
   import { normalizeError } from '../lib/errorUtils.js';
   import { formatDateTimeRu, formatRubAmount } from '../lib/formatters.js';
+  import { buildPhoneCandidates, buildQuickLookupResults, fullName, hasLookupTarget, resolveLookupScenario } from '../lib/cardsGuests/scenarios/lookup.js';
+  import { resolveTopUpPreconditions } from '../lib/cardsGuests/scenarios/topup.js';
+  import { buildReissueHint, getReissueTargetVisitId, validateReissueInput } from '../lib/cardsGuests/scenarios/lost_reissue.js';
+  import { buildQuickActions } from '../lib/cardsGuests/scenarios/quick_actions.js';
+  import { buildRecentEvents } from '../lib/cardsGuests/scenarios/recent_events.js';
   import GuestDetail from '../components/guests/GuestDetail.svelte';
   import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
@@ -17,8 +23,6 @@
   import GuestForm from '../components/guests/GuestForm.svelte';
 
   let phoneQuery = '';
-  let selectedGuestId = null;
-  let selectedLookup = null;
   let lookupError = '';
   let pageError = '';
   let isTopUpModalOpen = false;
@@ -26,22 +30,24 @@
   let isManagementModalOpen = false;
   let formError = '';
   let initialLoadAttempted = false;
-  let pendingScenario = '';
   let reissueUidInput = '';
   let reissueError = '';
-  let reissueStatus = '';
   let isReissueBusy = false;
 
-  $: cardPermissions = $roleStore.permissions;
-  $: canAccessCardsGuests = Boolean(cardPermissions.cards_lookup);
-  $: canOpenVisit = Boolean(cardPermissions.cards_open_active_session);
-  $: canViewHistory = Boolean(cardPermissions.cards_history_view);
-  $: canTopUp = Boolean(cardPermissions.cards_top_up);
-  $: canToggleBlock = Boolean(cardPermissions.cards_block_manage);
-  $: canReissue = Boolean(cardPermissions.cards_reissue_manage);
-  $: hasManagementAccess = canToggleBlock || canReissue;
+  $: cardsGuestsWorkflowStore.setPermissions($roleStore.permissions || {});
+  $: workflow = $cardsGuestsWorkflowStore;
+  $: pendingScenario = workflow.pendingScenario;
+  $: selectedLookup = workflow.selectedLookup;
+  $: reissueStatus = workflow.reissueStatus;
+  $: selectedGuestId = workflow.selectedGuestId;
 
-  const fullName = (guest) => [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(' ');
+  $: canAccessCardsGuests = workflow.permissions.canAccessCardsGuests;
+  $: canOpenVisit = workflow.permissions.canOpenVisit;
+  $: canViewHistory = workflow.permissions.canViewHistory;
+  $: canTopUp = workflow.permissions.canTopUp;
+  $: canToggleBlock = workflow.permissions.canToggleBlock;
+  $: canReissue = workflow.permissions.canReissue;
+  $: hasManagementAccess = canToggleBlock || canReissue;
 
   $: {
     if (!initialLoadAttempted) {
@@ -53,23 +59,8 @@
 
   $: guests = $guestStore.guests || [];
   $: activeVisits = $visitStore.activeVisits || [];
-  $: phoneCandidates = guests.filter((guest) => {
-    const q = phoneQuery.trim().toLowerCase();
-    if (!q) return false;
-    return [
-      guest.phone_number,
-      guest.id_document,
-      guest.guest_id,
-      fullName(guest),
-      ...(guest.cards || []).map((card) => card.card_uid),
-    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(q));
-  }).slice(0, 12);
-  $: quickLookupResults = phoneCandidates.map((guest) => ({
-    guest_id: guest.guest_id,
-    label: fullName(guest),
-    meta: [guest.phone_number, guest.id_document].filter(Boolean).join(' · ') || 'Без контактов',
-    trailing: activeVisits.some((visit) => visit.guest_id === guest.guest_id) ? 'Активный визит' : formatRubAmount(guest.balance),
-  }));
+  $: phoneCandidates = buildPhoneCandidates(guests, phoneQuery);
+  $: quickLookupResults = buildQuickLookupResults(phoneCandidates, activeVisits);
   $: selectedGuest = selectedGuestId ? guests.find((guest) => guest.guest_id === selectedGuestId) : null;
   $: selectedGuest = !selectedGuest && selectedLookup?.guest?.guest_id
     ? guests.find((guest) => guest.guest_id === selectedLookup.guest.guest_id) || null
@@ -79,100 +70,42 @@
     ? $pourStore.pours.filter((item) => item?.guest?.guest_id === selectedGuest.guest_id).slice(0, 6)
     : [];
   $: lastTapLabel = recentGuestPours[0]?.tap?.display_name || (recentGuestPours[0]?.tap_id ? `Кран #${recentGuestPours[0].tap_id}` : '—');
-  $: recentEvents = buildRecentEvents(selectedGuest, selectedVisit, selectedLookup, recentGuestPours);
+  $: recentEvents = buildRecentEvents({ guest: selectedGuest, visit: selectedVisit, lookup: selectedLookup, pours: recentGuestPours });
   $: lookupGuestName = selectedGuest ? fullName(selectedGuest) : (selectedLookup?.guest?.full_name || 'Гость не определён');
-  $: hasLookupTarget = Boolean(selectedLookup?.guest?.guest_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id || selectedLookup?.card_uid || selectedLookup?.card?.uid);
-  $: quickActions = buildQuickActions(selectedLookup, selectedGuest, selectedVisit);
-
-  function buildRecentEvents(guest, visit, lookup, pours) {
-    if (!guest) return [];
-    const items = [];
-    if (lookup?.is_lost) {
-      items.push({ title: 'Карта в статусе lost', description: lookup.lost_card?.comment || 'Нужна проверка и перевыпуск карты.', timestamp: lookup.lost_card?.reported_at });
-    }
-    if (visit) {
-      items.push({ title: 'Активный визит открыт', description: visit.active_tap_id ? `Сейчас есть лок на кране #${visit.active_tap_id}.` : 'Визит активен, локов сейчас нет.', timestamp: visit.opened_at || visit.updated_at });
-    }
-    for (const pour of pours.slice(0, 4)) {
-      items.push({
-        title: `Налив ${pour.beverage?.name || ''}`.trim(),
-        description: `${pour.tap?.display_name || `Кран #${pour.tap_id || '—'}`} · ${formatRubAmount(pour.amount_charged || 0)}`,
-        timestamp: pour.poured_at,
-      });
-    }
-    for (const tx of (guest.transactions || []).slice(0, 3)) {
-      items.push({
-        title: tx.type || 'Операция по балансу',
-        description: `${formatRubAmount(tx.amount || 0)}`,
-        timestamp: tx.created_at,
-      });
-    }
-    return items.filter((item) => item.timestamp).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 6);
-  }
-
-  function buildQuickActions(lookup, guest, visit) {
-    return [
-      {
-        id: 'check-card',
-        title: 'Проверить карту',
-        description: 'Быстрый операторский summary: статус, баланс, визит, кран и события.',
-        disabled: !lookup,
-      },
-      {
-        id: 'top-up',
-        title: 'Пополнить баланс',
-        description: canTopUp ? 'Операторское действие после успешной идентификации гостя.' : 'Недоступно без права cards_top_up.',
-        disabled: !guest || !canTopUp,
-      },
-      {
-        id: 'toggle-block',
-        title: guest?.is_active ? 'Заблокировать' : 'Разблокировать',
-        description: canToggleBlock ? 'Management-действие вынесено из lookup-summary, но запускается отсюда.' : 'Недоступно без права cards_block_manage.',
-        disabled: !guest || !canToggleBlock,
-      },
-      {
-        id: 'reissue',
-        title: lookup?.is_lost ? 'Перевыпустить lost-карту' : 'Lost / перевыпуск',
-        description: canReissue ? 'Management-сценарий перевыпуска после проверки статуса карты.' : 'Недоступно без права cards_reissue_manage.',
-        disabled: !canReissue || !(guest && (lookup?.is_lost || visit?.visit_id || lookup?.active_visit?.visit_id)),
-        tone: lookup?.is_lost ? 'danger' : 'muted',
-      },
-      {
-        id: 'open-visit',
-        title: 'Открыть активную сессию',
-        description: canOpenVisit ? 'Перейти в действующий визит прямо из lookup-flow.' : 'Недоступно без права перехода в активную сессию.',
-        disabled: !canOpenVisit || !(visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id),
-      },
-      {
-        id: 'open-history',
-        title: 'Открыть историю',
-        description: canViewHistory ? 'Посмотреть историю по текущей карте или гостю.' : 'Недоступно без права cards_history_view.',
-        disabled: !lookup || !canViewHistory,
-      },
-    ];
-  }
+  $: hasLookup = hasLookupTarget(selectedLookup);
+  $: quickActions = buildQuickActions({
+    lookup: selectedLookup,
+    guest: selectedGuest,
+    visit: selectedVisit,
+    canTopUp,
+    canToggleBlock,
+    canReissue,
+    canOpenVisit,
+    canViewHistory,
+  });
 
   function selectGuest(guestId) {
-    selectedGuestId = guestId;
+    cardsGuestsWorkflowStore.setSelectedGuestId(guestId);
     pageError = '';
-    if (!pendingScenario && guestId) pendingScenario = 'check-card';
+    if (!pendingScenario && guestId) cardsGuestsWorkflowStore.setPendingScenario('check-card');
   }
 
   async function handleLookup(event) {
     lookupError = '';
     pageError = '';
     reissueError = '';
-    reissueStatus = '';
+    cardsGuestsWorkflowStore.setReissueStatus('');
     try {
-      selectedLookup = await lostCardStore.resolveCard(event.detail.uid);
-      pendingScenario = selectedLookup?.is_lost && canReissue ? 'reissue' : 'check-card';
-      if (selectedLookup?.guest?.guest_id) {
-        selectedGuestId = selectedLookup.guest.guest_id;
+      const resolvedLookup = await lostCardStore.resolveCard(event.detail.uid);
+      cardsGuestsWorkflowStore.setSelectedLookup(resolvedLookup);
+      cardsGuestsWorkflowStore.setPendingScenario(resolveLookupScenario(resolvedLookup, canReissue));
+      if (resolvedLookup?.guest?.guest_id) {
+        cardsGuestsWorkflowStore.setSelectedGuestId(resolvedLookup.guest.guest_id);
       }
       await visitStore.fetchActiveVisits();
     } catch (error) {
       lookupError = normalizeError(error);
-      selectedLookup = null;
+      cardsGuestsWorkflowStore.setSelectedLookup(null);
     }
   }
 
@@ -185,12 +118,20 @@
     if (!uid) return;
     try {
       await lostCardStore.restoreLostCard(uid);
-      selectedLookup = await lostCardStore.resolveCard(uid);
-      reissueStatus = 'Отметка lost снята. Можно привязать новую карту и перенести активную сессию.';
+      cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(uid));
+      cardsGuestsWorkflowStore.setReissueStatus('Отметка lost снята. Можно привязать новую карту и перенести активную сессию.');
       uiStore.notifySuccess('Отметка lost снята');
     } catch (error) {
       lookupError = normalizeError(error);
     }
+  }
+
+  function resolveVisitAndNavigate() {
+    const visitId = getReissueTargetVisitId({ selectedVisit, selectedLookup });
+    if (!visitId) return false;
+    sessionStorage.setItem('visits.lookupVisitId', visitId);
+    window.location.hash = '/sessions';
+    return true;
   }
 
   function handleOpenVisit() {
@@ -198,10 +139,7 @@
       uiStore.notifyWarning('Открытие активной сессии недоступно для текущей роли.');
       return;
     }
-    const visitId = selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id;
-    if (!visitId) return;
-    sessionStorage.setItem('visits.lookupVisitId', visitId);
-    window.location.hash = '/sessions';
+    resolveVisitAndNavigate();
   }
 
   function handleOpenHistory() {
@@ -223,21 +161,22 @@
       const opened = await visitStore.openVisit({ guestId: event.detail.guestId });
       sessionStorage.setItem('visits.lookupVisitId', opened.visit_id);
       await visitStore.fetchActiveVisits();
-      pendingScenario = 'open-visit';
+      cardsGuestsWorkflowStore.setPendingScenario('open-visit');
       uiStore.notifySuccess('Открыт новый визит');
+      resolveVisitAndNavigate();
     } catch (error) {
       lookupError = normalizeError(error);
     }
   }
 
   function handleOpenTopUpModal() {
-    if (!canTopUp) {
-      uiStore.notifyWarning('Пополнение баланса недоступно для текущей роли.');
-      return;
-    }
-    if (!selectedGuest) return;
-    if (!get(shiftStore).isOpen) {
-      uiStore.notifyWarning('Сначала откройте смену на дашборде, затем выполните пополнение.');
+    const checks = resolveTopUpPreconditions({
+      canTopUp,
+      hasGuest: Boolean(selectedGuest),
+      isShiftOpen: get(shiftStore).isOpen,
+    });
+    if (!checks.ok) {
+      uiStore.notifyWarning(checks.message);
       return;
     }
     topUpError = '';
@@ -302,10 +241,10 @@
     try {
       await visitStore.reportLostCard({ visitId, reason: 'operator_marked_lost', comment: null });
       const uid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid;
-      if (uid) selectedLookup = await lostCardStore.resolveCard(uid);
+      if (uid) cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(uid));
       await visitStore.fetchActiveVisits();
-      pendingScenario = 'reissue';
-      reissueStatus = 'Карта переведена в lost. Для продолжения считайте новую карту и выполните перевыпуск.';
+      cardsGuestsWorkflowStore.setPendingScenario('reissue');
+      cardsGuestsWorkflowStore.setReissueStatus('Карта переведена в lost. Для продолжения считайте новую карту и выполните перевыпуск.');
       uiStore.notifySuccess('Карта помечена как lost');
     } catch (error) {
       pageError = normalizeError(error);
@@ -314,7 +253,7 @@
 
   async function handleScenarioAction(event) {
     const { actionId } = event.detail;
-    pendingScenario = actionId;
+    cardsGuestsWorkflowStore.setPendingScenario(actionId);
     if (actionId === 'top-up') {
       handleOpenTopUpModal();
       return;
@@ -333,40 +272,38 @@
     }
     if (actionId === 'reissue') {
       reissueError = '';
-      reissueStatus = selectedLookup?.is_lost
-        ? 'Снимите lost при необходимости, затем считайте новую карту и завершите перевыпуск.'
-        : 'Считайте новую карту и перенесите контекст активного визита на неё.';
+      cardsGuestsWorkflowStore.setReissueStatus(buildReissueHint(selectedLookup));
     }
   }
 
   async function submitReissue() {
-    if (!canReissue) {
-      uiStore.notifyWarning('Перевыпуск карты недоступен для текущей роли.');
+    const nextUid = reissueUidInput.trim();
+    const validation = validateReissueInput({ canReissue, selectedGuest, nextUid });
+    if (!validation.ok) {
+      uiStore.notifyWarning(validation.message);
       return;
     }
-    const nextUid = reissueUidInput.trim();
-    if (!selectedGuest || !nextUid) return;
     isReissueBusy = true;
     reissueError = '';
-    reissueStatus = '';
+    cardsGuestsWorkflowStore.setReissueStatus('');
     try {
       const currentUid = selectedLookup?.card_uid || selectedLookup?.card?.uid || selectedGuest?.cards?.[0]?.card_uid || '';
       if (selectedLookup?.is_lost && currentUid) {
         await lostCardStore.restoreLostCard(currentUid);
       }
       await guestStore.bindCardToGuest(selectedGuest.guest_id, nextUid);
-      const targetVisitId = selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id || selectedLookup?.lost_card?.visit_id;
+      const targetVisitId = getReissueTargetVisitId({ selectedVisit, selectedLookup });
       if (targetVisitId) {
         await visitStore.assignCardToVisit({ visitId: targetVisitId, cardUid: nextUid });
       }
       await Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()]);
-      selectedLookup = await lostCardStore.resolveCard(nextUid);
-      selectedGuestId = selectedGuest.guest_id;
-      pendingScenario = targetVisitId ? 'open-visit' : 'check-card';
+      cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(nextUid));
+      cardsGuestsWorkflowStore.setSelectedGuestId(selectedGuest.guest_id);
+      cardsGuestsWorkflowStore.setPendingScenario(targetVisitId ? 'open-visit' : 'check-card');
       reissueUidInput = '';
-      reissueStatus = targetVisitId
+      cardsGuestsWorkflowStore.setReissueStatus(targetVisitId
         ? 'Новая карта привязана, активная сессия переведена на неё. Можно открыть сессию дальше.'
-        : 'Новая карта привязана к гостю. Активного визита не было — контекст обновлён на новой карте.';
+        : 'Новая карта привязана к гостю. Активного визита не было — контекст обновлён на новой карте.');
       uiStore.notifySuccess('Перевыпуск карты завершён');
     } catch (error) {
       reissueError = normalizeError(error);
@@ -390,6 +327,11 @@
     }
   }
 
+  function closeOperatorContext() {
+    phoneQuery = '';
+    cardsGuestsWorkflowStore.resetWorkflow();
+  }
+
   onMount(async () => {
     await Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()]);
   });
@@ -405,7 +347,7 @@
     <header class="page-header ui-card">
       <div>
         <h1>Карты и гости</h1>
-        <p>Default-flow теперь строго operator-first: сначала lookup, затем короткий статусный summary и быстрые действия. Management path открывается только глубже.</p>
+        <p>Route работает как тонкий контейнер: orchestration сценариев, wiring UI-модулей и переходы в /sessions.</p>
       </div>
       <div class="header-actions">
         <button on:click={() => Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()])} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
@@ -460,7 +402,7 @@
           recentEvents={recentEvents}
           lastTapLabel={lastTapLabel}
           variant="operator"
-          on:close={() => { selectedGuestId = null; selectedLookup = null; phoneQuery = ''; pendingScenario = ''; }}
+          on:close={closeOperatorContext}
           canTopUp={canTopUp}
           canToggleBlock={canToggleBlock}
           canMarkLost={canReissue}
@@ -486,7 +428,7 @@
       {/if}
     </section>
 
-    {#if hasLookupTarget && (pendingScenario === 'reissue' || selectedLookup?.is_lost)}
+    {#if hasLookup && (pendingScenario === 'reissue' || selectedLookup?.is_lost)}
       <section class="ui-card reissue-panel">
         <div class="section-top">
           <div>
@@ -563,7 +505,7 @@
           on:open-history={handleOpenHistory}
           on:open-visit={handleOpenVisit}
           on:edit={() => { formError = ''; }}
-          on:bind-card={() => { pendingScenario = 'reissue'; isManagementModalOpen = false; }}
+          on:bind-card={() => { cardsGuestsWorkflowStore.setPendingScenario('reissue'); isManagementModalOpen = false; }}
           on:close={() => { isManagementModalOpen = false; }}
         />
         <GuestForm guest={selectedGuest} on:save={handleSaveGuest} on:cancel={() => { isManagementModalOpen = false; }} isSaving={$guestStore.loading} />

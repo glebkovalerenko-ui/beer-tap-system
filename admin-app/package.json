@@ -11,7 +11,12 @@
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
     "smoke:error-normalizer": "node scripts/error_normalizer_smoke.mjs",
-    "smoke:login-settings": "node scripts/login_settings_smoke.mjs"
+    "smoke:login-settings": "node scripts/login_settings_smoke.mjs",
+    "smoke:cards-guests:lookup": "node scripts/cards_guests/lookup_smoke.mjs",
+    "smoke:cards-guests:topup": "node scripts/cards_guests/topup_smoke.mjs",
+    "smoke:cards-guests:lost-reissue": "node scripts/cards_guests/lost_reissue_smoke.mjs",
+    "smoke:cards-guests:quick-actions": "node scripts/cards_guests/quick_actions_smoke.mjs",
+    "smoke:cards-guests:recent-events": "node scripts/cards_guests/recent_events_smoke.mjs"
   },
   "license": "MIT",
   "dependencies": {
