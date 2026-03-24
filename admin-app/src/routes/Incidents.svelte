@@ -6,6 +6,7 @@
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
   import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
+  import { buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
@@ -172,20 +173,11 @@
   $: permissions = /** @type {any} */ ($roleStore.permissions || {});
   $: canViewIncidents = Boolean(permissions.incidents_view);
   $: incidentActionCapabilitiesRaw = $incidentStore.capabilities || {};
+  $: incidentCapabilitiesModel = buildIncidentCapabilities(incidentActionCapabilitiesRaw);
   /** @type {Record<string, boolean>} */
-  $: incidentActionCapabilities = {
-    claim: Boolean(incidentActionCapabilitiesRaw.claim?.enabled),
-    escalate: Boolean(incidentActionCapabilitiesRaw.escalate?.enabled),
-    close: Boolean(incidentActionCapabilitiesRaw.close?.enabled),
-    note: Boolean(incidentActionCapabilitiesRaw.note?.enabled),
-  };
+  $: incidentActionCapabilities = incidentCapabilitiesModel.capabilities;
   /** @type {Record<string, string|null>} */
-  $: incidentActionCapabilityReasons = {
-    claim: incidentActionCapabilitiesRaw.claim?.reason || null,
-    escalate: incidentActionCapabilitiesRaw.escalate?.reason || null,
-    close: incidentActionCapabilitiesRaw.close?.reason || null,
-    note: incidentActionCapabilitiesRaw.note?.reason || null,
-  };
+  $: incidentActionCapabilityReasons = incidentCapabilitiesModel.reasons;
   $: incidentActionReadOnly = $incidentStore.readOnly;
   $: incidentActionReadOnlyReason = $incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.';
   $: incidentActionPlan = getActionPlan('incident');
@@ -194,8 +186,7 @@
   function openActionForm(event, suggestedAction = 'note') {
     const item = event?.detail?.item || event;
     if (incidentActionReadOnly) return;
-    const allowedActions = ['claim', 'note', 'escalate', 'close'].filter((action) => incidentActionCapabilities[action]);
-    const resolvedAction = allowedActions.includes(suggestedAction) ? suggestedAction : (allowedActions[0] || 'note');
+    const resolvedAction = resolveIncidentAction({ suggestedAction, capabilities: incidentActionCapabilities });
 
     actionForm = {
       incidentId: item.incident_id,
@@ -223,15 +214,8 @@
     }
 
     try {
-      if (actionForm.action === 'claim') {
-        await incidentStore.claimIncident({ incidentId: item.incident_id, owner: actionForm.owner.trim(), note: actionForm.note.trim() || null });
-      } else if (actionForm.action === 'escalate') {
-        await incidentStore.escalateIncident({ incidentId: item.incident_id, reason: actionForm.escalationReason.trim(), note: actionForm.note.trim() || null });
-      } else if (actionForm.action === 'close') {
-        await incidentStore.closeIncident({ incidentId: item.incident_id, resolutionSummary: actionForm.resolutionSummary.trim(), note: actionForm.note.trim() || null });
-      } else {
-        await incidentStore.addIncidentNote({ incidentId: item.incident_id, note: actionForm.note.trim() });
-      }
+      const request = resolveIncidentActionRequest({ action: actionForm.action, item, form: actionForm });
+      await incidentStore[request.method](request.payload);
 
       uiStore.notifySuccess('Действие по инциденту зафиксировано.');
       if (selectedIncidentId !== item.incident_id) {
