@@ -730,6 +730,26 @@ pub struct IncidentListItem {
     pub closure_summary: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct IncidentMutationCapability {
+    pub enabled: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct IncidentMutationCapabilities {
+    pub claim: IncidentMutationCapability,
+    pub note: IncidentMutationCapability,
+    pub escalate: IncidentMutationCapability,
+    pub close: IncidentMutationCapability,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct IncidentListResponse {
+    pub items: Vec<IncidentListItem>,
+    pub mutation_capabilities: IncidentMutationCapabilities,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct IncidentClaimPayload {
     pub owner: String,
@@ -1058,12 +1078,12 @@ pub async fn get_today_summary(token: &str) -> Result<TodaySummaryResponse, Stri
     }
 }
 
-pub async fn get_incidents(token: &str, limit: u32) -> Result<Vec<IncidentListItem>, String> {
+pub async fn get_incidents(token: &str, limit: u32) -> Result<IncidentListResponse, String> {
     let url = build_api_url(&format!("incidents/?limit={}", limit));
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
     if response.status().is_success() {
         response
-            .json::<Vec<IncidentListItem>>()
+            .json::<IncidentListResponse>()
             .await
             .map_err(|e| e.to_string())
     } else {

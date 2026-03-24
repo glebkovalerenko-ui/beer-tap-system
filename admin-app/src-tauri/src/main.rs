@@ -407,7 +407,7 @@ async fn get_today_summary(token: String) -> Result<api_client::TodaySummaryResp
 async fn get_incidents(
     token: String,
     limit: u32,
-) -> Result<Vec<api_client::IncidentListItem>, AppError> {
+) -> Result<api_client::IncidentListResponse, AppError> {
     info!("[COMMAND]     incidents API...");
     api_client::get_incidents(&token, limit)
         .await

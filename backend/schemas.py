@@ -951,6 +951,23 @@ class IncidentListItem(BaseModel):
     closure_summary: Optional[str] = None
 
 
+class IncidentMutationCapability(BaseModel):
+    enabled: bool
+    reason: Optional[str] = None
+
+
+class IncidentMutationCapabilities(BaseModel):
+    claim: IncidentMutationCapability
+    note: IncidentMutationCapability
+    escalate: IncidentMutationCapability
+    close: IncidentMutationCapability
+
+
+class IncidentListResponse(BaseModel):
+    items: list[IncidentListItem]
+    mutation_capabilities: IncidentMutationCapabilities
+
+
 class IncidentClaimPayload(BaseModel):
     owner: str = Field(..., min_length=1, max_length=100)
     note: Optional[str] = Field(default=None, max_length=4000)

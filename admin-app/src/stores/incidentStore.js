@@ -6,11 +6,18 @@ import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 const POLL_INTERVAL_MS = 10000;
 
-const MUTATION_CAPABILITIES = Object.freeze({
-  claim: true,
-  escalate: true,
-  close: true,
-  note: true,
+const DEFAULT_MUTATION_CAPABILITIES = Object.freeze({
+  claim: { enabled: false, reason: 'Endpoint временно отключён.' },
+  escalate: { enabled: false, reason: 'Endpoint временно отключён.' },
+  close: { enabled: false, reason: 'Endpoint временно отключён.' },
+  note: { enabled: false, reason: 'Endpoint временно отключён.' },
+});
+
+const ACTION_TO_CAPABILITY_KEY = Object.freeze({
+  claim_incident: 'claim',
+  add_incident_note: 'note',
+  escalate_incident: 'escalate',
+  close_incident: 'close',
 });
 
 function toErrorMessage(context, error) {
@@ -19,17 +26,19 @@ function toErrorMessage(context, error) {
 }
 
 function createIncidentStore() {
+  const defaultReadOnlyReason = 'Incident mutation endpoints недоступны.';
   const initialState = {
     items: [],
     loading: false,
     error: null,
     actionLoading: false,
     actionError: null,
-    capabilities: { ...MUTATION_CAPABILITIES },
-    readOnly: !Object.values(MUTATION_CAPABILITIES).some(Boolean),
-    readOnlyReason: !Object.values(MUTATION_CAPABILITIES).some(Boolean) ? 'Incident mutation endpoints недоступны.' : null,
+    capabilities: { ...DEFAULT_MUTATION_CAPABILITIES },
+    readOnly: true,
+    readOnlyReason: defaultReadOnlyReason,
   };
   const { subscribe, set, update } = writable(initialState);
+  const store = { subscribe };
   let timer = null;
 
   function withAuth() {
@@ -50,20 +59,38 @@ function createIncidentStore() {
     }));
   }
 
+  function resolveCapabilities(serverCapabilities = null) {
+    const capabilities = { ...DEFAULT_MUTATION_CAPABILITIES };
+    for (const key of Object.keys(capabilities)) {
+      const candidate = serverCapabilities?.[key];
+      if (candidate && typeof candidate.enabled === 'boolean') {
+        capabilities[key] = {
+          enabled: candidate.enabled,
+          reason: candidate.enabled ? null : (candidate.reason || defaultReadOnlyReason),
+        };
+      }
+    }
+    const readOnly = !Object.values(capabilities).some((capability) => capability?.enabled);
+    const readOnlyReason = readOnly
+      ? Object.values(capabilities).find((capability) => capability?.reason)?.reason || defaultReadOnlyReason
+      : null;
+    return { capabilities, readOnly, readOnlyReason };
+  }
+
   async function fetchIncidents() {
     const token = get(sessionStore).token;
     if (!token) return;
     update((state) => ({ ...state, loading: state.items.length === 0, error: null, actionError: null }));
     try {
-      const items = await invoke('get_incidents', { token, limit: 100 });
+      const response = await invoke('get_incidents', { token, limit: 100 });
+      const items = Array.isArray(response) ? response : (response?.items || []);
+      const capabilityState = resolveCapabilities(Array.isArray(response) ? null : response?.mutation_capabilities);
       update((state) => ({
         ...state,
         items,
         loading: false,
         error: null,
-        capabilities: { ...MUTATION_CAPABILITIES },
-        readOnly: !Object.values(MUTATION_CAPABILITIES).some(Boolean),
-        readOnlyReason: !Object.values(MUTATION_CAPABILITIES).some(Boolean) ? 'Incident mutation endpoints недоступны.' : null,
+        ...capabilityState,
       }));
     } catch (error) {
       update((state) => ({ ...state, loading: false, error: toErrorMessage('incidentStore.fetchIncidents', error) }));
@@ -72,6 +99,11 @@ function createIncidentStore() {
 
   async function submitAction(command, incidentId, payload, context) {
     const token = withAuth();
+    const capabilityKey = ACTION_TO_CAPABILITY_KEY[command];
+    const capability = capabilityKey ? get(store).capabilities?.[capabilityKey] : null;
+    if (capability && capability.enabled === false) {
+      throw new Error(capability.reason || defaultReadOnlyReason);
+    }
     update((state) => ({ ...state, actionLoading: true, actionError: null }));
     try {
       const item = await invoke(command, { token, incidentId, payload });
