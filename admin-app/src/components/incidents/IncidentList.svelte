@@ -101,11 +101,11 @@
                   {:else}
                     <button
                       class="secondary"
-                      disabled={readOnly || (actionType(item) === 'claim' ? !actionCapabilities.claim : (!actionCapabilities.close && !actionCapabilities.note))}
+                      disabled={readOnly || (actionType(item) === 'claim' ? !actionCapabilities.claim : !actionCapabilities.close)}
                       title={actionType(item) === 'claim'
                         ? (!actionCapabilities.claim ? (actionCapabilityReasons.claim || 'Действие недоступно') : '')
-                        : (!actionCapabilities.close && !actionCapabilities.note
-                          ? (actionCapabilityReasons.close || actionCapabilityReasons.note || 'Действие недоступно')
+                        : (!actionCapabilities.close
+                          ? (actionCapabilityReasons.close || 'Действие недоступно')
                           : '')}
                       on:click|stopPropagation={() => onMainAction(item)}
                     >
@@ -114,8 +114,8 @@
                     {#if actionType(item) === 'claim' && !actionCapabilities.claim && actionCapabilityReasons.claim}
                       <small class="action-reason">{actionCapabilityReasons.claim}</small>
                     {/if}
-                    {#if actionType(item) === 'close' && !actionCapabilities.close && !actionCapabilities.note && (actionCapabilityReasons.close || actionCapabilityReasons.note)}
-                      <small class="action-reason">{actionCapabilityReasons.close || actionCapabilityReasons.note}</small>
+                    {#if actionType(item) === 'close' && !actionCapabilities.close && actionCapabilityReasons.close}
+                      <small class="action-reason">{actionCapabilityReasons.close}</small>
                     {/if}
                   {/if}
 
