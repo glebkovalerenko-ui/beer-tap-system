@@ -188,3 +188,7 @@ If the team continues this track, the next practical increment is "Operator Poli
 - reduce click count in repeated actions
 - improve empty/error/loading states on all operator routes
 - clean the remaining non-blocking warnings in adjacent operator components
+
+Status update:
+
+- This next step was implemented on 2026-03-25 and is documented in `docs/admin-app/08-operator-polish-phase-1.5-result.md`.
