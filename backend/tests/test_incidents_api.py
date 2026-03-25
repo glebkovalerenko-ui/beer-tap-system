@@ -148,3 +148,24 @@ def test_incident_capabilities_hide_unexecutable_actions_for_operator_role(clien
         json={'owner': 'Operator', 'note': 'Попытка без прав'},
     )
     assert forbidden_claim.status_code == 403
+
+
+def test_sla_deadlines_stable_for_persistent_synthetic_incidents(client, db_session):
+    headers = _login(client)
+
+    tap = models.Tap(tap_id=55, display_name='No Keg Tap', status='active', keg=None)
+    db_session.add_all([tap, models.SystemState(key='emergency_stop_enabled', value='true')])
+    db_session.commit()
+
+    first = client.get('/api/incidents/', headers=headers)
+    assert first.status_code == 200
+    first_items = {item['incident_id']: item for item in first.json()['items']}
+
+    second = client.get('/api/incidents/', headers=headers)
+    assert second.status_code == 200
+    second_items = {item['incident_id']: item for item in second.json()['items']}
+
+    for incident_id in ('system-emergency-stop', 'tap-no-keg-55'):
+        assert first_items[incident_id]['created_at'] == second_items[incident_id]['created_at']
+        assert first_items[incident_id]['acknowledge_deadline_at'] == second_items[incident_id]['acknowledge_deadline_at']
+        assert first_items[incident_id]['closure_deadline_at'] == second_items[incident_id]['closure_deadline_at']
