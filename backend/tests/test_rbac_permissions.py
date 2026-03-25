@@ -49,3 +49,21 @@ def test_shift_lead_can_set_emergency_stop(client: TestClient):
 
     assert response.status_code == 200
     assert response.json()["emergency_stop"] is True
+
+
+def test_inventory_permissions_are_issued_by_role(client: TestClient):
+    operator = client.get("/api/me", headers=_headers(_token(client, "operator"))).json()["permissions"]
+    shift_lead = client.get("/api/me", headers=_headers(_token(client, "shift_lead"))).json()["permissions"]
+    engineer_owner = client.get("/api/me", headers=_headers(_token(client, "admin"))).json()["permissions"]
+
+    assert "inventory_view" in operator
+    assert "kegs_manage" not in operator
+    assert "beverages_catalog_manage" not in operator
+
+    assert "inventory_view" in shift_lead
+    assert "kegs_manage" in shift_lead
+    assert "beverages_catalog_manage" not in shift_lead
+
+    assert "inventory_view" in engineer_owner
+    assert "kegs_manage" in engineer_owner
+    assert "beverages_catalog_manage" in engineer_owner
