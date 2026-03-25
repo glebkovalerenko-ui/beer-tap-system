@@ -145,15 +145,14 @@
   function openSession(event) {
     const item = event.detail.item;
     if (item.sessionMatch?.visit_id) {
-      navigateWithFocus(/** @type {any} */ ({ target: 'session', visitId: item.sessionMatch.visit_id || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
+      navigateWithFocus(/** @type {any} */ ({ target: 'visit', visitId: item.sessionMatch.visit_id || undefined, tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
       return;
     }
     if (item.tapId) {
-      sessionStorage.setItem('sessions.history.tapId', String(item.tapId));
-      window.location.hash = '/sessions/history';
+      navigateWithFocus(/** @type {any} */ ({ target: 'visit', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
       return;
     }
-    window.location.hash = '/sessions/history';
+    window.location.hash = '/visits';
   }
 
   /** @param {any} event */
@@ -432,7 +431,7 @@
             <article><span>Кран</span><strong>{selectedIncident.tapLabel}</strong></article>
             <article><span>{INCIDENT_COPY.ownerServer}</span><strong>{selectedIncident.owner || selectedIncident.accountability.ownerLabel}</strong></article>
             <article><span>Источник</span><strong>{selectedIncident.sourceLabel}</strong></article>
-            <article><span>Связанная сессия</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найдена'}</strong></article>
+            <article><span>Связанный визит</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найден'}</strong></article>
           </section>
 
           <section class="detail-section">

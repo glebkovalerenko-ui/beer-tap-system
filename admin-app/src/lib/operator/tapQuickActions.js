@@ -37,7 +37,7 @@ export function buildTapQuickActions({
   const isLocked = tap?.status === 'locked';
   const stopGuard = getCriticalActionGuard('stop_pour', permissions, {
     extraAllowed: canControl && Boolean(session),
-    extraDeniedReason: session ? '' : 'No active session is available to stop on this tap.',
+    extraDeniedReason: session ? '' : 'No active visit is available to stop on this tap.',
   });
   const lockGuard = getCriticalActionGuard('block_unblock_tap', permissions, {
     extraAllowed: canControl,
@@ -129,11 +129,11 @@ export function buildTapQuickActions({
       title: 'History',
       description: historyState.disabled
         ? (historyState.reason || 'Tap history is currently unavailable.')
-        : 'Open the related sessions and recent events for this tap.',
+        : 'Open the related visit and recent events for this tap.',
       disabled: historyState.disabled,
     }), {
       event: 'open-history',
-      ariaLabel: `Open session history for ${tapName}`,
+      ariaLabel: `Open visit history for ${tapName}`,
       visible: Boolean(tap?.tap_id),
       guarded: historyState.disabled,
       reason: historyState.reason,

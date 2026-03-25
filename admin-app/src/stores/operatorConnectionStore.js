@@ -6,6 +6,8 @@ import { getApiBaseUrl, initializeBackendBaseUrl } from '../lib/config.js';
 import { ensureCardsGuestsData, ensureIncidentsData, ensureOperatorShellData } from './operatorShellOrchestrator.js';
 import { guestStore } from './guestStore.js';
 import { incidentStore } from './incidentStore.js';
+import { lostCardStore } from './lostCardStore.js';
+import { operatorPoursStore } from './operatorPoursStore.js';
 import { pourStore } from './pourStore.js';
 import { sessionStore } from './sessionStore.js';
 import { sessionsStore } from './sessionsStore.js';
@@ -32,11 +34,15 @@ function now() {
 }
 
 function normalizeRoute(route) {
-  const path = String(route || window?.location?.hash?.replace(/^#/, '') || '/today');
-  if (!path || path === '/') return '/today';
-  if (path.startsWith('/sessions')) return '/sessions';
+  const path = String(route || window?.location?.hash?.replace(/^#/, '') || '/shift');
+  if (!path || path === '/') return '/shift';
+  if (path.startsWith('/today') || path.startsWith('/shift')) return '/shift';
+  if (path.startsWith('/sessions') || path.startsWith('/visits')) return '/visits';
   if (path.startsWith('/taps')) return '/taps';
-  if (path.startsWith('/cards-guests')) return '/cards-guests';
+  if (path.startsWith('/cards-guests') || path.startsWith('/guests')) return '/guests';
+  if (path.startsWith('/lost-cards')) return '/lost-cards';
+  if (path.startsWith('/pours')) return '/pours';
+  if (path.startsWith('/tap-screens') || path.startsWith('/kegs-beverages')) return '/kegs-beverages';
   if (path.startsWith('/incidents')) return '/incidents';
   if (path.startsWith('/system')) return '/system';
   return path;
@@ -73,7 +79,7 @@ async function refetchSessionsRoute() {
 
 async function refetchVisibleRoute(route) {
   switch (normalizeRoute(route)) {
-    case '/today':
+    case '/shift':
       await Promise.allSettled([
         pourStore.fetchOverview({ force: true }),
         tapStore.fetchTaps({ force: true }),
@@ -89,14 +95,29 @@ async function refetchVisibleRoute(route) {
         systemStore.fetchSystemStatus({ force: true }),
       ]);
       return;
-    case '/sessions':
+    case '/visits':
       await refetchSessionsRoute();
       return;
-    case '/cards-guests':
+    case '/guests':
       await Promise.allSettled([
         ensureCardsGuestsData({ reason: 'realtime-invalidation', force: true }),
         guestStore.fetchGuests?.({ force: true }),
       ]);
+      return;
+    case '/lost-cards':
+      await Promise.allSettled([
+        lostCardStore.fetchLostCards({}),
+        visitStore.fetchActiveVisits({ force: true }),
+      ]);
+      return;
+    case '/pours':
+      await Promise.allSettled([
+        operatorPoursStore.fetchJournal({}, { force: true }),
+        tapStore.fetchTaps({ force: true }),
+      ]);
+      return;
+    case '/kegs-beverages':
+      await ensureOperatorShellData({ reason: 'realtime-invalidation', force: true });
       return;
     case '/incidents':
       await Promise.allSettled([
@@ -121,7 +142,7 @@ function createOperatorConnectionStore() {
     readOnly: false,
     reason: null,
     error: null,
-    currentRoute: '/today',
+    currentRoute: '/shift',
     lastHeartbeatAt: null,
     lastMessageAt: null,
     lastSnapshotAt: null,

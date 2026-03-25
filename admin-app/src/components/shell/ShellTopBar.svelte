@@ -1,41 +1,50 @@
 <script>
-  import { onMount } from 'svelte';
-  import { sessionStore } from '../../stores/sessionStore.js';
-  import { roleStore } from '../../stores/roleStore.js';
-  import { guestContextStore } from '../../stores/guestContextStore.js';
-  import { shiftStore } from '../../stores/shiftStore.js';
-  import { systemStore } from '../../stores/systemStore.js';
-  import { uiStore } from '../../stores/uiStore.js';
-  import { tapStore } from '../../stores/tapStore.js';
+  import { onDestroy, onMount } from 'svelte';
+
+  import { canonicalVisitStatusLabel } from '../../lib/operator/visitStatus.js';
   import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
+  import { navigateWithFocus } from '../../lib/actionRouting.js';
   import { confirmShiftAction } from '../../lib/shiftActionConfirm.js';
   import { healthStateLabel } from '../../lib/healthStatus.js';
-  import { SHELL_COPY } from '../../lib/operatorLabels.js';
   import { ensureOperatorShellData } from '../../stores/operatorShellOrchestrator.js';
+  import { operatorSearchStore } from '../../stores/operatorSearchStore.js';
+  import { roleStore } from '../../stores/roleStore.js';
+  import { sessionStore } from '../../stores/sessionStore.js';
+  import { shiftStore } from '../../stores/shiftStore.js';
+  import { systemStore } from '../../stores/systemStore.js';
+  import { tapStore } from '../../stores/tapStore.js';
+  import { uiStore } from '../../stores/uiStore.js';
+  import { visitStore } from '../../stores/visitStore.js';
+
   import ShellStatusPills from './ShellStatusPills.svelte';
 
   let now = new Date();
+  let searchQuery = '';
+  let searchOpen = false;
+  let debounceTimer = null;
 
-  function navigateTo(path) {
-    window.location.hash = path;
-  }
+  const GROUP_LABELS = {
+    guests: 'Гости',
+    visits: 'Визиты',
+    taps: 'Краны',
+    cards: 'Карты',
+    pours: 'Наливы',
+    kegs: 'Кеги',
+  };
 
   function shiftStatusText() {
     if ($shiftStore.isOpen) {
       return $shiftStore.shift?.opened_at ? `Открыта с ${formatDateTimeRu($shiftStore.shift.opened_at)}` : 'Смена открыта';
     }
-
     if ($shiftStore.shift?.closed_at) {
       return `Закрыта ${formatDateTimeRu($shiftStore.shift.closed_at)}`;
     }
-
     return 'Смена закрыта';
   }
 
   async function handleOpenShift() {
     const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'open' });
     if (!confirmed) return;
-
     try {
       await shiftStore.openShift();
       await ensureOperatorShellData({ reason: 'shift-open-close', force: true });
@@ -48,7 +57,6 @@
   async function handleCloseShift() {
     const confirmed = await confirmShiftAction({ uiStore, shiftState: $shiftStore, action: 'close' });
     if (!confirmed) return;
-
     try {
       await shiftStore.closeShift();
       await ensureOperatorShellData({ reason: 'shift-open-close', force: true });
@@ -58,77 +66,171 @@
     }
   }
 
+  function handleSearchInput(value) {
+    searchQuery = value;
+    searchOpen = Boolean(value.trim());
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      operatorSearchStore.search(value, { limit: 5 }).catch(() => {});
+    }, 180);
+  }
+
+  function clearSearch() {
+    searchQuery = '';
+    searchOpen = false;
+    operatorSearchStore.clear();
+  }
+
+  function openSearchResult(item) {
+    navigateWithFocus({
+      target: item.kind === 'visit' ? 'visit' : item.kind,
+      route: `/${item.route}`,
+      guestId: item.guest_id,
+      visitId: item.visit_id,
+      tapId: item.tap_id,
+      cardUid: item.card_uid,
+      pourRef: item.pour_ref,
+      kegId: item.keg_id,
+    });
+    clearSearch();
+  }
+
+  function openQuickVisit() {
+    const activeVisit = ($visitStore.activeVisits || [])[0];
+    if (activeVisit?.visit_id) {
+      navigateWithFocus({ target: 'visit', visitId: activeVisit.visit_id, tapId: activeVisit.active_tap_id });
+      return;
+    }
+    window.location.hash = '/visits';
+  }
+
   onMount(() => {
     const clockTimer = setInterval(() => {
       now = new Date();
     }, 1000);
 
-    return () => clearInterval(clockTimer);
+    const clickHandler = (event) => {
+      if (!event.target.closest('.quick-search')) {
+        searchOpen = false;
+      }
+    };
+    window.addEventListener('click', clickHandler);
+
+    return () => {
+      clearInterval(clockTimer);
+      window.removeEventListener('click', clickHandler);
+    };
+  });
+
+  onDestroy(() => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
   });
 
   $: overallState = $systemStore.health.overall || 'unknown';
   $: overallStateLabel = healthStateLabel(overallState, 'overall');
-  $: syncAttentionCount = Number($tapStore.summary?.unsyncedFlowCount || 0);
-  $: openIncidentCount = Number($systemStore.openIncidentCount || 0);
   $: operatorName = $sessionStore.user?.name || $sessionStore.user?.email || 'Текущий оператор';
+  $: searchGroups = $operatorSearchStore.groups || [];
+  $: activeVisitCount = ($visitStore.activeVisits || []).length;
+  $: pouringCount = Number($tapStore.summary?.pouringCount || 0);
 </script>
 
 <header class="topbar ui-card">
-  <section class="summary-block" aria-label={SHELL_COPY.operationalSummaryAria}>
-    <div class="summary-heading">
-      <div class="headline-group">
-        <p class="eyebrow">{SHELL_COPY.operationalSummaryEyebrow}</p>
-        <div class="headline-row">
-          <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
-          <span class="overall-health" data-tone={overallState}>{overallStateLabel}</span>
-        </div>
-        <p class="supporting-text">
-          {shiftStatusText()} · {openIncidentCount} откр. инцидентов · {syncAttentionCount} несинхр. проливов
-        </p>
+  <section class="left-column">
+    <button class="shift-brand" type="button" on:click={() => (window.location.hash = '/shift')}>
+      <div class="eyebrow">Рабочая смена</div>
+      <div class="brand-row">
+        <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
+        <span class="overall-health" data-tone={overallState}>{overallStateLabel}</span>
       </div>
+      <p>{shiftStatusText()} · {activeVisitCount} активных визитов · {pouringCount} льют сейчас</p>
+    </button>
 
-      <div class="time-block" aria-label="Текущее время смены">
-        <span class="time-value">{formatTimeRu(now.toISOString())}</span>
-        <span class="time-date">{formatDateTimeRu(now.toISOString())}</span>
-      </div>
+    <div class="status-strip">
+      <ShellStatusPills />
     </div>
 
-    <ShellStatusPills />
+    <div class="quick-search">
+      <label for="operator-quick-search">Быстрый поиск</label>
+      <input
+        id="operator-quick-search"
+        type="text"
+        bind:value={searchQuery}
+        placeholder="Гость, карта, визит, кран, кега, налив"
+        on:input={(event) => handleSearchInput(event.currentTarget.value)}
+        on:focus={() => {
+          if (searchQuery.trim()) searchOpen = true;
+        }}
+      />
+
+      {#if searchOpen}
+        <div class="search-popover ui-card">
+          {#if $operatorSearchStore.loading}
+            <p class="muted">Ищем по операторским разделам...</p>
+          {:else if $operatorSearchStore.error}
+            <p class="error">{$operatorSearchStore.error}</p>
+          {:else if searchGroups.length === 0}
+            <p class="muted">Начните с 2+ символов, чтобы искать по гостям, визитам, кранам, картам, наливам и кегам.</p>
+          {:else}
+            {#each searchGroups as group}
+              <section class="search-group">
+                <div class="search-group-head">
+                  <strong>{GROUP_LABELS[group.key] || group.label}</strong>
+                  <span>{group.items.length}</span>
+                </div>
+                <div class="search-result-list">
+                  {#each group.items as item}
+                    <button class="search-result" on:click={() => openSearchResult(item)}>
+                      <div>
+                        <strong>{item.title}</strong>
+                        {#if item.subtitle}<small>{item.subtitle}</small>{/if}
+                      </div>
+                      <div class="search-meta">
+                        {#if item.canonical_visit_status}
+                          <span class="status-pill">{canonicalVisitStatusLabel(item.canonical_visit_status)}</span>
+                        {/if}
+                        {#if item.meta}<small>{item.meta}</small>{/if}
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+    </div>
   </section>
 
-  <section class="actions-block" aria-label="Действия и контекст оператора">
-    <div class="shift-controls">
+  <section class="right-column">
+    <div class="clock-card">
+      <span class="time-value">{formatTimeRu(now.toISOString())}</span>
+      <span class="time-date">{formatDateTimeRu(now.toISOString())}</span>
+    </div>
+
+    <div class="action-cluster">
       {#if $shiftStore.isOpen}
         <button on:click={handleCloseShift} disabled={$shiftStore.loading}>Закрыть смену</button>
       {:else}
         <button on:click={handleOpenShift} disabled={$shiftStore.loading}>Открыть смену</button>
       {/if}
-
       {#if $roleStore.permissions.incidents_view}
-        <button class="ghost" on:click={() => navigateTo('/incidents')}>Инциденты</button>
+        <button class="ghost critical" on:click={() => (window.location.hash = '/incidents')}>Инциденты</button>
       {/if}
-      <button class="ghost" on:click={() => navigateTo('/taps')}>Краны</button>
+      <button class="ghost" on:click={() => (window.location.hash = '/taps')}>Все краны</button>
+      <button class="ghost" on:click={openQuickVisit}>Открыть визит</button>
     </div>
 
-    <div class="context-grid">
-      <div class="guest-context">
-        <span class="context-label">{SHELL_COPY.guestContext}</span>
-        <div class="context-card">
-          <strong>{$guestContextStore.guestName || 'Гость не выбран'}</strong>
-          <span>{($guestContextStore.cardUid ? `****${$guestContextStore.cardUid.slice(-4)}` : 'без карты')} · {$guestContextStore.isActive === null ? '—' : ($guestContextStore.isActive ? 'активен' : 'заблокирован')}</span>
-        </div>
+    <div class="operator-card">
+      <div>
+        <span class="eyebrow">Оператор</span>
+        <strong>{operatorName}</strong>
+        <small>Роль: {$roleStore.label}</small>
       </div>
-
-      <div class="operator-menu">
-        <span class="context-label">Оператор</span>
-        <div class="context-card operator-card">
-          <div>
-            <strong>{operatorName}</strong>
-            <span>Роль: {$roleStore.label}</span>
-          </div>
-          <button class="ghost" on:click={() => sessionStore.logout()}>{SHELL_COPY.logout}</button>
-        </div>
-      </div>
+      <button class="ghost" on:click={() => sessionStore.logout()}>Выйти</button>
     </div>
   </section>
 </header>
@@ -136,53 +238,35 @@
 <style>
   .topbar {
     margin: 12px;
-    padding: 12px 14px;
+    padding: 14px 16px;
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
     gap: 14px;
-    border-radius: 14px;
+    border-radius: 16px;
     align-items: start;
   }
-  .summary-block,
-  .actions-block {
-    display: grid;
-    gap: 12px;
-    min-width: 0;
-  }
-  .summary-heading {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: start;
-  }
-  .headline-group,
-  .time-block,
-  .context-grid,
-  .guest-context,
-  .operator-menu {
+  .left-column, .right-column, .quick-search, .operator-card, .clock-card { display: grid; gap: 10px; }
+  .shift-brand {
     display: grid;
     gap: 6px;
+    text-align: left;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    border: 0;
   }
-  .headline-row {
+  .shift-brand p, .time-date, .operator-card small, .muted { margin: 0; color: var(--text-secondary); }
+  .brand-row {
     display: flex;
+    gap: 10px;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
   }
-  .eyebrow,
-  .context-label {
+  .eyebrow {
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-secondary);
-    margin: 0;
-  }
-  .supporting-text,
-  .time-date,
-  .context-card span {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.84rem;
   }
   .overall-health {
     display: inline-flex;
@@ -202,58 +286,90 @@
   .overall-health[data-tone='critical'],
   .overall-health[data-tone='error'],
   .overall-health[data-tone='offline'] { background: #ffeef0; border-color: #ffc6cc; color: #9e1f2c; }
-  .time-block {
-    text-align: right;
+  .status-strip { display: grid; }
+  .quick-search { position: relative; }
+  .quick-search label { font-size: 0.82rem; color: var(--text-secondary); }
+  .quick-search input { width: 100%; }
+  .search-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    padding: 12px;
+    display: grid;
+    gap: 12px;
+    max-height: 420px;
+    overflow: auto;
+  }
+  .search-group, .search-result-list { display: grid; gap: 8px; }
+  .search-group-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+  }
+  .search-result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    text-align: left;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #fff;
+    color: inherit;
+  }
+  .search-result small, .search-meta small { color: var(--text-secondary); }
+  .search-meta {
+    display: grid;
+    gap: 4px;
     justify-items: end;
   }
-  .time-value {
-    font-size: 1.45rem;
+  .status-pill {
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: #eef2ff;
+    color: #3447a3;
+    font-size: 0.78rem;
     font-weight: 700;
   }
-  .shift-controls {
+  .clock-card {
+    justify-items: end;
+    text-align: right;
+  }
+  .time-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+  }
+  .action-cluster {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-  }
-  .context-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .context-card {
-    display: grid;
-    gap: 2px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: var(--bg-surface-muted);
-    border: 1px solid var(--border-soft);
-  }
-  .operator-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    justify-content: flex-end;
   }
   .ghost { background: #edf2fb; color: #23416b; }
-
-  @media (max-width: 1100px) {
-    .topbar {
-      grid-template-columns: 1fr;
-    }
+  .ghost.critical {
+    background: #fff1f2;
+    color: #9e1f2c;
+    border: 1px solid #ffc6cc;
   }
-
-  @media (max-width: 820px) {
-    .summary-heading,
-    .operator-card {
-      flex-direction: column;
-      align-items: start;
-    }
-
-    .time-block {
-      text-align: left;
-      justify-items: start;
-    }
-
-    .context-grid {
-      grid-template-columns: 1fr;
-    }
+  .operator-card {
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-soft);
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .error { color: var(--state-critical-text, #9e1f2c); }
+  @media (max-width: 1100px) {
+    .topbar { grid-template-columns: 1fr; }
+    .clock-card { justify-items: start; text-align: left; }
+    .action-cluster { justify-content: flex-start; }
+  }
+  @media (max-width: 720px) {
+    .operator-card, .search-result { grid-template-columns: 1fr; }
+    .search-meta { justify-items: start; }
   }
 </style>

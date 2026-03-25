@@ -1,6 +1,4 @@
 <script>
-  import { SESSION_COPY } from '../../lib/operatorLabels.js';
-
   export let detail;
   export let detailNarrativeGroups;
   export let detailDisplayContext;
@@ -22,29 +20,29 @@
   $: syncSummaryItems = detail ? [
     {
       key: 'sync-state',
-      label: 'Sync status',
-      value: syncLabels[detail.summary.sync_state] || detail.summary.sync_state || 'No data',
-      note: detail.summary.has_unsynced ? 'There is data waiting for sync.' : 'This session does not need extra sync.',
+      label: 'Sync',
+      value: syncLabels[detail.summary.sync_state] || detail.summary.sync_state || 'Нет данных',
+      note: detail.summary.has_unsynced ? 'Есть данные, ожидающие синхронизацию.' : 'Дополнительный sync не требуется.',
     },
     {
       key: 'last-sync',
-      label: 'Last sync',
+      label: 'Последний sync',
       value: formatMaybeDate(detail.summary.lifecycle.last_sync_at),
       note: null,
     },
     {
       key: 'incident-count',
-      label: 'Session incidents',
-      value: detail.summary.has_incident ? `${detail.summary.incident_count || 1}` : 'No',
-      note: detail.summary.has_incident ? 'Check related incident context before closing the case.' : null,
+      label: 'Проблемы визита',
+      value: detail.summary.has_incident ? `${detail.summary.incident_count || 1}` : 'Нет',
+      note: detail.summary.has_incident ? 'Перед закрытием сверьте связанный инцидент и состояние крана.' : null,
     },
   ] : [];
 
   $: actionButtons = detail ? [
-    { key: 'close', label: 'Close', policy: detail.safe_actions?.close, handler: onCloseSession, tone: 'danger' },
-    { key: 'force_unlock', label: 'Force unlock', policy: detail.safe_actions?.force_unlock, handler: onForceUnlock, tone: 'neutral' },
-    { key: 'reconcile', label: 'Reconcile', policy: detail.safe_actions?.reconcile, handler: onReconcileSession, tone: 'neutral' },
-    { key: 'mark_lost_card', label: 'Mark lost card', policy: detail.safe_actions?.mark_lost_card, handler: onMarkLostCard, tone: 'danger' },
+    { key: 'close', label: 'Закрыть визит', policy: detail.safe_actions?.close, handler: onCloseSession, tone: 'danger' },
+    { key: 'force_unlock', label: 'Снять блокировку', policy: detail.safe_actions?.force_unlock, handler: onForceUnlock, tone: 'neutral' },
+    { key: 'reconcile', label: 'Ручная сверка', policy: detail.safe_actions?.reconcile, handler: onReconcileSession, tone: 'neutral' },
+    { key: 'mark_lost_card', label: 'Отметить карту потерянной', policy: detail.safe_actions?.mark_lost_card, handler: onMarkLostCard, tone: 'danger' },
   ] : [];
 </script>
 
@@ -52,16 +50,16 @@
   {#if detail}
     <div class="drawer-head">
       <div>
-        <div class="eyebrow">{SESSION_COPY.detailsPanel}</div>
+        <div class="eyebrow">Детали визита</div>
         <h2>{detail.summary.guest_full_name}</h2>
-        <p>{detail.summary.card_uid || 'No card'} - {detail.summary.operator_status}</p>
+        <p>{detail.summary.card_uid || 'Без карты'} · {detail.summary.operator_status}</p>
       </div>
-      <button on:click={onCloseDetail}>вњ•</button>
+      <button on:click={onCloseDetail}>Закрыть</button>
     </div>
 
     <section class="summary-section actions-summary">
       <div class="section-inline-head">
-        <h3>Safe actions</h3>
+        <h3>Быстрые действия</h3>
         {#if readOnlyReason}
           <span class="muted">{readOnlyReason}</span>
         {/if}
@@ -85,14 +83,14 @@
     </section>
 
     <section class="summary-section">
-      <h3>What happened</h3>
+      <h3>Что происходит</h3>
       {#each detailWhatHappened as sentence}
         <p>{sentence}</p>
       {/each}
     </section>
 
     <section class="timeline-section">
-      <h3>{SESSION_COPY.lifecycleSummary}</h3>
+      <h3>Текущее состояние визита</h3>
       <div class="stats-grid">
         {#each detailNarrativeGroups.lifecycleCards as card}
           <article>
@@ -103,17 +101,17 @@
         {/each}
       </div>
       <dl>
-        <div><dt>Opened</dt><dd>{formatMaybeDate(detail.summary.lifecycle.opened_at)}</dd></div>
-        <div><dt>Authorized</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
-        <div><dt>Pour started</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_pour_started_at)}</dd></div>
-        <div><dt>Last pour ended</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_pour_ended_at)}</dd></div>
-        <div><dt>Last sync</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_sync_at)}</dd></div>
-        <div><dt>Closed / aborted</dt><dd>{formatMaybeDate(detail.summary.lifecycle.closed_at)}</dd></div>
+        <div><dt>Открыт</dt><dd>{formatMaybeDate(detail.summary.lifecycle.opened_at)}</dd></div>
+        <div><dt>Авторизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
+        <div><dt>Первый налив</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_pour_started_at)}</dd></div>
+        <div><dt>Последний налив</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_pour_ended_at)}</dd></div>
+        <div><dt>Последний sync</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_sync_at)}</dd></div>
+        <div><dt>Закрыт</dt><dd>{formatMaybeDate(detail.summary.lifecycle.closed_at)}</dd></div>
       </dl>
     </section>
 
     <section class="timeline-section">
-      <h3>Session timeline</h3>
+      <h3>Наливы и события визита</h3>
       <ul class="timeline">
         {#each detailNarrativeGroups.timeline as event}
           <li>
@@ -121,7 +119,7 @@
             <div>
               <strong>{event.title}</strong>
               <p>{event.description}</p>
-              {#if event.status}<small>{narrativeKindLabels[event.kind] || event.kind} - {event.status}</small>{/if}
+              {#if event.status}<small>{narrativeKindLabels[event.kind] || event.kind} · {event.status}</small>{/if}
             </div>
           </li>
         {/each}
@@ -129,7 +127,7 @@
     </section>
 
     <section class="timeline-section">
-      <h3>Sync and control</h3>
+      <h3>Проблемы и sync</h3>
       <div class="stats-grid">
         {#each syncSummaryItems as item}
           <article>
@@ -144,31 +142,31 @@
       {#if detailNarrativeGroups.operatorObservations.length}
         <ul class="timeline compact">
           {#each detailNarrativeGroups.operatorObservations as observation}
-            <li><div class="time">Context</div><div><strong>{observation.title}</strong><p>{observation.description}</p></div></li>
+            <li><div class="time">Контекст</div><div><strong>{observation.title}</strong><p>{observation.description}</p></div></li>
           {/each}
         </ul>
       {:else}
-        <p class="muted">No extra sync or operator-control warnings were returned by the system.</p>
+        <p class="muted">Дополнительных предупреждений по sync и операторскому контролю система не вернула.</p>
       {/if}
     </section>
 
     <section class="timeline-section">
-      <h3>{SESSION_COPY.operatorActions}</h3>
+      <h3>Действия оператора</h3>
       {#if detailOperatorActions.length}
         <ul class="timeline compact">
           {#each detailOperatorActions as action}
-            <li><div class="time">{formatMaybeDate(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'No extra comment'}</p></div></li>
+            <li><div class="time">{formatMaybeDate(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'Без дополнительного комментария'}</p></div></li>
           {/each}
         </ul>
       {:else}
-        <p class="muted">No explicit operator interventions were recorded.</p>
+        <p class="muted">Явных ручных действий оператора по этому визиту не зафиксировано.</p>
       {/if}
     </section>
 
     <section class="timeline-section display-context-section">
       <h3>{detailDisplayContext.title}</h3>
       {#if detailDisplayContext.tapLabel}
-        <p class="muted">Context for {detailDisplayContext.tapLabel}.</p>
+        <p class="muted">Контекст для {detailDisplayContext.tapLabel}.</p>
       {/if}
       {#if detailDisplayContext.available}
         <dl class="display-context-grid">
@@ -177,7 +175,7 @@
           {/each}
         </dl>
         <div class="summary-section nested-summary">
-          <strong>Important override fields</strong>
+          <strong>Важные override-поля</strong>
           {#if detailDisplayContext.overrides.length}
             <ul class="override-list">
               {#each detailDisplayContext.overrides as override}
@@ -185,7 +183,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="muted">Override fields did not affect what the guest saw on the display.</p>
+            <p class="muted">Override-поля не меняли guest-facing экран в этом визите.</p>
           {/if}
           {#if detailDisplayContext.note}
             <p class="muted">{detailDisplayContext.note}</p>
@@ -203,9 +201,9 @@
     </section>
   {:else}
     <div class="empty-drawer">
-      <div class="eyebrow">{SESSION_COPY.detailsPanel}</div>
-      <h2>Select a session</h2>
-      <p>{SESSION_COPY.emptyDetailsText}</p>
+      <div class="eyebrow">Детали визита</div>
+      <h2>Выберите визит</h2>
+      <p>Откройте любую строку в активном блоке или общем журнале, чтобы увидеть гостя, наливы, проблемы и действия.</p>
     </div>
   {/if}
 </aside>

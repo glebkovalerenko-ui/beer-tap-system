@@ -1,58 +1,89 @@
 <script>
-  export let embedded = false;
-  import { guestStore } from '../stores/guestStore.js';
-  import { sessionStore } from '../stores/sessionStore.js';
-  import { roleStore } from '../stores/roleStore.js';
-  import { guestContextStore } from '../stores/guestContextStore.js';
-  import { shiftStore } from '../stores/shiftStore.js';
-  import { pourStore } from '../stores/pourStore.js';
+  import { onMount } from 'svelte';
 
-  import GuestSearch from '../components/guests/GuestSearch.svelte';
-  import GuestList from '../components/guests/GuestList.svelte';
-  import GuestDetail from '../components/guests/GuestDetail.svelte';
   import Modal from '../components/common/Modal.svelte';
   import GuestForm from '../components/guests/GuestForm.svelte';
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
-  import { uiStore } from '../stores/uiStore.js';
+  import { navigateWithFocus } from '../lib/actionRouting.js';
+  import { formatCardStatus, formatDateTimeRu, formatRubAmount } from '../lib/formatters.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { normalizeError } from '../lib/errorUtils.js';
-  import { formatRubAmount } from '../lib/formatters.js';
+  import { guestStore } from '../stores/guestStore.js';
+  import { roleStore } from '../stores/roleStore.js';
+  import { sessionStore } from '../stores/sessionStore.js';
+  import { uiStore } from '../stores/uiStore.js';
+  import { visitStore } from '../stores/visitStore.js';
 
   let searchTerm = '';
-  let selectedGuestId = null;
-  let isModalOpen = false;
-  let formError = '';
+  let selectedGuestId = '';
+  let initialLoadAttempted = false;
+  let isGuestModalOpen = false;
   let guestToEdit = null;
-  let isNFCModalOpen = false;
+  let formError = '';
+  let isNfcModalOpen = false;
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
-  let initialLoadAttempted = false;
 
-  $: {
-    if ($sessionStore.token && !initialLoadAttempted) {
-      guestStore.fetchGuests();
-      initialLoadAttempted = true;
-    }
+  function fullName(guest) {
+    return [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(' ') || 'Гость без имени';
   }
 
-  $: filteredGuests = $guestStore.guests.filter((guest) => {
-    const fullName = `${guest.last_name} ${guest.first_name} ${guest.patronymic || ''}`.toLowerCase();
-    return fullName.includes(searchTerm.toLowerCase());
+  function matchesGuest(guest, query) {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return true;
+    return [
+      fullName(guest),
+      guest?.phone_number,
+      ...(Array.isArray(guest?.cards) ? guest.cards.map((card) => card.card_uid) : []),
+    ].some((value) => String(value || '').toLowerCase().includes(normalized));
+  }
+
+  $: if ($sessionStore.token && !initialLoadAttempted) {
+    guestStore.fetchGuests();
+    visitStore.fetchActiveVisits();
+    initialLoadAttempted = true;
+  }
+
+  $: filteredGuests = ($guestStore.guests || []).filter((guest) => matchesGuest(guest, searchTerm));
+  $: if (filteredGuests.length && !filteredGuests.some((guest) => String(guest.guest_id) === String(selectedGuestId))) {
+    selectedGuestId = filteredGuests[0].guest_id;
+  } else if (!filteredGuests.length && selectedGuestId) {
+    selectedGuestId = '';
+  }
+  $: selectedGuest = ($guestStore.guests || []).find((guest) => String(guest.guest_id) === String(selectedGuestId)) || null;
+  $: activeVisit = selectedGuest ? ($visitStore.activeVisits || []).find((visit) => visit.guest_id === selectedGuest.guest_id) : null;
+  $: primaryCard = selectedGuest?.cards?.[0] || null;
+  $: recentPours = (selectedGuest?.pours || []).slice().sort((left, right) => new Date(right.poured_at).getTime() - new Date(left.poured_at).getTime()).slice(0, 5);
+  $: recentTransactions = (selectedGuest?.transactions || []).slice().sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()).slice(0, 4);
+
+  onMount(() => {
+    const focusGuestId = sessionStorage.getItem('guests.focusGuestId');
+    if (focusGuestId) {
+      selectedGuestId = focusGuestId;
+      sessionStorage.removeItem('guests.focusGuestId');
+    }
+    const focusCardUid = sessionStorage.getItem('guests.focusCardUid');
+    if (focusCardUid) {
+      searchTerm = focusCardUid;
+      sessionStorage.removeItem('guests.focusCardUid');
+    }
   });
 
-  $: selectedGuest = selectedGuestId ? $guestStore.guests.find((g) => g.guest_id === selectedGuestId) : null;
-  $: guestContextStore.setGuest(selectedGuest);
-  $: recentGuestPours = selectedGuest
-    ? $pourStore.pours.filter((p) => p?.guest?.guest_id === selectedGuest.guest_id).slice(0, 8)
-    : [];
+  function openCreateModal() {
+    guestToEdit = null;
+    formError = '';
+    isGuestModalOpen = true;
+  }
 
-  function handleSelectGuest(event) { selectedGuestId = event.detail.guestId; }
-  function handleCloseDetail() { selectedGuestId = null; guestContextStore.clear(); }
-  function handleOpenCreateModal() { guestToEdit = null; formError = ''; isModalOpen = true; }
-  function handleOpenEditModal() { guestToEdit = selectedGuest; formError = ''; isModalOpen = true; }
+  function openEditModal() {
+    guestToEdit = selectedGuest;
+    formError = '';
+    isGuestModalOpen = true;
+  }
 
-  async function handleSave(event) {
+  async function handleSaveGuest(event) {
     formError = '';
     try {
       if (guestToEdit) {
@@ -60,7 +91,8 @@
       } else {
         await guestStore.createGuest(event.detail);
       }
-      isModalOpen = false;
+      await guestStore.fetchGuests({ force: true });
+      isGuestModalOpen = false;
       guestToEdit = null;
     } catch (error) {
       formError = normalizeError(error);
@@ -68,27 +100,24 @@
   }
 
   function handleBindCard() {
-    if (!selectedGuest) { uiStore.notifyWarning('Сначала выберите гостя.'); return; }
+    if (!selectedGuest) return;
     nfcError = '';
-    isNFCModalOpen = true;
+    isNfcModalOpen = true;
   }
 
   async function handleUidRead(event) {
     nfcError = '';
     try {
-      await guestStore.bindCardToGuest(selectedGuestId, event.detail.uid);
-      uiStore.notifySuccess('Карта привязана. Можно перейти к пополнению.');
+      await guestStore.bindCardToGuest(selectedGuest.guest_id, event.detail.uid);
+      await guestStore.fetchGuests({ force: true });
+      uiStore.notifySuccess('Карта привязана к гостю.');
     } catch (error) {
       nfcError = normalizeError(error);
     }
   }
 
-  function handleOpenTopUpModal() {
-    if (!selectedGuest) { uiStore.notifyWarning('Сначала выберите гостя.'); return; }
-    if (!$shiftStore.isOpen) {
-      uiStore.notifyWarning('Сначала откройте смену на дашборде, затем выполните пополнение.');
-      return;
-    }
+  function handleOpenTopUp() {
+    if (!selectedGuest) return;
     topUpError = '';
     isTopUpModalOpen = true;
   }
@@ -96,96 +125,191 @@
   async function handleSaveTopUp(event) {
     topUpError = '';
     try {
-      await guestStore.topUpBalance(selectedGuestId, event.detail);
-      shiftStore.recordTopUp(event.detail.amount);
+      await guestStore.topUpBalance(selectedGuest.guest_id, event.detail);
+      await guestStore.fetchGuests({ force: true });
       isTopUpModalOpen = false;
       uiStore.notifySuccess(`Баланс пополнен на ${formatRubAmount(event.detail.amount)}`);
     } catch (error) {
       topUpError = normalizeError(error);
     }
   }
+
+  async function handleOpenVisit() {
+    if (!selectedGuest) return;
+    if (activeVisit?.visit_id) {
+      navigateWithFocus({ target: 'visit', visitId: activeVisit.visit_id, guestId: selectedGuest.guest_id, cardUid: primaryCard?.card_uid });
+      return;
+    }
+    try {
+      const opened = await visitStore.openVisit({ guestId: selectedGuest.guest_id });
+      await visitStore.fetchActiveVisits({ force: true });
+      navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId: selectedGuest.guest_id, cardUid: primaryCard?.card_uid });
+    } catch (error) {
+      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть визит');
+    }
+  }
 </script>
 
-{#if !$roleStore.permissions.cards_manage}
+{#if !($roleStore.permissions.cards_lookup || $roleStore.permissions.cards_manage || $roleStore.permissions.sessions_view)}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
-    <p>Текущая роль не предусматривает работу с гостями и картами.</p>
+    <p>Текущая роль не предусматривает работу с гостями.</p>
   </section>
 {:else}
-  {#if !embedded}
-    <div class="section-intro ui-card">
-      <h1>Гости</h1>
-      <p>Открывайте карточку гостя, привязывайте карту и пополняйте баланс без перехода в отдельные административные сущности.</p>
-    </div>
-  {/if}
-
-  <div class="guests-page-layout">
-    <div class="list-panel ui-card">
-      <div class="panel-header">
-        <h2>Операции с гостями</h2>
-        <button on:click={handleOpenCreateModal}>+ Новый гость</button>
+  <section class="page">
+    <div class="page-header">
+      <div>
+        <h1>{ROUTE_COPY.guests.title}</h1>
+        <p>{ROUTE_COPY.guests.description}</p>
       </div>
-      <GuestSearch bind:searchTerm />
-      <div class="button-group">
-        <button on:click={guestStore.fetchGuests} disabled={$guestStore.loading}>
-          {#if $guestStore.loading}Обновление...{:else}Обновить список{/if}
-        </button>
-      </div>
-
-      {#if $guestStore.loading && $guestStore.guests.length === 0}
-        <p>Загрузка гостей...</p>
-      {:else if $guestStore.error}
-        <p class="error">Ошибка: {$guestStore.error}</p>
-      {:else if filteredGuests.length === 0}
-        <p>Гостей по запросу не найдено. Создайте нового гостя для продолжения.</p>
-      {:else}
-        <GuestList guests={filteredGuests} on:select={handleSelectGuest} selectedId={selectedGuestId} />
-      {/if}
+      <button on:click={openCreateModal}>Новый гость</button>
     </div>
 
-    <div class="detail-panel ui-card">
-      {#if selectedGuest}
-        <GuestDetail
-          guest={selectedGuest}
-          recentActivity={recentGuestPours}
-          on:close={handleCloseDetail}
-          on:edit={handleOpenEditModal}
-          on:bind-card={handleBindCard}
-          on:top-up={handleOpenTopUpModal}
-        />
-      {:else}
-        <div class="empty-state">
-          <h3>Гость не выбран</h3>
-          <p>Выберите гостя слева или создайте нового, чтобы выполнить пополнение и операции по карте.</p>
-          <button on:click={handleOpenCreateModal}>Создать гостя</button>
+    <div class="content-grid">
+      <section class="ui-card list-panel">
+        <div class="search-row">
+          <input bind:value={searchTerm} placeholder="Поиск по имени, телефону или карте" />
+          <button class="secondary" on:click={() => guestStore.fetchGuests({ force: true })} disabled={$guestStore.loading}>Обновить</button>
         </div>
-      {/if}
-    </div>
-  </div>
 
-  {#if isModalOpen}
-    <Modal on:close={() => { isModalOpen = false; guestToEdit = null; }}>
+        {#if $guestStore.loading && ($guestStore.guests || []).length === 0}
+          <p>Загрузка гостей...</p>
+        {:else if $guestStore.error}
+          <p class="error">{$guestStore.error}</p>
+        {:else if filteredGuests.length === 0}
+          <p class="muted">Гости по запросу не найдены.</p>
+        {:else}
+          <div class="guest-list">
+            {#each filteredGuests as guest}
+              <button class:selected={guest.guest_id === selectedGuestId} class="guest-item" on:click={() => (selectedGuestId = guest.guest_id)}>
+                <div class="row top">
+                  <strong>{fullName(guest)}</strong>
+                  <span class:active={Boolean(($visitStore.activeVisits || []).find((visit) => visit.guest_id === guest.guest_id))} class="visit-flag">
+                    {#if ($visitStore.activeVisits || []).find((visit) => visit.guest_id === guest.guest_id)}
+                      Активный визит
+                    {:else}
+                      История
+                    {/if}
+                  </span>
+                </div>
+                <div class="row meta"><span>{guest.phone_number}</span><span>{guest.cards?.[0]?.card_uid || 'Без карты'}</span></div>
+                <div class="row meta"><span>Баланс: {formatRubAmount(guest.balance)}</span><span>{guest.is_active ? 'Активен' : 'Заблокирован'}</span></div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="ui-card detail-panel">
+        {#if selectedGuest}
+          <div class="detail-head">
+            <div>
+              <h2>{fullName(selectedGuest)}</h2>
+              <p>{selectedGuest.phone_number || 'Телефон не указан'}</p>
+            </div>
+            <button class="secondary" on:click={openEditModal}>Редактировать</button>
+          </div>
+
+          <div class="summary-grid">
+            <article>
+              <span>Карта</span>
+              <strong>{primaryCard?.card_uid || 'Не привязана'}</strong>
+              <small>{primaryCard ? formatCardStatus(primaryCard.status) : 'Карта ещё не выдана'}</small>
+            </article>
+            <article>
+              <span>Баланс</span>
+              <strong>{formatRubAmount(selectedGuest.balance)}</strong>
+              <small>{selectedGuest.is_active ? 'Гость активен' : 'Гость заблокирован'}</small>
+            </article>
+            <article>
+              <span>Активный визит</span>
+              <strong>{activeVisit?.visit_id || 'Нет активного визита'}</strong>
+              <small>{activeVisit?.active_tap_id ? `Кран #${activeVisit.active_tap_id}` : 'Кран не выбран'}</small>
+            </article>
+            <article>
+              <span>Создан</span>
+              <strong>{formatDateTimeRu(selectedGuest.created_at)}</strong>
+              <small>Последнее обновление: {formatDateTimeRu(selectedGuest.updated_at)}</small>
+            </article>
+          </div>
+
+          <div class="action-row">
+            <button on:click={handleOpenVisit}>Открыть визит</button>
+            <button class="secondary" on:click={handleOpenTopUp}>Пополнить</button>
+            <button class="secondary" on:click={handleBindCard}>Привязать карту</button>
+            <button class="secondary" on:click={() => (window.location.hash = '/lost-cards')}>Потерянные карты</button>
+          </div>
+
+          <section class="detail-section">
+            <h3>Последние наливы</h3>
+            {#if recentPours.length === 0}
+              <p class="muted">У гостя пока нет недавних наливов.</p>
+            {:else}
+              <div class="event-list">
+                {#each recentPours as pour}
+                  <button class="event-row" on:click={() => navigateWithFocus({ target: 'pour', route: '/pours', pourRef: `pour:${pour.pour_id}`, guestId: selectedGuest.guest_id, visitId: pour.visit_id, tapId: pour.tap_id })}>
+                    <div>
+                      <strong>{pour.beverage?.name || 'Налив'}</strong>
+                      <p>{pour.tap?.display_name || `Кран #${pour.tap_id || '—'}`} · {formatVolumeRu(pour.volume_ml)}</p>
+                    </div>
+                    <small>{formatDateTimeRu(pour.poured_at)}</small>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </section>
+
+          <section class="detail-section">
+            <h3>Последние пополнения и операции</h3>
+            {#if recentTransactions.length === 0}
+              <p class="muted">У гостя пока нет недавних транзакций.</p>
+            {:else}
+              <div class="event-list">
+                {#each recentTransactions as tx}
+                  <div class="event-row static">
+                    <div>
+                      <strong>{tx.type || 'Операция'}</strong>
+                      <p>{formatRubAmount(tx.amount || 0)}</p>
+                    </div>
+                    <small>{formatDateTimeRu(tx.created_at)}</small>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        {:else}
+          <div class="empty-state">
+            <h2>Гость не выбран</h2>
+            <p>Выберите гостя слева или создайте нового, чтобы перейти к карте, балансу и активному визиту.</p>
+          </div>
+        {/if}
+      </section>
+    </div>
+  </section>
+
+  {#if isGuestModalOpen}
+    <Modal on:close={() => { isGuestModalOpen = false; guestToEdit = null; }}>
       <GuestForm
         guest={guestToEdit}
-        on:save={handleSave}
-        on:cancel={() => { isModalOpen = false; guestToEdit = null; }}
+        on:save={handleSaveGuest}
+        on:cancel={() => { isGuestModalOpen = false; guestToEdit = null; }}
         isSaving={$guestStore.loading}
       />
-      {#if formError}<p class="error" style="margin-top: 1rem;">{formError}</p>{/if}
+      {#if formError}<p class="error">{formError}</p>{/if}
     </Modal>
   {/if}
 
-  {#if isNFCModalOpen}
+  {#if isNfcModalOpen}
     <NFCModal
-      on:close={() => { isNFCModalOpen = false; }}
+      on:close={() => { isNfcModalOpen = false; }}
       on:uid-read={handleUidRead}
       externalError={nfcError}
     />
   {/if}
 
-  {#if isTopUpModalOpen}
+  {#if isTopUpModalOpen && selectedGuest}
     <TopUpModal
-      guestName={`${selectedGuest.first_name} ${selectedGuest.last_name}`}
+      guestName={fullName(selectedGuest)}
       isSaving={$guestStore.loading}
       on:close={() => { isTopUpModalOpen = false; }}
       on:save={handleSaveTopUp}
@@ -195,24 +319,58 @@
 {/if}
 
 <style>
-  .access-denied { padding: 1rem; }
-  .section-intro { padding: 1rem; margin-bottom: 1rem; }
-  .section-intro h1 { margin: 0 0 0.25rem; }
-  .section-intro p { margin: 0; color: var(--text-secondary); }
-  .guests-page-layout { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 1rem; min-height: 70vh; }
-  .list-panel, .detail-panel { padding: 1rem; overflow-y: auto; }
-  .error { color: #c61f35; }
-  .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-  .panel-header h2 { margin: 0; }
-  .button-group { margin-bottom: 0.75rem; }
-  .empty-state {
-    min-height: 320px;
+  .page, .list-panel, .detail-panel, .detail-section { display: grid; gap: 1rem; }
+  .page-header, .search-row, .detail-head, .row, .action-row { display: flex; gap: 0.75rem; justify-content: space-between; align-items: flex-start; }
+  .page-header p, .detail-head p, .muted { margin: 0.25rem 0 0; color: var(--text-secondary); }
+  .content-grid { display: grid; gap: 1rem; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); align-items: start; }
+  .search-row { align-items: center; }
+  .search-row input { flex: 1 1 auto; }
+  .guest-list, .event-list { display: grid; gap: 0.75rem; }
+  .guest-item, .event-row {
+    text-align: left;
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 0.9rem;
+    background: #fff;
+    color: inherit;
     display: grid;
-    align-content: center;
-    justify-items: start;
-    gap: 0.6rem;
-    padding: 1rem;
+    gap: 0.4rem;
   }
-  .empty-state h3 { margin: 0; }
-  .empty-state p { margin: 0; color: var(--text-secondary); max-width: 520px; }
+  .guest-item.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #bfdbfe; }
+  .visit-flag {
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: var(--bg-surface-muted);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+  .visit-flag.active {
+    background: #eef2ff;
+    color: #3447a3;
+  }
+  .meta { color: var(--text-secondary); flex-wrap: wrap; }
+  .summary-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .summary-grid article {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.9rem;
+    border-radius: 14px;
+    background: var(--bg-surface-muted);
+  }
+  .summary-grid span, .summary-grid small { color: var(--text-secondary); }
+  .action-row { flex-wrap: wrap; }
+  .event-row { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .event-row.static { cursor: default; }
+  .event-row p { margin: 0.2rem 0 0; color: var(--text-secondary); }
+  .error { color: var(--state-critical-text); }
+  @media (max-width: 1100px) {
+    .content-grid, .summary-grid { grid-template-columns: 1fr; }
+    .page-header, .search-row, .detail-head, .row, .action-row, .event-row { flex-direction: column; align-items: stretch; }
+    .event-row { display: grid; grid-template-columns: 1fr; }
+  }
 </style>

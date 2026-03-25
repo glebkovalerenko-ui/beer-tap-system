@@ -64,9 +64,9 @@
       parts.push(`длительность ${formatDurationRu(item.duration_ms)}`);
     }
     if (item?.reason === 'flow_detected_when_valve_closed_without_active_session') {
-      parts.push('клапан закрыт, активной сессии нет');
+      parts.push('клапан закрыт, активного визита нет');
     } else if (item?.reason === 'authorized_pour_in_progress') {
-      parts.push('данные поступают с контроллера');
+      parts.push('контроллер подтверждает активный налив');
     }
     return parts.join(', ');
   }
@@ -83,8 +83,8 @@
     return item?.severity || (item?.item_type === 'flow_event' && item?.event_status !== 'stopped' ? 'info' : 'neutral');
   }
 
-  function sessionLabel(item) {
-    return item?.visit_id ? `Сессия #${item.visit_id}` : 'Открыть сессию';
+  function visitLabel(item) {
+    return item?.visit_id ? `Визит #${item.visit_id}` : 'Открыть визит';
   }
 
   function timeFor(item) {
@@ -120,7 +120,7 @@
               {/if}
               <div class="actions">
                 <button class="ghost-action" on:click={() => onOpenTap(item)}>Открыть кран</button>
-                <button class="ghost-action" on:click={() => onOpenSession(item)}>{sessionLabel(item)}</button>
+                <button class="ghost-action" on:click={() => onOpenSession(item)}>{visitLabel(item)}</button>
                 <button class="ghost-action subtle" on:click={() => onDismiss(item)}>Скрыть</button>
               </div>
             </div>
@@ -223,96 +223,78 @@
   }
 
   .severity-chip.severity-critical,
-  .badge.severity-critical,
-  .metric.severity-critical {
-    background: var(--state-critical-bg);
-    color: var(--state-critical-text);
+  .metric.severity-critical,
+  .badge.severity-critical {
+    background: rgba(190, 24, 93, 0.12);
+    color: #9f1239;
   }
 
   .severity-chip.severity-warning,
-  .badge.severity-warning,
-  .metric.severity-warning {
-    background: var(--state-warning-bg);
-    color: var(--state-warning-text);
+  .metric.severity-warning,
+  .badge.severity-warning {
+    background: rgba(245, 158, 11, 0.14);
+    color: #8a5a00;
   }
 
   .severity-chip.severity-info,
-  .badge.severity-info,
-  .metric.severity-info {
-    background: var(--state-neutral-bg);
-    color: var(--state-neutral-text);
+  .metric.severity-info,
+  .badge.severity-info {
+    background: rgba(29, 78, 216, 0.1);
+    color: #1d4ed8;
   }
 
-  .severity-chip.severity-neutral,
-  .badge.severity-neutral,
-  .metric.severity-neutral {
-    background: #f1f5f9;
-    color: #475569;
-  }
-
-  .category-chip {
-    background: #f8fafc;
-    color: #475569;
+  .category-chip,
+  .badge.severity-neutral {
+    background: #eef2ff;
+    color: #3447a3;
   }
 
   .guest-name {
     font-weight: 700;
-    color: #0f172a;
   }
 
-  .details {
-    font-size: 0.88rem;
-    color: #64748b;
+  .details,
+  .no-pours-message {
+    color: var(--text-secondary, #64748b);
   }
 
   .meta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    display: grid;
     gap: 0.5rem;
+    justify-items: end;
   }
 
   .metric {
     font-weight: 700;
-    font-size: 0.96rem;
-    border-radius: 999px;
-    padding: 0.32rem 0.75rem;
   }
 
   .actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.4rem;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
 
   .ghost-action {
-    border: 1px solid var(--border-color, #d7dbe7);
-    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #d7e2f1;
     border-radius: 999px;
-    padding: 0.35rem 0.7rem;
-    font-size: 0.8rem;
-    cursor: pointer;
+    background: #fff;
+    color: #23416b;
+    padding: 0.35rem 0.75rem;
   }
 
   .ghost-action.subtle {
-    color: var(--text-secondary, #6b7280);
+    color: var(--text-secondary);
   }
 
-  .no-pours-message {
-    text-align: center;
-    color: #888;
-    padding: 2rem;
-  }
-
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     .feed-item {
       grid-template-columns: 1fr;
     }
 
     .meta,
     .actions {
-      align-items: flex-start;
+      justify-items: start;
       justify-content: flex-start;
     }
   }

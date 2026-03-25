@@ -439,6 +439,64 @@ async fn get_operator_session_detail(
 }
 
 #[tauri::command]
+async fn get_operator_pours(
+    token: String,
+    period_preset: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    tap_id: Option<i32>,
+    guest_query: Option<String>,
+    visit_id: Option<String>,
+    status: Option<String>,
+    problem_only: bool,
+    non_sale_only: bool,
+    zero_volume_only: bool,
+    timeout_only: bool,
+    denied_only: bool,
+    sale_mode: Option<String>,
+) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_pours(
+        &token,
+        period_preset.as_deref(),
+        date_from.as_deref(),
+        date_to.as_deref(),
+        tap_id,
+        guest_query.as_deref(),
+        visit_id.as_deref(),
+        status.as_deref(),
+        problem_only,
+        non_sale_only,
+        zero_volume_only,
+        timeout_only,
+        denied_only,
+        sale_mode.as_deref(),
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_pour_detail(
+    token: String,
+    pour_ref: String,
+) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_pour_detail(&token, &pour_ref)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn search_operator_workspace(
+    token: String,
+    query: String,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, AppError> {
+    api_client::search_operator_workspace(&token, &query, limit)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn get_operator_system_status(token: String) -> Result<serde_json::Value, AppError> {
     api_client::get_operator_system_status(&token)
         .await
@@ -952,6 +1010,9 @@ fn main() {
             get_operator_tap_detail,
             get_operator_sessions,
             get_operator_session_detail,
+            get_operator_pours,
+            get_operator_pour_detail,
+            search_operator_workspace,
             get_operator_system_status,
             get_operator_stream_ticket,
             get_pours,

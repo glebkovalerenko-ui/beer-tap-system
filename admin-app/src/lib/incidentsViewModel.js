@@ -119,10 +119,10 @@ function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
       : 'Ответственный оператор не назначен — это нужно исправить следующим действием в системе.',
     tapMatch?.operations?.productStateLabel
       ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без уточнения от системы'}.`
-      : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и сессии.',
+      : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и визиту.',
     sessionMatch
-      ? `Связанная сессия #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
-      : 'Связанная сессия не найдена — стоит проверить журнал сессий и сигналы системы.',
+      ? `Связанный визит #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
+      : 'Связанный визит не найден — стоит проверить журнал визитов и сигналы системы.',
   ];
 }
 
@@ -133,7 +133,7 @@ function deriveImpact(incident, tapMatch, sessionMatch) {
   if (incident.priority === 'high') impact.push('требует быстрого вмешательства смены');
   if (tapMatch?.operations?.currentPour?.isActive) impact.push('по крану прямо сейчас фиксируется поток');
   if (tapMatch?.operations?.heartbeat?.isStale) impact.push('heartbeat устарел');
-  if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории сессии уже есть инцидент (${sessionMatch.incident_count || 1})`);
+  if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории визита уже есть инцидент (${sessionMatch.incident_count || 1})`);
   if (impact.length === 0) impact.push('локальное влияние ограничено одним краном и требует подтверждения оператором');
   return impact;
 }
@@ -156,10 +156,10 @@ function deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy) {
     events.push({
       id: `session-${sessionMatch.visit_id}`,
       time: sessionMatch.last_event_at || sessionMatch.opened_at,
-      title: `Сессия #${sessionMatch.visit_id}`,
+      title: `Визит #${sessionMatch.visit_id}`,
       description: `${sessionMatch.operator_status || 'Статус неизвестен'} · taps: ${sessionMatch.taps?.join(', ') || '—'}`,
-      href: '#/sessions/history',
-      label: 'Открыть историю сессии',
+      href: '#/visits',
+      label: 'Открыть визит',
     });
   }
 
@@ -266,8 +266,8 @@ function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
   if (sessionMatch?.incident_count) {
     actions.push({
       kind: 'history',
-      title: 'Есть след в истории сессий',
-      detail: `В связанной сессии отмечен инцидент: ${sessionMatch.incident_count}.`,
+      title: 'Есть след в истории визитов',
+      detail: `В связанном визите отмечен инцидент: ${sessionMatch.incident_count}.`,
       time: sessionMatch.last_event_at || sessionMatch.opened_at,
     });
   }
@@ -301,7 +301,7 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       tapId: tapMatch?.tap_id || null,
       tapHref: tapMatch ? '#/taps' : null,
       sessionMatch,
-      sessionHref: sessionMatch ? '#/sessions/history' : '#/sessions',
+      sessionHref: sessionMatch ? '#/visits' : '#/visits',
       systemHref: '#/system',
       sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
       typeLabel: titleCase(incident.type),

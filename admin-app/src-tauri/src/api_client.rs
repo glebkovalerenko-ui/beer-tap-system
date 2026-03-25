@@ -1139,6 +1139,110 @@ pub async fn get_operator_session_detail(token: &str, visit_id: &str) -> Result<
     }
 }
 
+pub async fn get_operator_pours(
+    token: &str,
+    period_preset: Option<&str>,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+    tap_id: Option<i32>,
+    guest_query: Option<&str>,
+    visit_id: Option<&str>,
+    status: Option<&str>,
+    problem_only: bool,
+    non_sale_only: bool,
+    zero_volume_only: bool,
+    timeout_only: bool,
+    denied_only: bool,
+    sale_mode: Option<&str>,
+) -> Result<Value, String> {
+    let url = build_api_url("operator/pours");
+    let mut query: Vec<(&str, String)> = Vec::new();
+    if let Some(value) = period_preset {
+        if !value.trim().is_empty() {
+            query.push(("period_preset", value.to_string()));
+        }
+    }
+    if let Some(value) = date_from {
+        if !value.trim().is_empty() {
+            query.push(("date_from", value.to_string()));
+        }
+    }
+    if let Some(value) = date_to {
+        if !value.trim().is_empty() {
+            query.push(("date_to", value.to_string()));
+        }
+    }
+    if let Some(value) = tap_id {
+        query.push(("tap_id", value.to_string()));
+    }
+    if let Some(value) = guest_query {
+        if !value.trim().is_empty() {
+            query.push(("guest_query", value.to_string()));
+        }
+    }
+    if let Some(value) = visit_id {
+        if !value.trim().is_empty() {
+            query.push(("visit_id", value.to_string()));
+        }
+    }
+    if let Some(value) = status {
+        if !value.trim().is_empty() {
+            query.push(("status", value.to_string()));
+        }
+    }
+    if problem_only {
+        query.push(("problem_only", "true".to_string()));
+    }
+    if non_sale_only {
+        query.push(("non_sale_only", "true".to_string()));
+    }
+    if zero_volume_only {
+        query.push(("zero_volume_only", "true".to_string()));
+    }
+    if timeout_only {
+        query.push(("timeout_only", "true".to_string()));
+    }
+    if denied_only {
+        query.push(("denied_only", "true".to_string()));
+    }
+    if let Some(value) = sale_mode {
+        if !value.trim().is_empty() {
+            query.push(("sale_mode", value.to_string()));
+        }
+    }
+
+    let response = send(CLIENT.get(&url).query(&query).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_pour_detail(token: &str, pour_ref: &str) -> Result<Value, String> {
+    let url = build_api_url(&format!("operator/pours/{}", pour_ref));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn search_operator_workspace(token: &str, query_text: &str, limit: Option<u32>) -> Result<Value, String> {
+    let url = build_api_url("operator/search");
+    let mut query: Vec<(&str, String)> = vec![("query", query_text.to_string())];
+    if let Some(value) = limit {
+        query.push(("limit", value.to_string()));
+    }
+    let response = send(CLIENT.get(&url).query(&query).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 pub async fn get_operator_system_status(token: &str) -> Result<Value, String> {
     let url = build_api_url("operator/system");
     let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;

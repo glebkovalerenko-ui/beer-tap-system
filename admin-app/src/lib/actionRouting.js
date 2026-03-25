@@ -1,9 +1,11 @@
 export const ACTION_LABELS = {
   tap: 'Открыть кран',
-  session: 'Открыть сессию',
+  visit: 'Открыть визит',
+  guest: 'Открыть гостя',
+  pour: 'Открыть налив',
   incident: 'Открыть инцидент',
-  assignOwner: 'Назначить ответственного',
-  checkSync: 'Проверить sync',
+  assignOwner: 'Взять в работу',
+  checkSync: 'Открыть систему',
   system: 'Открыть систему',
   context: 'Открыть контекст',
 };
@@ -28,14 +30,14 @@ const ACTION_MAP = {
     primaryCta: ACTION_LABELS.checkSync,
     secondaryCta: { target: 'incident', label: ACTION_LABELS.incident },
     recommendedOwnerState: 'Ответственный по смене',
-    recommendedActionState: 'Проверить sync и подтвердить влияние на кран',
+    recommendedActionState: 'Проверить синхронизацию и влияние на продажи',
   },
   reader_offline: {
     primaryTarget: 'tap',
     primaryCta: ACTION_LABELS.tap,
     secondaryCta: { target: 'system', label: ACTION_LABELS.checkSync },
     recommendedOwnerState: 'Нужен ответственный',
-    recommendedActionState: 'Проверить считыватель и статус синхронизации',
+    recommendedActionState: 'Проверить считыватель и его связь',
   },
   display_offline: {
     primaryTarget: 'tap',
@@ -56,7 +58,7 @@ const ACTION_MAP = {
     primaryCta: ACTION_LABELS.incident,
     secondaryCta: { target: 'system', label: ACTION_LABELS.checkSync },
     recommendedOwnerState: 'Назначить ответственного',
-    recommendedActionState: 'Зафиксировать инцидент и проверить sync',
+    recommendedActionState: 'Зафиксировать инцидент и проверить систему',
   },
   sync_offline: {
     primaryTarget: 'system',
@@ -85,34 +87,61 @@ export function getActionPlan(problemKind = 'default') {
   return ACTION_MAP[problemKind] || ACTION_MAP.default;
 }
 
+function setSessionStorageValue(key, value) {
+  if (value == null || value === '') {
+    return;
+  }
+  sessionStorage.setItem(key, String(value));
+}
+
 export function navigateWithFocus({
   target,
   tapId = null,
   visitId = null,
+  guestId = null,
+  cardUid = null,
+  pourRef = null,
+  kegId = null,
   source = null,
   incidentId = null,
+  route = null,
   href = null,
 } = {}) {
-  if (tapId) {
-    sessionStorage.setItem('incidents.focusTapId', String(tapId));
-  }
-  if (visitId) {
-    sessionStorage.setItem('visits.lookupVisitId', String(visitId));
-  }
-  if (source) {
-    sessionStorage.setItem('system.focusSource', String(source));
-    sessionStorage.setItem('incidents.focusSource', String(source));
-  }
-  if (incidentId) {
-    sessionStorage.setItem('incidents.focusIncidentId', String(incidentId));
+  setSessionStorageValue('incidents.focusTapId', tapId);
+  setSessionStorageValue('visits.lookupVisitId', visitId);
+  setSessionStorageValue('visits.focusVisitId', visitId);
+  setSessionStorageValue('sessions.history.visitId', visitId);
+  setSessionStorageValue('sessions.history.tapId', tapId);
+  setSessionStorageValue('guests.focusGuestId', guestId);
+  setSessionStorageValue('guests.focusCardUid', cardUid);
+  setSessionStorageValue('pours.focusPourRef', pourRef);
+  setSessionStorageValue('kegsBeverages.focusKegId', kegId);
+  setSessionStorageValue('kegsBeverages.focusTapId', tapId);
+  setSessionStorageValue('tapScreens.focusTapId', tapId);
+  setSessionStorageValue('system.focusSource', source);
+  setSessionStorageValue('incidents.focusSource', source);
+  setSessionStorageValue('incidents.focusIncidentId', incidentId);
+
+  const directRoute = route || href;
+  if (directRoute) {
+    window.location.hash = directRoute.startsWith('#') ? directRoute.slice(1) : directRoute;
+    return;
   }
 
   if (target === 'tap') {
     window.location.hash = '/taps';
     return;
   }
-  if (target === 'session') {
-    window.location.hash = '/sessions';
+  if (target === 'visit' || target === 'session') {
+    window.location.hash = '/visits';
+    return;
+  }
+  if (target === 'guest') {
+    window.location.hash = '/guests';
+    return;
+  }
+  if (target === 'pour') {
+    window.location.hash = '/pours';
     return;
   }
   if (target === 'incident') {
@@ -124,5 +153,5 @@ export function navigateWithFocus({
     return;
   }
 
-  window.location.hash = href || '/today';
+  window.location.hash = '/shift';
 }

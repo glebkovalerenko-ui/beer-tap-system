@@ -2,8 +2,10 @@
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
+  import { formatRubAmount, formatVolumeRu } from '../lib/formatters.js';
   import { buildTodayFeedItems } from '../lib/operator/todayFeedModel.js';
   import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
+  import { canonicalVisitStatusLabel } from '../lib/operator/visitStatus.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
@@ -18,25 +20,22 @@
   let dismissedAttentionKeys = new Set();
 
   function openTap(item) {
-    navigateWithFocus({ target: 'tap', tapId: item.tap_id, source: item.tap_name || item.title });
-    uiStore.notifySuccess(`Opened tap ${item.tap_name || item.title || item.tap_id || ''}`.trim());
+    navigateWithFocus({ target: 'tap', tapId: item.tap_id, visitId: item.visit_id, source: item.tap_name || item.title });
   }
 
-  function openSession(item) {
-    const visitId = item.visit_id || item.active_session?.visit_id || item.operations?.activeSessionSummary?.visitId || null;
-    navigateWithFocus({ target: 'session', visitId, source: item.tap_name || item.title });
+  function openVisit(item) {
+    const visitId = item.visit_id || item.active_session?.visit_id || item.operations?.activeSessionSummary?.visitId || item.visitId || null;
+    navigateWithFocus({ target: 'visit', visitId, tapId: item.tap_id || item.tapId, source: item.tap_name || item.title });
   }
 
-  function openActionTarget(item) {
-    if (!item) return;
-
+  function openAttentionItem(item) {
     navigateWithFocus({
       target: item.target,
       tapId: item.tapId || item.tap_id,
-      visitId: item.visitId,
-      source: item.systemSource || item.title || item.label,
+      visitId: item.visitId || item.visit_id,
       incidentId: item.incidentId,
-      href: item.href || '/today',
+      source: item.systemSource || item.title,
+      href: item.href || '/shift',
     });
   }
 
@@ -55,11 +54,7 @@
     feedItems: $pourStore.feedItems || [],
   });
 
-  $: visibleFeedItems = buildTodayFeedItems($pourStore.feedItems || [], {
-    dismissedEventIds,
-    limit: 12,
-  });
-  $: todayModel = buildTodayRouteModel({
+  $: shiftModel = buildTodayRouteModel({
     incidents: $incidentStore.items || [],
     tapSummary: $tapStore.summary || {},
     taps: $tapStore.taps || [],
@@ -69,172 +64,245 @@
     permissions: $roleStore.permissions || {},
     dismissedAttentionKeys,
   });
-  $: todaySummaryWarning = todayModel.todaySummaryWarning;
-  $: attentionItems = todayModel.attentionItems;
-  $: operatorActionItems = todayModel.operatorActionItems;
-  $: primaryActionItem = todayModel.primaryActionItem;
-  $: deEmphasizeSecondaryStats = todayModel.deEmphasizeSecondaryStats;
-  $: heroStats = todayModel.heroStats;
-  $: secondaryActionItems = operatorActionItems.slice(1, 5);
-  $: sessionsToday = Number($pourStore.todaySummary?.sessions_count || 0);
-  $: todaySummary = $pourStore.todaySummary || null;
-  $: canViewIncidents = Boolean($roleStore.permissions?.incidents_view);
+
+  $: liveEventItems = buildTodayFeedItems($pourStore.feedItems || [], {
+    dismissedEventIds,
+    limit: 10,
+  });
+  $: attentionItems = shiftModel.attentionItems || [];
+  $: activeVisits = ($visitStore.activeVisits || []).slice(0, 6);
+  $: pouringTaps = ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'pouring').slice(0, 6);
+  $: blockedOrNoKegTaps = ($tapStore.taps || []).filter((tap) => ['no_keg', 'needs_help', 'unavailable', 'syncing'].includes(tap.operations?.productState)).slice(0, 6);
+  $: kpis = [
+    { key: 'active-visits', label: 'Активные визиты', value: ($visitStore.activeVisits || []).length },
+    { key: 'pouring-now', label: 'Льют сейчас', value: Number($tapStore.summary?.pouringCount || 0) },
+    { key: 'incidents', label: 'Инциденты', value: ($incidentStore.items || []).filter((item) => item.status !== 'closed').length },
+    { key: 'shift-volume', label: 'Объём за смену', value: formatVolumeRu(Number($pourStore.todaySummary?.volume_ml || 0)) },
+    { key: 'shift-revenue', label: 'Выручка за смену', value: formatRubAmount(Number($pourStore.todaySummary?.revenue || 0)) },
+  ];
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Navigation stays available, risky actions are read-only.')
+    ? ($operatorConnectionStore.reason || 'Backend временно деградирован. Обзор смены доступен, но risky actions выполняйте только после обновления данных.')
     : '';
-  $: incidentsAccessHint = 'No access to incidents. incidents_view permission is required.';
-  $: priorityCta = todayModel.priorityCta;
 </script>
 
-<section class="today-page">
-  <section class="hero ui-card">
-    <div class="hero-copy">
-      <span class="eyebrow">Operator focus</span>
-      <h1>{ROUTE_COPY.today.title}</h1>
-      <p>{ROUTE_COPY.today.description}</p>
+<section class="shift-page">
+  <div class="page-header">
+    <div>
+      <h1>{ROUTE_COPY.shift.title}</h1>
+      <p>{ROUTE_COPY.shift.description}</p>
     </div>
-    <div class="hero-actions">
+    <div class="header-actions">
       <DataFreshnessChip
-        label="Today"
+        label="Shift"
         lastFetchedAt={$pourStore.lastFetchedAt}
         staleAfterMs={$pourStore.staleTtlMs}
         mode={$operatorConnectionStore.mode}
         transport={$operatorConnectionStore.transport}
         reason={$operatorConnectionStore.reason}
       />
-      <button class="cta-button primary" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
-      {#if canViewIncidents}
-        <a class="cta-button incidents-entry" href="#/incidents">Incidents</a>
-      {:else}
-        <button
-          class="cta-button incidents-entry"
-          type="button"
-          disabled
-          title={incidentsAccessHint}
-          aria-label={incidentsAccessHint}
-        >
-          Incidents
-        </button>
-      {/if}
-      <a class="cta-button secondary" href="#/taps">All taps</a>
+      <button on:click={() => (window.location.hash = '/incidents')}>Инциденты</button>
+      <button class="secondary" on:click={() => (window.location.hash = '/taps')}>Все краны</button>
+      <button class="secondary" on:click={() => (window.location.hash = '/visits')}>Открыть визит</button>
     </div>
-    <div class="stats" data-muted={deEmphasizeSecondaryStats}>
-      {#each heroStats as item}
-        <article data-tone={item.tone} data-emphasis={item.emphasis}>
-          <span>{item.label}</span>
-          <strong>{item.value}</strong>
-        </article>
-      {/each}
-    </div>
-  </section>
+  </div>
 
   {#if routeReadOnlyReason}
-    <div class="summary-warning" role="status">
+    <div class="banner warning">
       <strong>Read-only mode.</strong>
       <span>{routeReadOnlyReason}</span>
     </div>
   {/if}
 
-  {#if todaySummaryWarning}
-    <div class="summary-warning" role="status">
-      <strong>KPI summary is incomplete.</strong>
-      <span>{todaySummaryWarning}</span>
-    </div>
-  {/if}
+  <section class="kpi-strip">
+    {#each kpis as item}
+      <article class="kpi-card">
+        <span>{item.label}</span>
+        <strong>{item.value}</strong>
+      </article>
+    {/each}
+  </section>
 
-  <div class="content-grid">
-    <aside class="ui-card panel attention-panel priority-panel">
+  <div class="main-grid">
+    <section class="ui-card attention-panel">
       <div class="section-head">
         <div>
-          <h2>What needs action right now</h2>
-          <p>One primary operator step sits on top, followed by a short secondary queue without competing with the overview feed.</p>
+          <h2>Требует внимания</h2>
+          <p>Только actionable-объекты: проблемный визит, кран, reader, sync или инцидент.</p>
         </div>
-        <span class="count">{attentionItems.length}</span>
+        <span class="counter">{attentionItems.length}</span>
       </div>
 
-      <section class="next-actions">
-        <div class="next-actions-head">
-          <h3>Primary action</h3>
-          <span>{primaryActionItem ? 1 : 0}</span>
-        </div>
-        {#if !primaryActionItem}
-          <p>There are no critical actions right now, so the shift can continue in normal mode.</p>
-        {:else}
-          <button class="next-action primary" data-severity={primaryActionItem.severity} on:click={() => openActionTarget(primaryActionItem)}>
-            <span>{primaryActionItem.title}</span>
-            <small>{primaryActionItem.description}</small>
-            <strong>{primaryActionItem.actionLabel}</strong>
-          </button>
-        {/if}
-      </section>
-
-      {#if secondaryActionItems.length > 0}
-        <section class="secondary-actions">
-          <div class="next-actions-head compact">
-            <h3>Check next</h3>
-            <span>{secondaryActionItems.length}</span>
-          </div>
-          <div class="secondary-actions-list">
-            {#each secondaryActionItems as item}
-              <button class="secondary-action" data-severity={item.severity} on:click={() => openActionTarget(item)}>
-                <div>
-                  <span>{item.title}</span>
-                  <small>{item.description}</small>
-                </div>
-                <strong>{item.actionLabel}</strong>
-              </button>
-            {/each}
-          </div>
-        </section>
-      {/if}
-
       {#if attentionItems.length === 0}
-        <p>There are no tasks requiring immediate attention right now.</p>
+        <p class="muted">Критичных действий сейчас нет. Смена идёт в штатном режиме.</p>
       {:else}
         <div class="attention-list">
           {#each attentionItems as item}
             <article class="attention-item" data-severity={item.severity}>
-              <div>
-                <span class="attention-category">{item.category}</span>
-                <strong>{item.actionTitle || item.title}</strong>
+              <div class="attention-copy">
+                <div class="attention-meta">
+                  <span class="category">{item.category || 'Операционный сигнал'}</span>
+                  <strong>{item.actionTitle || item.title}</strong>
+                </div>
                 <p>{item.description}</p>
               </div>
               <div class="attention-actions">
-                <button on:click={() => openActionTarget(item)}>{item.actionLabel}</button>
-                <button class="subtle" on:click={() => dismissAttention(item)}>Hide</button>
+                <button on:click={() => openAttentionItem(item)}>{item.actionLabel}</button>
+                {#if item.visitId || item.visit_id}
+                  <button class="secondary" on:click={() => openVisit(item)}>Открыть визит</button>
+                {:else if item.tapId || item.tap_id}
+                  <button class="secondary" on:click={() => openTap(item)}>Открыть кран</button>
+                {/if}
+                <button class="subtle" on:click={() => dismissAttention(item)}>Скрыть</button>
               </div>
             </article>
           {/each}
         </div>
       {/if}
-    </aside>
+    </section>
 
-    <section class="ui-card panel feed-panel">
+    <section class="ui-card feed-panel">
       <div class="section-head">
         <div>
-          <h2>Overview event feed</h2>
-          <p>{sessionsToday} sessions for the {todaySummary?.period === 'shift' ? 'shift' : 'day'} - {$tapStore.summary?.pouringCount || 0} taps are pouring right now</p>
+          <h2>Живые события</h2>
+          <p>Последние значимые операционные события смены без превращения в бесконечный технический лог.</p>
         </div>
       </div>
 
-      {#if $pourStore.loading && visibleFeedItems.length === 0}
-        <p>Loading event feed...</p>
+      {#if $pourStore.loading && liveEventItems.length === 0}
+        <p>Загрузка событий...</p>
       {:else if $pourStore.error}
-        <p class="error">Feed load error: {$pourStore.error}</p>
+        <p class="error">{$pourStore.error}</p>
       {:else}
         <EventFeed
-          items={visibleFeedItems}
-          title="Overview event feed"
-          emptyMessage="There are no events that need to be shown in the feed."
+          items={liveEventItems}
+          title="Живые события смены"
+          emptyMessage="Сейчас нет свежих операционных событий."
           onOpenTap={openTap}
-          onOpenSession={openSession}
+          onOpenSession={openVisit}
           onDismiss={dismissEvent}
         />
       {/if}
     </section>
   </div>
+
+  <section class="bottom-grid">
+    <article class="ui-card compact-panel">
+      <div class="section-head compact">
+        <div>
+          <h3>Активные визиты</h3>
+          <p>Кого сейчас обслуживает система.</p>
+        </div>
+        <span class="counter">{activeVisits.length}</span>
+      </div>
+      {#if activeVisits.length === 0}
+        <p class="muted">Активных визитов сейчас нет.</p>
+      {:else}
+        <div class="compact-list">
+          {#each activeVisits as item}
+            <button class="compact-item" on:click={() => openVisit(item)}>
+              <strong>{item.guest_full_name}</strong>
+              <small>{canonicalVisitStatusLabel(item.canonical_visit_status)} · {item.card_uid || 'без карты'}</small>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </article>
+
+    <article class="ui-card compact-panel">
+      <div class="section-head compact">
+        <div>
+          <h3>Активные наливы</h3>
+          <p>Краны, где прямо сейчас идёт розлив.</p>
+        </div>
+        <span class="counter">{pouringTaps.length}</span>
+      </div>
+      {#if pouringTaps.length === 0}
+        <p class="muted">Прямо сейчас никто не льёт.</p>
+      {:else}
+        <div class="compact-list">
+          {#each pouringTaps as tap}
+            <button class="compact-item" on:click={() => openTap(tap)}>
+              <strong>{tap.display_name}</strong>
+              <small>{tap.operations?.beverageName || 'Напиток не назначен'} · {tap.active_session?.guest_full_name || 'гость не определён'}</small>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </article>
+
+    <article class="ui-card compact-panel">
+      <div class="section-head compact">
+        <div>
+          <h3>Без кеги / заблокированы</h3>
+          <p>Краны, где нужен быстрый операторский шаг.</p>
+        </div>
+        <span class="counter">{blockedOrNoKegTaps.length}</span>
+      </div>
+      {#if blockedOrNoKegTaps.length === 0}
+        <p class="muted">Все краны сейчас в рабочем состоянии.</p>
+      {:else}
+        <div class="compact-list">
+          {#each blockedOrNoKegTaps as tap}
+            <button class="compact-item" on:click={() => openTap(tap)}>
+              <strong>{tap.display_name}</strong>
+              <small>{tap.operations?.productStateLabel || tap.status} · {tap.operations?.beverageName || 'без напитка'}</small>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </article>
+  </section>
 </section>
 
 <style>
-  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end;flex-wrap:wrap}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;text-decoration:none;font-weight:600;border:1px solid transparent}.cta-button.primary{background:var(--accent-color,#1d4ed8);color:#fff}.cta-button.incidents-entry{background:#fff;color:var(--state-critical-text);border-color:var(--state-critical-border)}.cta-button.secondary{background:var(--state-neutral-bg);color:var(--state-neutral-text);border-color:var(--state-neutral-border)}.cta-button:disabled{opacity:.65;cursor:not-allowed}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.85rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc);transition:opacity .2s ease,transform .2s ease}.stats article[data-tone='warning']{background:var(--state-warning-bg)}.stats[data-muted='true'] article[data-emphasis='secondary']{opacity:.62;transform:scale(.98)}.stats article span{display:block;color:var(--text-secondary);margin-bottom:.2rem}.stats article strong{display:block}.summary-warning{display:grid;gap:.35rem;padding:.9rem 1rem;border:1px solid var(--state-warning-border);background:var(--state-warning-bg);color:var(--state-warning-text);border-radius:16px}.content-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.45fr);gap:1rem;align-items:start}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.priority-panel{position:sticky;top:1rem}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:var(--state-neutral-bg);font-weight:700}.next-actions,.secondary-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions{border:1px solid var(--state-neutral-border)}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head.compact h3{font-size:1rem}.next-actions-head h3{margin:0}.next-action,.secondary-action{display:grid;gap:.35rem;text-align:left;padding:.8rem .9rem;border-radius:.8rem;border:1px solid var(--state-neutral-border);background:#fff;cursor:pointer}.next-action.primary{gap:.4rem;padding:1rem}.next-action.primary strong,.secondary-action strong{font-size:.85rem;color:var(--state-neutral-text)}.next-action[data-severity='critical'],.secondary-action[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.next-action[data-severity='warning'],.secondary-action[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.next-action span,.secondary-action span{font-weight:700}.next-action small,.secondary-action small{color:var(--text-secondary)}.secondary-actions-list{display:grid;gap:.5rem}.secondary-action{grid-template-columns:minmax(0,1fr) auto;align-items:center}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.attention-item[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:var(--state-critical-text)}@media (max-width: 960px){.hero,.content-grid,.secondary-action{grid-template-columns:1fr}.hero-actions{justify-content:flex-start;gap:.5rem}.hero-actions .cta-button{flex:1 1 calc(50% - .5rem);min-width:140px}.priority-panel{position:static}}
+  .shift-page { display: grid; gap: 1rem; }
+  .page-header, .header-actions, .section-head, .attention-actions { display: flex; gap: 1rem; justify-content: space-between; align-items: flex-start; }
+  .page-header p, .section-head p, .attention-item p { margin: 0.25rem 0 0; color: var(--text-secondary); }
+  .header-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .banner { display: grid; gap: 0.35rem; padding: 0.9rem 1rem; border-radius: 16px; }
+  .banner.warning { background: var(--state-warning-bg); border: 1px solid var(--state-warning-border); color: var(--state-warning-text); }
+  .kpi-strip { display: grid; gap: 0.85rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .kpi-card {
+    padding: 0.95rem 1rem;
+    border-radius: 14px;
+    border: 1px solid var(--border-soft);
+    background: var(--bg-surface-muted);
+    display: grid;
+    gap: 0.35rem;
+  }
+  .kpi-card span, .category, .counter, .eyebrow { color: var(--text-secondary); font-size: 0.82rem; }
+  .kpi-card strong { font-size: 1.2rem; }
+  .main-grid { display: grid; gap: 1rem; grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.25fr); align-items: start; }
+  .attention-panel, .feed-panel, .compact-panel { display: grid; gap: 1rem; }
+  .section-head.compact { margin-bottom: 0; }
+  .counter {
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    background: var(--bg-surface-muted);
+    font-weight: 700;
+  }
+  .attention-list, .bottom-grid, .compact-list { display: grid; gap: 0.75rem; }
+  .attention-item, .compact-item {
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 0.9rem;
+    background: #fff;
+    color: inherit;
+    text-align: left;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .attention-item[data-severity='critical'] { background: var(--state-critical-bg); border-color: var(--state-critical-border); }
+  .attention-item[data-severity='warning'] { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+  .attention-meta { display: grid; gap: 0.25rem; }
+  .attention-actions { flex-wrap: wrap; }
+  .bottom-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .compact-item small, .muted, .error { color: var(--text-secondary); }
+  .subtle, .secondary { background: #edf2fb; color: #23416b; }
+  .error { color: var(--state-critical-text); }
+  @media (max-width: 1100px) {
+    .kpi-strip, .main-grid, .bottom-grid { grid-template-columns: 1fr; }
+    .page-header, .section-head, .attention-actions { flex-direction: column; align-items: stretch; }
+    .header-actions { justify-content: flex-start; }
+  }
 </style>

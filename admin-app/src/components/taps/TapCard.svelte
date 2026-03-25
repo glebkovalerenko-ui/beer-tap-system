@@ -130,7 +130,7 @@
     {#if session}
       <section class="session-summary">
         <div class="section-title-row compact">
-          <span class="section-title">Активная сессия</span>
+          <span class="section-title">Активный визит</span>
           <span class="muted">{session.cardUid || 'без карты'}</span>
         </div>
         <strong>{session.guestName}</strong>

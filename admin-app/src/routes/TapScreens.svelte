@@ -13,6 +13,8 @@
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
 
+  export let embedded = false;
+
   let initialLoadAttempted = false;
   /** @type {any} */
   let focusedTap = null;
@@ -135,12 +137,14 @@
     <p>Текущая роль не предусматривает доступ к обзору гостевых экранов кранов.</p>
   </section>
 {:else}
+  {#if !embedded}
   <div class="page-header">
     <div>
       <h1>{ROUTE_COPY.tapScreens.title}</h1>
       <p>{ROUTE_COPY.tapScreens.description}</p>
     </div>
   </div>
+  {/if}
 
   <section class="screen-grid">
     <div class="section-header">

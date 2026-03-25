@@ -13,10 +13,11 @@
   import Today from './routes/Today.svelte';
   import Taps from './routes/Taps.svelte';
   import Sessions from './routes/Sessions.svelte';
-  import CardsGuests from './routes/CardsGuests.svelte';
+  import Guests from './routes/Guests.svelte';
+  import LostCards from './routes/LostCards.svelte';
+  import Pours from './routes/Pours.svelte';
   import KegsBeverages from './routes/KegsBeverages.svelte';
   import Incidents from './routes/Incidents.svelte';
-  import TapScreens from './routes/TapScreens.svelte';
   import System from './routes/System.svelte';
   import Settings from './routes/Settings.svelte';
   import Help from './routes/Help.svelte';
@@ -32,14 +33,19 @@
 
   const routes = {
     '/': Today,
+    '/shift': Today,
     '/today': Today,
     '/taps': Taps,
+    '/visits': Sessions,
     '/sessions': Sessions,
     '/sessions/history': Sessions,
-    '/cards-guests': CardsGuests,
+    '/guests': Guests,
+    '/cards-guests': Guests,
+    '/lost-cards': LostCards,
+    '/pours': Pours,
     '/kegs-beverages': KegsBeverages,
     '/incidents': Incidents,
-    '/tap-screens': TapScreens,
+    '/tap-screens': KegsBeverages,
     '/system': System,
     '/settings': Settings,
     '/help': Help,
@@ -49,10 +55,16 @@
   // NOTE: порядок primaryNav отражает operator workflow, а не технические домены.
   const primaryNav = [
     {
-      href: ROUTE_COPY.today.href,
-      label: ROUTE_COPY.today.label,
-      description: ROUTE_COPY.today.navDescription,
-      visible: (permissions) => permissions.taps_view || permissions.sessions_view,
+      href: ROUTE_COPY.visits.href,
+      label: ROUTE_COPY.visits.label,
+      description: ROUTE_COPY.visits.navDescription,
+      visible: (permissions) => permissions.sessions_view,
+    },
+    {
+      href: ROUTE_COPY.guests.href,
+      label: ROUTE_COPY.guests.label,
+      description: ROUTE_COPY.guests.navDescription,
+      visible: (permissions) => permissions.cards_lookup,
     },
     {
       href: ROUTE_COPY.taps.href,
@@ -61,16 +73,16 @@
       visible: (permissions) => permissions.taps_view,
     },
     {
-      href: ROUTE_COPY.sessions.href,
-      label: ROUTE_COPY.sessions.label,
-      description: ROUTE_COPY.sessions.navDescription,
-      visible: (permissions) => permissions.sessions_view,
+      href: ROUTE_COPY.lostCards.href,
+      label: ROUTE_COPY.lostCards.label,
+      description: ROUTE_COPY.lostCards.navDescription,
+      visible: (permissions) => permissions.cards_lookup,
     },
     {
-      href: ROUTE_COPY.cardsGuests.href,
-      label: ROUTE_COPY.cardsGuests.label,
-      description: ROUTE_COPY.cardsGuests.navDescription,
-      visible: (permissions) => permissions.cards_lookup,
+      href: ROUTE_COPY.pours.href,
+      label: ROUTE_COPY.pours.label,
+      description: ROUTE_COPY.pours.navDescription,
+      visible: (permissions) => permissions.sessions_view,
     },
     {
       href: ROUTE_COPY.kegsBeverages.href,
@@ -81,6 +93,7 @@
         || permissions.kegs_manage
         || permissions.beverages_catalog_manage
         || permissions.settings_manage
+        || permissions.display_override
       ),
     },
     {
@@ -88,12 +101,6 @@
       label: ROUTE_COPY.incidents.label,
       description: ROUTE_COPY.incidents.navDescription,
       visible: (permissions) => permissions.incidents_view,
-    },
-    {
-      href: ROUTE_COPY.tapScreens.href,
-      label: ROUTE_COPY.tapScreens.label,
-      description: ROUTE_COPY.tapScreens.navDescription,
-      visible: (permissions) => permissions.display_override,
     },
     {
       href: ROUTE_COPY.system.href,
@@ -121,7 +128,7 @@
   let shellDataLoadAttempted = false;
 
   function syncActiveRoute() {
-    operatorConnectionStore.setActiveRoute(window.location.hash.replace(/^#/, '') || '/today');
+    operatorConnectionStore.setActiveRoute(window.location.hash.replace(/^#/, '') || '/shift');
   }
 
   onMount(() => {

@@ -119,7 +119,7 @@ export function buildTodayRouteModel({
 
   const tapAttentionItems = (tapSummary?.attentionItems || []).map((item) => buildActionItem({
     ...item,
-    target: item.href === '#/sessions' ? 'session' : 'tap',
+    target: item.href === '#/sessions' || item.href === '#/visits' ? 'visit' : 'tap',
     tapId: item.tapId || item.tap_id || Number.parseInt(String(item.key).split('-').at(-1), 10) || null,
     visitId: item.visitId || item.visit_id || null,
     category: attentionCategory(item),
@@ -138,7 +138,7 @@ export function buildTodayRouteModel({
       title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
       description: permissions?.incidents_manage
         ? (incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.')
-        : (incident.tap ? `Проверьте ${incident.tap}, сверяйте связанную сессию и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
+        : (incident.tap ? `Проверьте ${incident.tap}, сверяйте связанный визит и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
       target: 'incident',
       tapId: incident.tap || null,
       systemSource: `Инцидент #${incident.incident_id}`,
@@ -180,7 +180,7 @@ export function buildTodayRouteModel({
     { label: 'Требуют помощи', value: needsHelpCount, tone: needsHelpCount ? 'warning' : 'neutral', emphasis: 'primary' },
     { label: 'Открытые инциденты', value: (incidents || []).filter((item) => item.status !== 'closed').length, tone: (incidents || []).some((item) => item.status !== 'closed') ? 'warning' : 'neutral', emphasis: 'primary' },
     { label: 'Sync / offline', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Сессии сегодня', value: sessionsToday, tone: 'neutral', emphasis: 'secondary' },
+    { label: 'Визиты за смену', value: sessionsToday, tone: 'neutral', emphasis: 'secondary' },
     { label: 'Объём / выручка', value: `${formatVolumeRu(volumeTodayMl)} · ${revenueToday.toFixed(2)} ₽`, tone: 'neutral', emphasis: 'secondary' },
   ];
 

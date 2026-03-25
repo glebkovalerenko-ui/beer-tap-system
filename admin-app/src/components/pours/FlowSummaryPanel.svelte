@@ -5,8 +5,8 @@
 
   const reasonLabels = {
     closed_valve_no_card: 'Пролив при закрытом клапане без карты',
-    closed_valve_no_session: 'Пролив при закрытом клапане без активной сессии',
-    closed_valve_no_valid_session: 'Пролив вне подтверждённой сессии',
+    closed_valve_no_session: 'Пролив при закрытом клапане без активного визита',
+    closed_valve_no_valid_session: 'Пролив вне подтверждённого визита',
     controller_flow_anomaly: 'Прочее отклонение пролива',
   };
 

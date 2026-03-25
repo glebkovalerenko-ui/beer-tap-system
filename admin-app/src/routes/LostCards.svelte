@@ -1,12 +1,15 @@
 <script>
   export let embedded = false;
   import { onMount } from 'svelte';
-  import { lostCardStore } from '../stores/lostCardStore.js';
-  import { visitStore } from '../stores/visitStore.js';
-  import { uiStore } from '../stores/uiStore.js';
-  import { roleStore } from '../stores/roleStore.js';
+
   import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
+  import { navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
+  import { lostCardStore } from '../stores/lostCardStore.js';
+  import { roleStore } from '../stores/roleStore.js';
+  import { uiStore } from '../stores/uiStore.js';
+  import { visitStore } from '../stores/visitStore.js';
 
   let uidFilter = '';
   let reportedFrom = '';
@@ -22,12 +25,12 @@
     return false;
   }
 
-  const toIsoOrNull = (value) => {
+  function toIsoOrNull(value) {
     if (!value || !value.trim()) return null;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return null;
     return date.toISOString();
-  };
+  }
 
   async function refresh() {
     actionError = '';
@@ -97,8 +100,13 @@
   function handleLookupOpenVisit() {
     const targetVisitId = cardLookupResult?.active_visit?.visit_id || cardLookupResult?.lost_card?.visit_id;
     if (!targetVisitId) return;
-    sessionStorage.setItem('visits.lookupVisitId', targetVisitId);
-    window.location.hash = '/sessions';
+    navigateWithFocus({ target: 'visit', visitId: targetVisitId, cardUid: cardLookupResult?.card_uid });
+  }
+
+  function handleLookupOpenGuest() {
+    const guestId = cardLookupResult?.guest?.guest_id || cardLookupResult?.lost_card?.guest_id;
+    if (!guestId && !cardLookupResult?.card_uid) return;
+    navigateWithFocus({ target: 'guest', guestId, cardUid: cardLookupResult?.card_uid });
   }
 
   async function handleLookupOpenNewVisit() {
@@ -106,8 +114,7 @@
     if (!guestId) return;
     try {
       const opened = await visitStore.openVisit({ guestId });
-      sessionStorage.setItem('visits.lookupVisitId', opened.visit_id);
-      window.location.hash = '/sessions';
+      navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId, cardUid: cardLookupResult?.card_uid });
     } catch (error) {
       actionError = error?.message || error?.toString?.() || 'Не удалось открыть новый визит';
     }
@@ -125,7 +132,8 @@
   </section>
 {:else}
   <section class="ui-card panel">
-    <h1>{embedded ? 'Потерянные карты' : 'Инциденты по картам'}</h1>
+    <h1>{embedded ? ROUTE_COPY.lostCards.title : ROUTE_COPY.lostCards.title}</h1>
+    <p class="intro">{ROUTE_COPY.lostCards.description}</p>
 
     <div class="filters">
       <input type="text" bind:value={uidFilter} placeholder="Поиск по UID" />
@@ -135,35 +143,46 @@
     </div>
 
     <CardLookupPanel
-      title="Проверка статуса карты"
-      description="Переиспользуемый lookup по NFC или UID для lost-карт и текущего визита."
+      title="Проверка карты"
+      description="Единый lookup по UID/NFC для потерянной карты, гостя и связанного визита."
       result={cardLookupResult}
       error={actionError}
       loading={$lostCardStore.loading}
       allowRestoreLost={$roleStore.permissions.cards_manage}
       allowOpenVisit={hasLookupVisitTarget()}
-      allowOpenGuest={false}
+      allowOpenGuest={Boolean(cardLookupResult?.guest?.guest_id || cardLookupResult?.lost_card?.guest_id || cardLookupResult?.card_uid)}
       allowOpenNewVisit={true}
       on:lookup={handleLookup}
       on:restore-lost={handleLookupRestoreLost}
       on:open-visit={handleLookupOpenVisit}
+      on:open-guest={handleLookupOpenGuest}
       on:open-new-visit={handleLookupOpenNewVisit}
     />
 
     {#if $lostCardStore.loading}
       <p>Загрузка...</p>
     {:else if ($lostCardStore.items || []).length === 0}
-      <p class="hint">Записи не найдены</p>
+      <p class="hint">Записи не найдены.</p>
     {:else}
       <div class="list">
         {#each $lostCardStore.items as item}
           <div class="row">
-            <div><strong>{item.card_uid}</strong></div>
-            <div>Дата отметки: {formatDateTimeRu(item.reported_at)}</div>
+            <div class="row-head">
+              <strong>{item.card_uid}</strong>
+              <span class="status">Потеряна</span>
+            </div>
+            <div>Отмечена: {formatDateTimeRu(item.reported_at)}</div>
+            <div>Гость: {item.guest_id || 'не указан'}</div>
+            <div>Связанный визит: {item.visit_id || '—'}</div>
             <div>Причина: {item.reason || '—'}</div>
             <div>Комментарий: {item.comment || '—'}</div>
-            <div>ID визита: {item.visit_id || '—'}</div>
-            <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
+            <div class="row-actions">
+              <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
+              {#if item.visit_id}
+                <button class="secondary" on:click={() => navigateWithFocus({ target: 'visit', visitId: item.visit_id, cardUid: item.card_uid, guestId: item.guest_id })}>Открыть визит</button>
+              {/if}
+              <button class="secondary" on:click={() => navigateWithFocus({ target: 'guest', guestId: item.guest_id, cardUid: item.card_uid })}>Открыть гостя</button>
+            </div>
           </div>
         {/each}
       </div>
@@ -173,30 +192,45 @@
       <p class="error">{actionError || $lostCardStore.error}</p>
     {/if}
   </section>
-
 {/if}
 
 <style>
-  .panel { display: grid; gap: 0.75rem; }
+  .panel { display: grid; gap: 0.9rem; }
+  .intro { margin: 0; color: var(--text-secondary); }
   .filters {
     display: grid;
     gap: 0.5rem;
     grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(180px, 1fr)) auto;
   }
+  .list { display: grid; gap: 0.75rem; }
+  .row {
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    padding: 0.9rem;
+    display: grid;
+    gap: 0.35rem;
+    background: #fff;
+  }
+  .row-head, .row-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .status {
+    border-radius: 999px;
+    padding: 0.3rem 0.65rem;
+    background: #fff1f2;
+    color: #9e1f2c;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+  .hint { color: var(--text-secondary); }
+  .error { color: #c61f35; }
   @media (max-width: 980px) {
     .filters {
       grid-template-columns: 1fr;
     }
   }
-  .list { display: grid; gap: 0.5rem; }
-  .row {
-    border: 1px solid var(--border-soft);
-    border-radius: 10px;
-    padding: 0.75rem;
-    display: grid;
-    gap: 0.25rem;
-    background: #fff;
-  }
-  .hint { color: var(--text-secondary); }
-  .error { color: #c61f35; }
 </style>

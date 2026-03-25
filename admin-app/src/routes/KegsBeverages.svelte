@@ -5,49 +5,57 @@
 
   import BeverageManager from '../components/beverages/BeverageManager.svelte';
   import Modal from '../components/common/Modal.svelte';
-  import KegList from '../components/kegs/KegList.svelte';
   import KegForm from '../components/kegs/KegForm.svelte';
+  import KegList from '../components/kegs/KegList.svelte';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { beverageStore } from '../stores/beverageStore.js';
   import { kegStore } from '../stores/kegStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { uiStore } from '../stores/uiStore.js';
-  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
+  import TapScreens from './TapScreens.svelte';
 
   const VIEW_MODES = {
     BEVERAGES: 'beverages',
     KEGS: 'kegs',
+    SCREENS: 'screens',
   };
 
   let initialLoadAttempted = false;
+  let activeMode = VIEW_MODES.BEVERAGES;
   let isKegFormModalOpen = false;
   let kegToEdit = null;
   let kegFormError = '';
-  let activeMode = VIEW_MODES.BEVERAGES;
-
-  $: if ($sessionStore.token && !initialLoadAttempted) {
-    kegStore.fetchKegs();
-    beverageStore.fetchBeverages();
-    initialLoadAttempted = true;
-  }
-
-  onMount(() => {
-    const token = get(sessionStore).token;
-    if (token && !initialLoadAttempted) {
-      kegStore.fetchKegs();
-      beverageStore.fetchBeverages();
-      initialLoadAttempted = true;
-    }
-  });
 
   $: hasBeverages = $beverageStore.beverages.length > 0;
-  $: hasKegs = $kegStore.kegs.length > 0;
   $: canViewInventory = $roleStore.permissions.inventory_view
     || $roleStore.permissions.kegs_manage
     || $roleStore.permissions.beverages_catalog_manage
     || $roleStore.permissions.settings_manage;
   $: canManageKegs = $roleStore.permissions.kegs_manage || $roleStore.permissions.settings_manage;
   $: canManageBeveragesCatalog = $roleStore.permissions.beverages_catalog_manage || $roleStore.permissions.settings_manage;
+  $: canViewScreens = $roleStore.permissions.display_override || $roleStore.permissions.settings_manage;
+
+  $: if ($sessionStore.token && !initialLoadAttempted) {
+    fetchInventoryData();
+  }
+
+  onMount(() => {
+    if (get(sessionStore).token && !initialLoadAttempted) {
+      fetchInventoryData();
+    }
+
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#/tap-screens') || hash.includes('?tab=screens')) {
+      activeMode = VIEW_MODES.SCREENS;
+    }
+  });
+
+  function fetchInventoryData() {
+    kegStore.fetchKegs();
+    beverageStore.fetchBeverages();
+    initialLoadAttempted = true;
+  }
 
   function switchMode(mode) {
     activeMode = mode;
@@ -55,18 +63,19 @@
 
   function handleOpenCreateModal() {
     if (!canManageKegs) {
-      uiStore.notifyWarning('Недостаточно прав для подключения/изменения кег.');
-      return;
-    }
-    const current = get(beverageStore);
-    if (!current?.beverages?.length) {
-      uiStore.notifyWarning('Сначала добавьте напиток в справочник, затем создайте кегу.');
+      uiStore.notifyWarning('Недостаточно прав для подключения или изменения кеги.');
       return;
     }
 
+    const current = get(beverageStore);
+    if (!current?.beverages?.length) {
+      uiStore.notifyWarning('Сначала добавьте напиток в каталог, затем создайте кегу.');
+      return;
+    }
+
+    activeMode = VIEW_MODES.KEGS;
     kegToEdit = null;
     kegFormError = '';
-    activeMode = VIEW_MODES.KEGS;
     isKegFormModalOpen = true;
   }
 
@@ -78,9 +87,10 @@
 
   async function handleSaveKeg(event) {
     if (!canManageKegs) {
-      uiStore.notifyWarning('Недостаточно прав для изменения кег.');
+      uiStore.notifyWarning('Недостаточно прав для изменения кеги.');
       return;
     }
+
     const payload = event.detail;
     const isEditing = Boolean(kegToEdit);
     kegFormError = '';
@@ -94,7 +104,7 @@
 
       closeKegFormModal();
       activeMode = VIEW_MODES.KEGS;
-      uiStore.notifySuccess(isEditing ? 'Кега успешно обновлена.' : 'Кега успешно добавлена.');
+      uiStore.notifySuccess(isEditing ? 'Кега обновлена.' : 'Кега добавлена.');
     } catch (error) {
       const message = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Неизвестная ошибка';
       kegFormError = `Ошибка при сохранении кеги: ${message}`;
@@ -103,9 +113,10 @@
 
   async function handleDeleteKeg(event) {
     if (!canManageKegs) {
-      uiStore.notifyWarning('Недостаточно прав для удаления кег.');
+      uiStore.notifyWarning('Недостаточно прав для удаления кеги.');
       return;
     }
+
     const { keg } = event.detail;
     const isConfirmed = await uiStore.confirm({
       title: 'Удалить кегу?',
@@ -121,13 +132,11 @@
 
     try {
       await kegStore.deleteKeg(keg.keg_id);
-
       if (kegToEdit?.keg_id === keg.keg_id) {
         closeKegFormModal();
       }
-
       activeMode = VIEW_MODES.KEGS;
-      uiStore.notifySuccess('Кега успешно удалена.');
+      uiStore.notifySuccess('Кега удалена.');
     } catch (error) {
       const message = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Неизвестная ошибка';
       uiStore.notifyError(`Ошибка при удалении кеги: ${message}`);
@@ -138,7 +147,7 @@
 {#if !canViewInventory}
   <section class="ui-card restricted">
     <h1>Кеги и напитки</h1>
-    <p>Текущая роль не предусматривает доступ к управлению инвентарём.</p>
+    <p>Текущая роль не предусматривает доступ к инвентарю и экранным настройкам.</p>
   </section>
 {:else}
   <div class="page-header">
@@ -150,19 +159,18 @@
 
   <section class="permission-hints">
     <span class:enabled={canViewInventory}>Просмотр</span>
-    <span class:enabled={canManageKegs}>Подключение/отключение кег</span>
-    <span class:enabled={canManageBeveragesCatalog}>Редактирование каталога</span>
+    <span class:enabled={canManageKegs}>Кеги</span>
+    <span class:enabled={canManageBeveragesCatalog}>Каталог напитков</span>
+    <span class:enabled={canViewScreens}>Screens</span>
   </section>
 
   <section class="mode-switch-card">
     <div class="mode-switch-copy">
       <h2>Рабочий режим</h2>
-      <p>
-        Переключайтесь между каталогом напитков и физическим инвентарём кег, чтобы не смешивать контентную настройку и операционные действия.
-      </p>
+      <p>Разделяйте каталог напитков, физические кеги и экраны кранов, чтобы первый слой оставался понятным оператору.</p>
     </div>
 
-    <div class="mode-switch" role="tablist" aria-label="Режим экрана кег и напитков">
+    <div class="mode-switch" role="tablist" aria-label="Режим раздела кеги и напитки">
       <button
         type="button"
         role="tab"
@@ -181,38 +189,49 @@
       >
         Кеги
       </button>
+      {#if canViewScreens}
+        <button
+          type="button"
+          role="tab"
+          class:active={activeMode === VIEW_MODES.SCREENS}
+          aria-selected={activeMode === VIEW_MODES.SCREENS}
+          on:click={() => switchMode(VIEW_MODES.SCREENS)}
+        >
+          Screens
+        </button>
+      {/if}
     </div>
   </section>
 
   {#if activeMode === VIEW_MODES.BEVERAGES}
-    <section class="mode-panel beverages-section" aria-labelledby="beverages-mode-title">
+    <section class="mode-panel" aria-labelledby="beverages-mode-title">
       <div class="section-header">
         <div>
           <h2 id="beverages-mode-title">Каталог напитков</h2>
-          <p class="section-hint">Здесь настраиваются только карточка напитка, описание, цена и то, как напиток представлен гостю.</p>
+          <p class="section-hint">Каталожный слой: название, стиль, цена, брендинг и контент для гостевого экрана.</p>
         </div>
         <button type="button" class="ghost-link" on:click={() => switchMode(VIEW_MODES.KEGS)}>
-          {hasKegs ? 'Показать подключённые кеги' : 'Перейти к списку кег'}
+          Перейти к кегам
         </button>
       </div>
 
       <div class="context-note">
         <strong>В этом режиме:</strong>
-        редактируйте каталог, описание, цену и экран напитка без смешения с физическим движением кег.
+        редактируйте карточку напитка без смешения с физическими действиями по кеге и крану.
       </div>
 
       <BeverageManager canManage={canManageBeveragesCatalog} />
     </section>
-  {:else}
-    <section class="mode-panel kegs-section" aria-labelledby="kegs-mode-title">
+  {:else if activeMode === VIEW_MODES.KEGS}
+    <section class="mode-panel" aria-labelledby="kegs-mode-title">
       <div class="section-header">
         <div>
           <h2 id="kegs-mode-title">Операционный список кег</h2>
-          <p class="section-hint">Показываем только физические сущности: статус, остаток, подключение к крану, дату подключения, учётный ID и действия по назначению.</p>
+          <p class="section-hint">Физическая кега, её остаток, подключение к крану, дата подключения и действия по назначению.</p>
         </div>
         <div class="section-actions">
           <button type="button" class="ghost-link" on:click={() => switchMode(VIEW_MODES.BEVERAGES)}>
-            Открыть связанный напиток
+            Открыть напиток
           </button>
           <button
             disabled={!canManageKegs || !hasBeverages}
@@ -228,11 +247,11 @@
 
       <div class="context-note">
         <strong>В этом режиме:</strong>
-        управляйте запасом и назначением кег без одновременного редактирования карточки напитка.
+        управляйте только физическим запасом и назначением кеги на кран.
       </div>
 
       {#if !hasBeverages}
-        <p class="hint">Справочник напитков пуст. Сначала добавьте напиток, затем создайте кегу.</p>
+        <p class="hint">Каталог напитков пуст. Сначала добавьте напиток, затем создайте кегу.</p>
       {/if}
 
       {#if $kegStore.loading && $kegStore.kegs.length === 0}
@@ -245,7 +264,7 @@
           canManageKegs={canManageKegs}
           on:edit={(event) => {
             if (!canManageKegs) {
-              uiStore.notifyWarning('Недостаточно прав для изменения кег.');
+              uiStore.notifyWarning('Недостаточно прав для изменения кеги.');
               return;
             }
             kegToEdit = event.detail.keg;
@@ -256,6 +275,25 @@
           on:delete={handleDeleteKeg}
         />
       {/if}
+    </section>
+  {:else}
+    <section class="mode-panel" aria-labelledby="screens-mode-title">
+      <div class="section-header">
+        <div>
+          <h2 id="screens-mode-title">Экраны кранов</h2>
+          <p class="section-hint">Тихий secondary layer для старшего смены и инженерных ролей.</p>
+        </div>
+        <button type="button" class="ghost-link" on:click={() => switchMode(VIEW_MODES.KEGS)}>
+          Вернуться к кегам
+        </button>
+      </div>
+
+      <div class="context-note">
+        <strong>В этом режиме:</strong>
+        управляйте guest-facing экраном как вторичным слоем, не смешивая его с базовыми действиями по напитку и кеге.
+      </div>
+
+      <TapScreens embedded={true} />
     </section>
   {/if}
 {/if}
@@ -335,14 +373,15 @@
     align-items: center;
   }
 
-  .mode-switch-copy {
+  .mode-switch-copy,
+  .mode-panel {
     display: grid;
-    gap: 0.15rem;
+    gap: 1rem;
   }
 
   .mode-switch {
     display: inline-grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.35rem;
     padding: 0.35rem;
     background: #f1f5f9;
@@ -356,7 +395,7 @@
   }
 
   .mode-switch button {
-    min-width: 9rem;
+    min-width: 8rem;
     border-radius: 999px;
     background: transparent;
     color: var(--text-secondary, #475569);
@@ -366,13 +405,6 @@
   .mode-switch button.active {
     background: #1d4ed8;
     color: #fff;
-  }
-
-  .mode-panel,
-  .kegs-section,
-  .beverages-section {
-    display: grid;
-    gap: 1rem;
   }
 
   .context-note {

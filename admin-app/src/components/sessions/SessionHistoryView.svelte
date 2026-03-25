@@ -46,15 +46,15 @@
   };
 
   const narrativeKindLabels = {
-    open: 'Session opened',
-    authorize: 'Card authorized',
-    pour_start: 'Pour started',
-    pour_end: 'Pour finished',
-    sync: 'Sync status updated',
-    close: 'Session closed',
-    abort: 'Session aborted',
-    incident: 'Incident recorded',
-    action: 'Operator action',
+    open: 'Визит открыт',
+    authorize: 'Карта подтверждена',
+    pour_start: 'Налив начался',
+    pour_end: 'Налив завершён',
+    sync: 'Статус синхронизации обновлён',
+    close: 'Визит закрыт',
+    abort: 'Визит прерван',
+    incident: 'Зафиксирован инцидент',
+    action: 'Действие оператора',
   };
 
   let filters = { ...DEFAULT_FILTERS };
@@ -68,16 +68,16 @@
   $: journalItems = ($sessionsStore.items || []).map((item) => normalizeVisit(item, item.is_active ? 'active' : 'history'));
   $: detail = $sessionsStore.detail;
   $: focusContextText = focusVisitId
-    ? `Opening session ${focusVisitId} in the shared journal.`
+    ? `Открываем визит ${focusVisitId} в общем журнале.`
     : focusTapId
-      ? `Journal is focused on tap ${focusTapId}.`
+      ? `Журнал сфокусирован на кране ${focusTapId}.`
       : '';
   $: detailNarrativeGroups = detail ? groupedNarrative(detail, formatMaybeDate, describeCompletionSource) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
   $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary, describeCompletionSource, describeFlags) : [];
   $: detailWhatHappened = detail ? buildWhatHappened(detail.summary, describeCompletionSource) : [];
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Risky session actions are read-only.')
+    ? ($operatorConnectionStore.reason || 'Backend временно деградирован. Рискованные действия по визитам доступны только для просмотра.')
     : '';
   $: if (focusVisitId && !focusResolved && !$sessionsStore.loading && !$sessionsStore.detailLoading) {
     resolveFocusVisit();
@@ -210,7 +210,7 @@
     const closedReason = submission.values.reasonCode || 'incident-response';
 
     await sessionsStore.closeSession({ visitId: detail.summary.visit_id, closedReason, cardReturned: true });
-    uiStore.notifySuccess('Session closed.');
+    uiStore.notifySuccess('Визит закрыт.');
   }
 
   async function handleForceUnlock() {
@@ -223,7 +223,7 @@
       reason: submission.values.reasonCode || 'hardware-fault',
       comment: submission.values.comment || null,
     });
-    uiStore.notifySuccess('Session unlocked.');
+    uiStore.notifySuccess('Блокировка снята.');
   }
 
   async function handleMarkLostCard() {
@@ -236,7 +236,7 @@
       reason: submission.values.reasonCode || 'security',
       comment: submission.values.comment || null,
     });
-    uiStore.notifySuccess('Card marked as lost.');
+    uiStore.notifySuccess('Карта помечена как потерянная.');
   }
 
   async function handleReconcile() {
@@ -256,7 +256,7 @@
       reason: submission.values.reasonCode || 'incident-response',
       comment: submission.values.comment || null,
     });
-    uiStore.notifySuccess('Pour reconciled manually.');
+    uiStore.notifySuccess('Ручная сверка налива выполнена.');
   }
 </script>
 
@@ -273,14 +273,14 @@
 
   <div class="summary-strip">
     <div class="summary-cards">
-      <article><span>Total</span><strong>{header?.total_sessions || 0}</strong></article>
-      <article><span>Active</span><strong>{header?.active_sessions || 0}</strong></article>
-      <article><span>With incidents</span><strong>{header?.incident_sessions || 0}</strong></article>
-      <article><span>Unsynced</span><strong>{header?.unsynced_sessions || 0}</strong></article>
-      <article><span>Zero-volume abort</span><strong>{header?.zero_volume_abort_sessions || 0}</strong></article>
+      <article><span>Всего визитов</span><strong>{header?.total_sessions || 0}</strong></article>
+      <article><span>Активные</span><strong>{header?.active_sessions || 0}</strong></article>
+      <article><span>С проблемами</span><strong>{header?.incident_sessions || 0}</strong></article>
+      <article><span>Без sync</span><strong>{header?.unsynced_sessions || 0}</strong></article>
+      <article><span>Без налива</span><strong>{header?.zero_volume_abort_sessions || 0}</strong></article>
     </div>
     <DataFreshnessChip
-      label="Sessions"
+      label="Visits"
       lastFetchedAt={$sessionsStore.lastFetchedAt}
       staleAfterMs={$sessionsStore.staleTtlMs}
       mode={$operatorConnectionStore.mode}

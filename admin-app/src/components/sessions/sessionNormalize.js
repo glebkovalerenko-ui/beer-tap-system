@@ -1,3 +1,8 @@
+import {
+  canonicalVisitStatusLabel,
+  resolveCanonicalVisitStatus,
+} from '../../lib/operator/visitStatus.js';
+
 export const completionSourceLabels = {
   normal: 'Обычное завершение',
   card_removed: 'Карта извлечена',
@@ -5,39 +10,43 @@ export const completionSourceLabels = {
   blocked: 'Заблокировано',
   denied: 'Отказано',
   no_sale_flow: 'Служебный налив без продажи',
-  guest_checkout: 'Обычное завершение: расчёт гостя',
-  checkout: 'Обычное завершение: расчёт',
-  demo_checkout: 'Обычное завершение: демонстрационный расчёт',
-  operator_close: 'Обычное завершение: оператор закрыл сессию',
-  manual_close: 'Обычное завершение: ручное закрытие',
-  card_removed_close: 'Завершена после извлечения карты',
+  guest_checkout: 'Завершён расчётом гостя',
+  checkout: 'Завершён расчётом',
+  demo_checkout: 'Демонстрационное завершение',
+  operator_close: 'Закрыт оператором',
+  manual_close: 'Закрыт вручную',
+  card_removed_close: 'Завершён после извлечения карты',
   controller_timeout: 'Таймаут контроллера',
   sync_timeout: 'Таймаут синхронизации',
-  timeout_close: 'Завершена по таймауту',
-  blocked_lost_card: 'Заблокировано: карта помечена как потерянная',
+  timeout_close: 'Завершён по таймауту',
+  blocked_lost_card: 'Заблокировано: карта потеряна',
   blocked_insufficient_funds: 'Заблокировано: недостаточно средств',
-  blocked_card_in_use: 'Заблокировано: карта уже занята на другом кране',
+  blocked_card_in_use: 'Заблокировано: карта уже используется на другом кране',
   denied_insufficient_funds: 'Отказано: недостаточно средств',
-  sync_pending: 'Ожидает синхронизации',
+  sync_pending: 'Ожидает синхронизацию',
   system: 'Системное завершение',
 };
 
 export function normalizeVisit(item, source) {
   const lifecycle = item.lifecycle || {};
-  const isActive = source === 'active' || item.status === 'active' || item.visit_status === 'active' || item.operator_status === 'Активна';
+  const canonicalStatus = resolveCanonicalVisitStatus(item);
+  const isActive = ['active', 'awaiting_action', 'pouring_now', 'needs_attention', 'blocked'].includes(canonicalStatus)
+    && normalizeText(item.visit_status || item.status) === 'active';
+
   return {
     ...item,
     source,
     isActive,
     lifecycle,
+    canonical_visit_status: canonicalStatus,
     opened_at: item.opened_at || lifecycle.opened_at || null,
     last_event_at: item.last_event_at || lifecycle.last_event_at || lifecycle.last_pour_ended_at || item.updated_at || null,
     guest_full_name: item.guest_full_name || 'Гость без имени',
-    operator_status: item.operator_status || (isActive ? 'Активна' : item.status || 'Неизвестно'),
+    operator_status: item.operator_status || canonicalVisitStatusLabel(canonicalStatus),
     visit_status: item.visit_status || item.status || (isActive ? 'active' : null),
     taps: item.taps || (item.active_tap_id ? [String(item.active_tap_id)] : []),
     sync_state: item.sync_state || (isActive ? 'pending_sync' : 'not_started'),
-    completion_source: item.completion_source ?? (isActive ? null : null),
+    completion_source: item.completion_source ?? null,
     contains_tail_pour: Boolean(item.contains_tail_pour),
     contains_non_sale_flow: Boolean(item.contains_non_sale_flow),
     has_incident: Boolean(item.has_incident),
@@ -60,41 +69,39 @@ export function mergeVisits(active = [], history = []) {
 }
 
 export function normalizeCompletionSource(item) {
-  const raw = String(item?.completion_source || '').trim().toLowerCase();
-  const actions = (item?.operator_actions || []).map((action) => String(action.action || '').toLowerCase());
+  const raw = normalizeText(item?.completion_source);
+  const actions = (item?.operator_actions || []).map((action) => normalizeText(action.action));
 
   if (item?.contains_non_sale_flow) return 'no_sale_flow';
   if (raw === 'card_removed' || raw === 'card_removed_close' || raw.includes('card_removed')) return 'card_removed';
   if (raw === 'timeout' || raw === 'timeout_close' || raw.endsWith('_timeout') || raw.includes('timeout')) return 'timeout';
-  if (
-    raw.startsWith('blocked_')
-    || actions.some((action) => ['lost_card_blocked', 'insufficient_funds_blocked', 'card_in_use_on_other_tap'].includes(action))
-  ) return 'blocked';
-  if (
-    raw.startsWith('denied_')
-    || actions.some((action) => ['insufficient_funds_denied'].includes(action))
-  ) return 'denied';
+  if (raw.startsWith('blocked_') || actions.some((action) => ['lost_card_blocked', 'insufficient_funds_blocked', 'card_in_use_on_other_tap'].includes(action))) {
+    return 'blocked';
+  }
+  if (raw.startsWith('denied_') || actions.some((action) => action === 'insufficient_funds_denied')) {
+    return 'denied';
+  }
   if (raw === 'sync_pending' && item?.has_unsynced) return 'timeout';
   if (raw) return 'normal';
-  if (item?.operator_status === 'Прервана') return 'blocked';
+  if (resolveCanonicalVisitStatus(item) === 'blocked') return 'blocked';
   return item?.isActive ? '' : 'normal';
 }
 
 export function describeCompletionSource(value) {
-  if (!value) return 'Не указан';
+  if (!value) return 'Не указана';
   return completionSourceLabels[value] || value.replaceAll('_', ' ');
 }
 
 export function describeCompletionSourceDetails(item) {
   const normalized = normalizeCompletionSource(item);
   const raw = String(item?.completion_source || '').trim();
-  if (!normalized && !raw) return 'Не указан';
+  if (!normalized && !raw) return 'Не указана';
   if (raw && raw !== normalized) return `${describeCompletionSource(normalized)} · ${describeCompletionSource(raw.toLowerCase())}`;
   return describeCompletionSource(raw || normalized);
 }
 
 export function isZeroVolumeAbort(item) {
-  return item.operator_status === 'Прервана' && !item.lifecycle?.first_pour_started_at && !item.lifecycle?.last_pour_ended_at;
+  return resolveCanonicalVisitStatus(item) === 'blocked' && !item.lifecycle?.first_pour_started_at && !item.lifecycle?.last_pour_ended_at;
 }
 
 export function describeFlags(item) {
@@ -104,4 +111,8 @@ export function describeFlags(item) {
   if (item.has_incident) flags.push(`Есть инциденты (${item.incident_count || 1})`);
   if (item.has_unsynced) flags.push('Есть несинхронизированные данные');
   return flags.length ? flags.join(' · ') : 'Особых флагов нет';
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
 }

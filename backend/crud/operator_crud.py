@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -126,6 +128,88 @@ def _is_zero_volume_abort(summary: schemas.SessionHistoryListItem) -> bool:
     )
 
 
+def _safe_details(details: str | None) -> dict:
+    if not details:
+        return {}
+    try:
+        data = json.loads(details)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _guest_full_name(guest: models.Guest | None) -> str | None:
+    if guest is None:
+        return None
+    parts = [guest.last_name, guest.first_name, guest.patronymic]
+    value = " ".join(part for part in parts if part)
+    return value or None
+
+
+def _tap_label(*, tap_id: int | None, tap: models.Tap | None = None) -> str | None:
+    if tap is not None and getattr(tap, "display_name", None):
+        return tap.display_name
+    if tap_id is None:
+        return None
+    return f"Tap {tap_id}"
+
+
+def _normalized_text(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _visit_canonical_status(
+    *,
+    visit_status: str | None,
+    completion_source: str | None,
+    has_incident: bool = False,
+    has_unsynced: bool = False,
+    active_tap_id: int | None = None,
+    zero_volume_abort: bool = False,
+) -> str:
+    normalized_completion = _normalized_text(completion_source)
+    normalized_visit_status = _normalized_text(visit_status)
+
+    if normalized_completion == "blocked":
+        return "blocked"
+    if has_unsynced or has_incident or zero_volume_abort or normalized_completion in {"timeout", "denied", "no_sale_flow"}:
+        return "needs_attention"
+    if normalized_visit_status and normalized_visit_status != "active":
+        return "completed"
+    if active_tap_id is not None:
+        return "pouring_now"
+    return "active"
+
+
+def _operator_pour_ref(kind: str, entity_id: UUID | str) -> str:
+    return f"{kind}:{entity_id}"
+
+
+def _parse_operator_pour_ref(pour_ref: str) -> tuple[str, str]:
+    normalized = str(pour_ref or "").strip()
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="pour_ref must not be empty")
+    if ":" not in normalized:
+        return "pour", normalized
+    kind, entity_id = normalized.split(":", 1)
+    if kind not in {"pour", "flow", "audit"} or not entity_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unsupported pour reference")
+    return kind, entity_id
+
+
+def _matches_operator_search_text(query: str, *values: object) -> bool:
+    normalized_query = _normalized_text(query)
+    if not normalized_query:
+        return True
+    return any(normalized_query in _normalized_text(str(value or "")) for value in values)
+
+
+def _resolve_operator_search_limit(limit: int | None, *, fallback: int = 5, cap: int = 8) -> int:
+    if limit is None:
+        return fallback
+    return max(1, min(cap, int(limit)))
+
+
 def _to_operator_session_item(summary: schemas.SessionHistoryListItem) -> schemas.OperatorSessionJournalItem:
     last_operator_action = summary.operator_actions[-1] if summary.operator_actions else None
     completion_source = _normalize_completion_source(summary) or None
@@ -134,6 +218,14 @@ def _to_operator_session_item(summary: schemas.SessionHistoryListItem) -> schema
             **summary.model_dump(),
             "completion_source": completion_source,
         },
+        canonical_visit_status=_visit_canonical_status(
+            visit_status=summary.visit_status,
+            completion_source=completion_source,
+            has_incident=summary.has_incident,
+            has_unsynced=summary.has_unsynced,
+            active_tap_id=summary.primary_tap_id if summary.visit_status == "active" else None,
+            zero_volume_abort=_is_zero_volume_abort(summary),
+        ),
         is_active=summary.visit_status == "active",
         has_zero_volume_abort=_is_zero_volume_abort(summary),
         last_operator_action=last_operator_action,
@@ -271,6 +363,15 @@ def _format_rub(value: Decimal | None) -> str:
         return "—"
     normalized = Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return f"{normalized} ₽"
+
+
+def _format_volume_ml(value: int | None) -> str:
+    if value is None:
+        return "—"
+    if int(value) >= 1000:
+        liters = Decimal(str(value)) / Decimal("1000")
+        return f"{liters.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)} L"
+    return f"{int(value)} ml"
 
 
 def _device_index(system_health: dict, subsystem_name: str) -> tuple[dict[str, dict], dict | None]:
@@ -1070,6 +1171,11 @@ def lookup_operator_card_context(
     if base_resolution.get("active_visit"):
         active_visit_payload = schemas.CardGuestContextActiveVisit(
             **base_resolution["active_visit"],
+            canonical_visit_status=_visit_canonical_status(
+                visit_status=(base_resolution.get("active_visit") or {}).get("status"),
+                completion_source=None,
+                active_tap_id=(base_resolution.get("active_visit") or {}).get("active_tap_id"),
+            ),
             balance=guest.balance if guest is not None else None,
             tap_label=f"Tap #{visit.active_tap_id}" if visit and visit.active_tap_id is not None else None,
         )
@@ -1100,4 +1206,717 @@ def lookup_operator_card_context(
         lookup_summary_items=lookup_summary_items,
         action_policies=action_policies,
         allowed_quick_actions=_allowed_quick_actions(action_policies),
+    )
+
+
+def _resolve_operator_period(
+    db: Session,
+    *,
+    period_preset: str,
+    date_from: date | None,
+    date_to: date | None,
+) -> tuple[date | None, date | None]:
+    return _resolve_session_period(
+        db,
+        schemas.OperatorSessionJournalFilterParams(
+            period_preset=period_preset,
+            date_from=date_from,
+            date_to=date_to,
+        ),
+    )
+
+
+def _apply_date_range(query, column, resolved_from: date | None, resolved_to: date | None):
+    if resolved_from is not None:
+        query = query.filter(func.date(column) >= resolved_from)
+    if resolved_to is not None:
+        query = query.filter(func.date(column) <= resolved_to)
+    return query
+
+
+def _load_visit_detail_map(db: Session, visit_ids: set[UUID]) -> dict[UUID, schemas.OperatorSessionDetailModel]:
+    details: dict[UUID, schemas.OperatorSessionDetailModel] = {}
+    for visit_id in visit_ids:
+        try:
+            details[visit_id] = get_operator_session_detail(db=db, visit_id=visit_id, current_user=None)
+        except HTTPException:
+            continue
+    return details
+
+
+def _match_visit_for_card_event(
+    db: Session,
+    *,
+    card_uid: str | None,
+    short_id: str | None,
+    occurred_at: datetime | None,
+) -> models.Visit | None:
+    query = db.query(models.Visit).options(joinedload(models.Visit.guest))
+    if card_uid:
+        query = query.filter(models.Visit.card_uid == card_uid)
+    elif short_id:
+        query = query.join(models.Pour, models.Pour.visit_id == models.Visit.visit_id).filter(models.Pour.short_id == short_id)
+    else:
+        return None
+
+    if occurred_at is not None:
+        query = query.filter(models.Visit.opened_at <= occurred_at)
+        query = query.filter(or_(models.Visit.closed_at.is_(None), models.Visit.closed_at >= occurred_at))
+
+    return query.order_by(
+        models.Visit.status.asc(),
+        models.Visit.opened_at.desc(),
+    ).first()
+
+
+def _operator_pour_item_from_pour(
+    pour: models.Pour,
+    *,
+    visit_detail: schemas.OperatorSessionDetailModel | None = None,
+) -> schemas.OperatorPourJournalItem:
+    guest = pour.guest or (pour.visit.guest if pour.visit and pour.visit.guest else None)
+    visit = pour.visit
+    occurred_at = _as_utc(pour.authorized_at) or _as_utc(pour.poured_at) or _as_utc(pour.created_at) or _utcnow()
+    ended_at = _as_utc(pour.ended_at) or _as_utc(pour.synced_at) or _as_utc(pour.reconciled_at) or _as_utc(pour.poured_at)
+    completion_reason = None
+    sale_kind = "sale"
+    status_value = "completed"
+    has_problem = False
+    sync_state = str(pour.sync_status or "not_started")
+
+    if Decimal(str(pour.amount_charged or 0)) <= 0 and int(pour.volume_ml or 0) > 0:
+        sale_kind = "non_sale"
+        status_value = "non_sale"
+        has_problem = True
+        completion_reason = "non_sale"
+    if int(pour.volume_ml or 0) <= 0:
+        status_value = "zero_volume"
+        has_problem = True
+        completion_reason = completion_reason or "zero_volume_abort"
+    if visit is not None and _normalized_text(visit.closed_reason).find("timeout") >= 0 and int(pour.volume_ml or 0) <= 0:
+        status_value = "timeout"
+        has_problem = True
+        completion_reason = visit.closed_reason
+    if sync_state == "pending_sync":
+        status_value = "syncing" if status_value == "completed" else status_value
+        has_problem = True
+        completion_reason = completion_reason or "pending_sync"
+    elif sync_state == "rejected":
+        status_value = "attention"
+        has_problem = True
+        completion_reason = completion_reason or "sync_rejected"
+
+    if visit_detail is not None and status_value == "completed":
+        normalized_completion = _normalized_text(visit_detail.summary.completion_source)
+        if normalized_completion == "denied":
+            status_value = "denied"
+            has_problem = True
+            completion_reason = visit_detail.summary.completion_source
+
+    return schemas.OperatorPourJournalItem(
+        pour_ref=_operator_pour_ref("pour", pour.pour_id),
+        source_kind="pour",
+        pour_id=pour.pour_id,
+        visit_id=pour.visit_id,
+        guest_id=pour.guest_id,
+        tap_id=pour.tap_id,
+        tap_label=_tap_label(tap_id=pour.tap_id, tap=pour.tap),
+        guest_full_name=_guest_full_name(guest),
+        card_uid=pour.card_uid,
+        beverage_name=pour.beverage.name if pour.beverage else None,
+        short_id=pour.short_id,
+        status=status_value,
+        sale_kind=sale_kind,
+        sync_state=sync_state,
+        volume_ml=int(pour.volume_ml or 0),
+        amount_charged=pour.amount_charged,
+        started_at=_as_utc(pour.started_at),
+        ended_at=ended_at,
+        occurred_at=occurred_at,
+        completion_reason=completion_reason,
+        has_problem=has_problem,
+    )
+
+
+def _operator_pour_item_from_flow(
+    db: Session,
+    flow: models.NonSaleFlow,
+) -> schemas.OperatorPourJournalItem:
+    occurred_at = _as_utc(flow.finalized_at) or _as_utc(flow.last_seen_at) or _as_utc(flow.started_at) or _as_utc(flow.created_at) or _utcnow()
+    matched_visit = _match_visit_for_card_event(db, card_uid=flow.card_uid, short_id=flow.short_id, occurred_at=occurred_at)
+    guest = matched_visit.guest if matched_visit is not None else None
+    sync_state = "accounted" if int(flow.accounted_volume_ml or 0) >= int(flow.volume_ml or 0) else "pending_sync"
+    return schemas.OperatorPourJournalItem(
+        pour_ref=_operator_pour_ref("flow", flow.non_sale_flow_id),
+        source_kind="non_sale_flow",
+        visit_id=matched_visit.visit_id if matched_visit is not None else None,
+        guest_id=matched_visit.guest_id if matched_visit is not None else None,
+        tap_id=flow.tap_id,
+        tap_label=_tap_label(tap_id=flow.tap_id, tap=flow.tap),
+        guest_full_name=_guest_full_name(guest),
+        card_uid=flow.card_uid,
+        beverage_name=flow.keg.beverage.name if flow.keg and flow.keg.beverage else None,
+        short_id=flow.short_id,
+        status="non_sale",
+        sale_kind="non_sale",
+        sync_state=sync_state,
+        volume_ml=int(flow.volume_ml or 0),
+        amount_charged=Decimal("0.00"),
+        started_at=_as_utc(flow.started_at),
+        ended_at=_as_utc(flow.finalized_at) or _as_utc(flow.last_seen_at),
+        occurred_at=occurred_at,
+        completion_reason=flow.reason,
+        has_problem=True,
+    )
+
+
+def _operator_pour_item_from_denied_log(
+    db: Session,
+    log: models.AuditLog,
+) -> schemas.OperatorPourJournalItem:
+    details = _safe_details(log.details)
+    visit = None
+    visit_id = details.get("visit_id") or log.target_id
+    if visit_id:
+        try:
+            visit = (
+                db.query(models.Visit)
+                .options(joinedload(models.Visit.guest))
+                .filter(models.Visit.visit_id == UUID(str(visit_id)))
+                .first()
+            )
+        except (TypeError, ValueError):
+            visit = None
+
+    tap_id_value = details.get("tap_id") or details.get("requested_tap_id")
+    tap_id = int(tap_id_value) if tap_id_value not in {None, ""} else None
+    tap = db.query(models.Tap).options(joinedload(models.Tap.keg).joinedload(models.Keg.beverage)).filter(models.Tap.tap_id == tap_id).first() if tap_id is not None else None
+    guest = visit.guest if visit is not None else None
+    completion_reason = "insufficient_funds" if log.action == "insufficient_funds_denied" else log.action
+    return schemas.OperatorPourJournalItem(
+        pour_ref=_operator_pour_ref("audit", log.log_id),
+        source_kind="denied",
+        visit_id=visit.visit_id if visit is not None else None,
+        guest_id=visit.guest_id if visit is not None else None,
+        tap_id=tap_id,
+        tap_label=_tap_label(tap_id=tap_id, tap=tap),
+        guest_full_name=_guest_full_name(guest),
+        card_uid=details.get("card_uid") or (visit.card_uid if visit is not None else None),
+        beverage_name=tap.keg.beverage.name if tap and tap.keg and tap.keg.beverage else None,
+        status="denied",
+        sale_kind="sale",
+        sync_state="not_started",
+        volume_ml=0,
+        amount_charged=Decimal("0.00"),
+        started_at=None,
+        ended_at=_as_utc(log.timestamp),
+        occurred_at=_as_utc(log.timestamp) or _utcnow(),
+        completion_reason=completion_reason,
+        has_problem=True,
+    )
+
+
+def _filter_operator_pour_items(
+    items: list[schemas.OperatorPourJournalItem],
+    *,
+    filters: schemas.OperatorPourJournalFilterParams,
+) -> list[schemas.OperatorPourJournalItem]:
+    result = items
+    if filters.guest_query:
+        result = [
+            item for item in result
+            if _matches_operator_search_text(
+                filters.guest_query,
+                item.guest_full_name,
+                item.card_uid,
+                item.short_id,
+                item.visit_id,
+                item.pour_id,
+            )
+        ]
+    if filters.status:
+        normalized_status = _normalized_text(filters.status)
+        result = [item for item in result if _normalized_text(item.status) == normalized_status]
+    if filters.problem_only:
+        result = [item for item in result if item.has_problem]
+    if filters.non_sale_only:
+        result = [item for item in result if item.sale_kind == "non_sale"]
+    if filters.zero_volume_only:
+        result = [item for item in result if item.status == "zero_volume"]
+    if filters.timeout_only:
+        result = [item for item in result if item.status == "timeout"]
+    if filters.denied_only:
+        result = [item for item in result if item.status == "denied"]
+    if filters.sale_mode == "sale":
+        result = [item for item in result if item.sale_kind == "sale"]
+    elif filters.sale_mode == "non_sale":
+        result = [item for item in result if item.sale_kind == "non_sale"]
+    return result
+
+
+def _operator_pour_action_policies(
+    current_user: dict | None,
+    summary: schemas.OperatorPourJournalItem,
+) -> schemas.OperatorPourActionPolicySet:
+    return schemas.OperatorPourActionPolicySet(
+        open_visit=_contextualize_policy(
+            _action_policy(current_user, permission="sessions_view"),
+            allowed=summary.visit_id is not None,
+            disabled_reason="Visit context is not available for this pour.",
+        ),
+        open_guest=_contextualize_policy(
+            _action_policy(current_user, permission="cards_lookup"),
+            allowed=summary.guest_id is not None or bool(summary.card_uid),
+            disabled_reason="Guest or card context is not available for this pour.",
+        ),
+        open_tap=_contextualize_policy(
+            _action_policy(current_user, permission="taps_view"),
+            allowed=summary.tap_id is not None,
+            disabled_reason="Tap context is not available for this pour.",
+        ),
+        reconcile=_contextualize_policy(
+            _action_policy(current_user, permission="maintenance_actions", confirm_required=True, reason_code_required=True),
+            allowed=summary.source_kind == "pour" and summary.visit_id is not None and summary.sync_state in {"pending_sync", "rejected"},
+            disabled_reason="Manual reconcile is only available for sale pours waiting for sync review.",
+        ),
+    )
+
+
+def get_operator_pours(
+    db: Session,
+    *,
+    filters: schemas.OperatorPourJournalFilterParams,
+    current_user: dict | None,
+) -> schemas.OperatorPourJournalModel:
+    resolved_from, resolved_to = _resolve_operator_period(
+        db,
+        period_preset=filters.period_preset,
+        date_from=filters.date_from,
+        date_to=filters.date_to,
+    )
+
+    pour_query = (
+        db.query(models.Pour)
+        .options(
+            joinedload(models.Pour.guest),
+            joinedload(models.Pour.tap).joinedload(models.Tap.keg).joinedload(models.Keg.beverage),
+            joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
+            joinedload(models.Pour.visit).joinedload(models.Visit.guest),
+        )
+    )
+    pour_query = _apply_date_range(
+        pour_query,
+        func.coalesce(models.Pour.authorized_at, models.Pour.poured_at, models.Pour.created_at),
+        resolved_from,
+        resolved_to,
+    )
+    if filters.tap_id is not None:
+        pour_query = pour_query.filter(models.Pour.tap_id == filters.tap_id)
+    if filters.visit_id is not None:
+        pour_query = pour_query.filter(models.Pour.visit_id == filters.visit_id)
+    if filters.guest_query:
+        pattern = f"%{filters.guest_query.strip().lower()}%"
+        pour_query = pour_query.join(models.Guest, models.Pour.guest_id == models.Guest.guest_id).filter(
+            or_(
+                func.lower(models.Guest.last_name).like(pattern),
+                func.lower(models.Guest.first_name).like(pattern),
+                func.lower(models.Guest.patronymic).like(pattern),
+                func.lower(models.Guest.phone_number).like(pattern),
+                func.lower(models.Pour.card_uid).like(pattern),
+                func.lower(func.coalesce(models.Pour.short_id, "")).like(pattern),
+                cast(models.Pour.visit_id, String).ilike(pattern),
+            )
+        )
+    pours = (
+        pour_query
+        .order_by(func.coalesce(models.Pour.authorized_at, models.Pour.poured_at, models.Pour.created_at).desc())
+        .limit(250)
+        .all()
+    )
+
+    visit_detail_map = _load_visit_detail_map(db, {pour.visit_id for pour in pours if pour.visit_id is not None})
+    items = [
+        _operator_pour_item_from_pour(
+            pour,
+            visit_detail=visit_detail_map.get(pour.visit_id) if pour.visit_id is not None else None,
+        )
+        for pour in pours
+    ]
+
+    if filters.sale_mode != "sale" or filters.non_sale_only:
+        flow_query = (
+            db.query(models.NonSaleFlow)
+            .options(
+                joinedload(models.NonSaleFlow.tap).joinedload(models.Tap.keg).joinedload(models.Keg.beverage),
+                joinedload(models.NonSaleFlow.keg).joinedload(models.Keg.beverage),
+            )
+        )
+        flow_query = _apply_date_range(
+            flow_query,
+            func.coalesce(models.NonSaleFlow.finalized_at, models.NonSaleFlow.last_seen_at, models.NonSaleFlow.created_at),
+            resolved_from,
+            resolved_to,
+        )
+        if filters.tap_id is not None:
+            flow_query = flow_query.filter(models.NonSaleFlow.tap_id == filters.tap_id)
+        flows = (
+            flow_query
+            .order_by(func.coalesce(models.NonSaleFlow.finalized_at, models.NonSaleFlow.last_seen_at, models.NonSaleFlow.created_at).desc())
+            .limit(150)
+            .all()
+        )
+        items.extend(_operator_pour_item_from_flow(db, flow) for flow in flows)
+
+    if filters.sale_mode != "non_sale" and not filters.non_sale_only:
+        denied_logs_query = (
+            db.query(models.AuditLog)
+            .filter(models.AuditLog.target_entity == "Visit")
+            .filter(models.AuditLog.action.in_(("insufficient_funds_denied", "card_in_use_on_other_tap")))
+        )
+        denied_logs_query = _apply_date_range(denied_logs_query, models.AuditLog.timestamp, resolved_from, resolved_to)
+        denied_logs = denied_logs_query.order_by(models.AuditLog.timestamp.desc()).limit(150).all()
+        items.extend(_operator_pour_item_from_denied_log(db, log) for log in denied_logs)
+
+    items = _filter_operator_pour_items(items, filters=filters)
+    items.sort(key=lambda item: -int((_as_utc(item.occurred_at) or _utcnow()).timestamp()))
+
+    header = schemas.OperatorPourJournalHeader(
+        total_pours=len(items),
+        problem_pours=sum(1 for item in items if item.has_problem),
+        sale_pours=sum(1 for item in items if item.sale_kind == "sale"),
+        non_sale_pours=sum(1 for item in items if item.sale_kind == "non_sale"),
+        denied_pours=sum(1 for item in items if item.status == "denied"),
+        zero_volume_pours=sum(1 for item in items if item.status == "zero_volume"),
+        timeout_pours=sum(1 for item in items if item.status == "timeout"),
+    )
+    applied_filters = schemas.OperatorPourJournalFilterParams(
+        **{
+            **filters.model_dump(),
+            "date_from": resolved_from,
+            "date_to": resolved_to,
+        }
+    )
+    return schemas.OperatorPourJournalModel(
+        generated_at=_utcnow(),
+        applied_filters=applied_filters,
+        header=header,
+        items=items,
+    )
+
+
+def _operator_pour_display_context(
+    db: Session,
+    *,
+    visit_id: UUID | None,
+    tap_id: int | None,
+) -> schemas.SessionDisplayContext | None:
+    if visit_id is not None:
+        try:
+            detail = visit_crud.get_session_history_detail(db=db, visit_id=visit_id)
+            return detail.display_context
+        except HTTPException:
+            return None
+    derive_display_context = getattr(visit_crud, "_derive_display_context", None)
+    if tap_id is not None and callable(derive_display_context):
+        return derive_display_context(db, tap_id=tap_id, has_incident=False, incident_count=0)
+    return None
+
+
+def get_operator_pour_detail(
+    db: Session,
+    *,
+    pour_ref: str,
+    current_user: dict | None,
+) -> schemas.OperatorPourDetailModel:
+    source_kind, entity_id = _parse_operator_pour_ref(pour_ref)
+
+    if source_kind == "pour":
+        pour = (
+            db.query(models.Pour)
+            .options(
+                joinedload(models.Pour.guest),
+                joinedload(models.Pour.tap).joinedload(models.Tap.keg).joinedload(models.Keg.beverage),
+                joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
+                joinedload(models.Pour.visit).joinedload(models.Visit.guest),
+            )
+            .filter(models.Pour.pour_id == UUID(entity_id))
+            .first()
+        )
+        if pour is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pour not found")
+        visit_detail = get_operator_session_detail(db=db, visit_id=pour.visit_id, current_user=current_user) if pour.visit_id is not None else None
+        summary = _operator_pour_item_from_pour(pour, visit_detail=visit_detail)
+        lifecycle = [
+            schemas.OperatorPourLifecycleItem(key="authorize", label="Authorize", timestamp=_as_utc(pour.authorized_at), status="done" if pour.authorized_at else "pending", value=pour.card_uid or None),
+            schemas.OperatorPourLifecycleItem(key="start", label="Start", timestamp=_as_utc(pour.started_at), status="done" if pour.started_at else ("warning" if summary.status in {"zero_volume", "timeout"} else "pending"), value=_tap_label(tap_id=pour.tap_id, tap=pour.tap)),
+            schemas.OperatorPourLifecycleItem(key="stop", label="Stop", timestamp=summary.ended_at, status="warning" if summary.status in {"zero_volume", "timeout", "attention"} else "done", value=summary.completion_reason or summary.status),
+            schemas.OperatorPourLifecycleItem(key="sync", label="Sync", timestamp=_as_utc(pour.synced_at) or _as_utc(pour.reconciled_at), status="done" if summary.sync_state in {"synced", "reconciled"} else ("warning" if summary.sync_state in {"pending_sync", "rejected"} else "info"), value=summary.sync_state),
+        ]
+        operator_actions = visit_detail.operator_actions if visit_detail is not None else []
+    elif source_kind == "flow":
+        flow = (
+            db.query(models.NonSaleFlow)
+            .options(
+                joinedload(models.NonSaleFlow.tap).joinedload(models.Tap.keg).joinedload(models.Keg.beverage),
+                joinedload(models.NonSaleFlow.keg).joinedload(models.Keg.beverage),
+            )
+            .filter(models.NonSaleFlow.non_sale_flow_id == UUID(entity_id))
+            .first()
+        )
+        if flow is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Non-sale flow not found")
+        summary = _operator_pour_item_from_flow(db, flow)
+        lifecycle = [
+            schemas.OperatorPourLifecycleItem(key="reader", label="Card present", timestamp=summary.started_at, status="info", value="yes" if flow.card_present else "no"),
+            schemas.OperatorPourLifecycleItem(key="start", label="Start", timestamp=summary.started_at, status="done" if summary.started_at else "warning", value=flow.session_state),
+            schemas.OperatorPourLifecycleItem(key="stop", label="Finalize", timestamp=summary.ended_at, status="warning", value=flow.reason),
+            schemas.OperatorPourLifecycleItem(key="sync", label="Accounting", timestamp=_as_utc(flow.finalized_at) or _as_utc(flow.last_seen_at), status="done" if summary.sync_state == "accounted" else "warning", value=summary.sync_state),
+        ]
+        operator_actions = []
+    else:
+        log = db.query(models.AuditLog).filter(models.AuditLog.log_id == UUID(entity_id)).first()
+        if log is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Denied pour event not found")
+        summary = _operator_pour_item_from_denied_log(db, log)
+        lifecycle = [
+            schemas.OperatorPourLifecycleItem(key="authorize", label="Authorize attempt", timestamp=_as_utc(log.timestamp), status="critical", value=summary.card_uid or None),
+            schemas.OperatorPourLifecycleItem(key="deny", label="Denied", timestamp=_as_utc(log.timestamp), status="critical", value=summary.completion_reason),
+        ]
+        operator_actions = []
+
+    return schemas.OperatorPourDetailModel(
+        generated_at=_utcnow(),
+        summary=summary,
+        lifecycle=lifecycle,
+        display_context=_operator_pour_display_context(db, visit_id=summary.visit_id, tap_id=summary.tap_id),
+        operator_actions=operator_actions,
+        safe_actions=_operator_pour_action_policies(current_user, summary),
+    )
+
+
+def search_operator_workspace(
+    db: Session,
+    *,
+    query: str,
+    current_user: dict | None,
+    limit: int | None = None,
+) -> schemas.OperatorSearchModel:
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="query must not be empty")
+
+    resolved_limit = _resolve_operator_search_limit(limit)
+    pattern = f"%{normalized_query.lower()}%"
+
+    guest_rows = (
+        db.query(models.Guest)
+        .filter(
+            or_(
+                func.lower(models.Guest.last_name).like(pattern),
+                func.lower(models.Guest.first_name).like(pattern),
+                func.lower(models.Guest.patronymic).like(pattern),
+                func.lower(models.Guest.phone_number).like(pattern),
+            )
+        )
+        .order_by(models.Guest.updated_at.desc(), models.Guest.created_at.desc())
+        .limit(resolved_limit)
+        .all()
+    )
+    guest_items = [
+        schemas.OperatorSearchResultItem(
+            key=f"guest:{guest.guest_id}",
+            kind="guest",
+            title=_guest_full_name(guest) or guest.phone_number,
+            subtitle=guest.phone_number,
+            meta=f"Balance {_format_rub(guest.balance)}",
+            route="guests",
+            href=f"/guests?guest={guest.guest_id}",
+            guest_id=guest.guest_id,
+        )
+        for guest in guest_rows
+    ]
+
+    visit_rows = (
+        db.query(models.Visit)
+        .options(joinedload(models.Visit.guest))
+        .join(models.Guest, models.Visit.guest_id == models.Guest.guest_id)
+        .filter(
+            or_(
+                func.lower(models.Guest.last_name).like(pattern),
+                func.lower(models.Guest.first_name).like(pattern),
+                func.lower(models.Guest.patronymic).like(pattern),
+                func.lower(models.Guest.phone_number).like(pattern),
+                func.lower(func.coalesce(models.Visit.card_uid, "")).like(pattern),
+                cast(models.Visit.visit_id, String).ilike(pattern),
+            )
+        )
+        .order_by(models.Visit.status.asc(), models.Visit.opened_at.desc())
+        .limit(resolved_limit)
+        .all()
+    )
+    visit_items: list[schemas.OperatorSearchResultItem] = []
+    for visit in visit_rows:
+        summary = _to_operator_session_item(visit_crud._build_session_history_item(db, visit, include_narrative=False))
+        visit_items.append(
+            schemas.OperatorSearchResultItem(
+                key=f"visit:{visit.visit_id}",
+                kind="visit",
+                title=_guest_full_name(visit.guest) or str(visit.visit_id),
+                subtitle=visit.card_uid or str(visit.visit_id),
+                meta=summary.operator_status,
+                route="visits",
+                href=f"/visits?visit={visit.visit_id}",
+                guest_id=visit.guest_id,
+                visit_id=visit.visit_id,
+                canonical_visit_status=summary.canonical_visit_status,
+            )
+        )
+
+    tap_rows = (
+        db.query(models.Tap)
+        .options(joinedload(models.Tap.keg).joinedload(models.Keg.beverage))
+        .outerjoin(models.Keg, models.Tap.keg_id == models.Keg.keg_id)
+        .outerjoin(models.Beverage, models.Keg.beverage_id == models.Beverage.beverage_id)
+        .filter(
+            or_(
+                cast(models.Tap.tap_id, String).ilike(pattern),
+                func.lower(models.Tap.display_name).like(pattern),
+                func.lower(func.coalesce(models.Beverage.name, "")).like(pattern),
+            )
+        )
+        .order_by(models.Tap.tap_id.asc())
+        .limit(resolved_limit)
+        .all()
+    )
+    tap_items = [
+        schemas.OperatorSearchResultItem(
+            key=f"tap:{tap.tap_id}",
+            kind="tap",
+            title=tap.display_name,
+            subtitle=tap.keg.beverage.name if tap.keg and tap.keg.beverage else "No beverage",
+            meta=tap.status,
+            route="taps",
+            href=f"/taps?tap={tap.tap_id}",
+            tap_id=tap.tap_id,
+        )
+        for tap in tap_rows
+    ]
+
+    card_rows = (
+        db.query(models.Card, models.Guest, models.LostCard)
+        .outerjoin(models.Guest, models.Card.guest_id == models.Guest.guest_id)
+        .outerjoin(models.LostCard, models.LostCard.card_uid == models.Card.card_uid)
+        .filter(
+            or_(
+                func.lower(models.Card.card_uid).like(pattern),
+                func.lower(func.coalesce(models.Guest.last_name, "")).like(pattern),
+                func.lower(func.coalesce(models.Guest.first_name, "")).like(pattern),
+                func.lower(func.coalesce(models.Guest.phone_number, "")).like(pattern),
+            )
+        )
+        .order_by(models.Card.created_at.desc())
+        .limit(resolved_limit)
+        .all()
+    )
+    card_items = [
+        schemas.OperatorSearchResultItem(
+            key=f"card:{card.card_uid}",
+            kind="card",
+            title=card.card_uid,
+            subtitle=_guest_full_name(guest) if guest is not None else "Unassigned card",
+            meta="Lost card" if lost_card is not None or card.status == "lost" else card.status,
+            route="guests",
+            href=f"/guests?card={card.card_uid}",
+            guest_id=guest.guest_id if guest is not None else None,
+            card_uid=card.card_uid,
+        )
+        for card, guest, lost_card in card_rows
+    ]
+
+    pour_rows = (
+        db.query(models.Pour)
+        .options(
+            joinedload(models.Pour.guest),
+            joinedload(models.Pour.tap).joinedload(models.Tap.keg).joinedload(models.Keg.beverage),
+            joinedload(models.Pour.keg).joinedload(models.Keg.beverage),
+            joinedload(models.Pour.visit).joinedload(models.Visit.guest),
+        )
+        .join(models.Guest, models.Pour.guest_id == models.Guest.guest_id)
+        .filter(
+            or_(
+                func.lower(func.coalesce(models.Pour.short_id, "")).like(pattern),
+                func.lower(models.Pour.card_uid).like(pattern),
+                cast(models.Pour.visit_id, String).ilike(pattern),
+                func.lower(models.Guest.last_name).like(pattern),
+                func.lower(models.Guest.first_name).like(pattern),
+                func.lower(models.Guest.phone_number).like(pattern),
+            )
+        )
+        .order_by(func.coalesce(models.Pour.authorized_at, models.Pour.poured_at, models.Pour.created_at).desc())
+        .limit(resolved_limit)
+        .all()
+    )
+    pour_items = [
+        schemas.OperatorSearchResultItem(
+            key=item.pour_ref,
+            kind="pour",
+            title=item.beverage_name or item.short_id or item.pour_ref,
+            subtitle=item.guest_full_name or item.card_uid or "Unknown guest",
+            meta=f"{item.tap_label or 'Tap'} · {item.status}",
+            route="pours",
+            href=f"/pours?pour={item.pour_ref}",
+            guest_id=item.guest_id,
+            visit_id=item.visit_id,
+            tap_id=item.tap_id,
+            card_uid=item.card_uid,
+            pour_ref=item.pour_ref,
+        )
+        for item in (_operator_pour_item_from_pour(row) for row in pour_rows)
+    ]
+
+    keg_rows = (
+        db.query(models.Keg)
+        .options(joinedload(models.Keg.beverage), joinedload(models.Keg.tap))
+        .join(models.Beverage, models.Keg.beverage_id == models.Beverage.beverage_id)
+        .filter(
+            or_(
+                cast(models.Keg.keg_id, String).ilike(pattern),
+                func.lower(models.Beverage.name).like(pattern),
+                func.lower(func.coalesce(models.Beverage.style, "")).like(pattern),
+                func.lower(func.coalesce(models.Beverage.brewery, "")).like(pattern),
+            )
+        )
+        .order_by(models.Keg.created_at.desc())
+        .limit(resolved_limit)
+        .all()
+    )
+    keg_items = [
+        schemas.OperatorSearchResultItem(
+            key=f"keg:{keg.keg_id}",
+            kind="keg",
+            title=keg.beverage.name if keg.beverage else str(keg.keg_id),
+            subtitle=f"Keg {keg.keg_id}",
+            meta=f"{keg.status} · {_format_volume_ml(int(keg.current_volume_ml or 0))}",
+            route="kegs-beverages",
+            href=f"/kegs-beverages?tab=kegs&keg={keg.keg_id}",
+            tap_id=keg.tap.tap_id if keg.tap is not None else None,
+            keg_id=keg.keg_id,
+        )
+        for keg in keg_rows
+    ]
+
+    groups = [
+        schemas.OperatorSearchGroup(key="guests", label="Guests", items=guest_items),
+        schemas.OperatorSearchGroup(key="visits", label="Visits", items=visit_items),
+        schemas.OperatorSearchGroup(key="taps", label="Taps", items=tap_items),
+        schemas.OperatorSearchGroup(key="cards", label="Cards", items=card_items),
+        schemas.OperatorSearchGroup(key="pours", label="Pours", items=pour_items),
+        schemas.OperatorSearchGroup(key="kegs", label="Kegs", items=keg_items),
+    ]
+    total_results = sum(len(group.items) for group in groups)
+    return schemas.OperatorSearchModel(
+        generated_at=_utcnow(),
+        query=normalized_query,
+        total_results=total_results,
+        groups=[group for group in groups if group.items],
     )

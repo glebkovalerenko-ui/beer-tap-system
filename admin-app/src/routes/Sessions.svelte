@@ -6,8 +6,8 @@
 <section class="session-shell">
   <header class="session-header">
     <div>
-      <h1>{ROUTE_COPY.sessions.title}</h1>
-      <p>{ROUTE_COPY.sessions.description}</p>
+      <h1>{ROUTE_COPY.visits.title}</h1>
+      <p>{ROUTE_COPY.visits.description}</p>
     </div>
   </header>
 

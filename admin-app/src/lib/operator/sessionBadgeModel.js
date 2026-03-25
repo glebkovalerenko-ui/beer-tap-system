@@ -1,14 +1,19 @@
+import { canonicalVisitStatusLabel, canonicalVisitStatusTone, resolveCanonicalVisitStatus } from './visitStatus.js';
+
 export function buildSessionBadges(item, { syncLabels, isZeroVolumeAbort }) {
   const badges = [];
+  const canonicalStatus = resolveCanonicalVisitStatus(item);
 
-  if (item?.isActive) {
-    badges.push({ key: 'active', label: 'Активная', tone: 'info' });
-  }
+  badges.push({
+    key: 'visit-status',
+    label: canonicalVisitStatusLabel(canonicalStatus),
+    tone: canonicalVisitStatusTone(canonicalStatus),
+  });
 
   if (item?.has_incident) {
     badges.push({
       key: 'incident',
-      label: item.incident_count ? `Инцидент: ${item.incident_count}` : 'Есть инцидент',
+      label: item.incident_count ? `Инциденты: ${item.incident_count}` : 'Есть инцидент',
       tone: 'warning',
     });
   }
@@ -24,7 +29,7 @@ export function buildSessionBadges(item, { syncLabels, isZeroVolumeAbort }) {
   if (isZeroVolumeAbort?.(item)) {
     badges.push({
       key: 'zero-volume-abort',
-      label: 'Прервана без налива',
+      label: 'Прерван без налива',
       tone: 'muted',
     });
   }

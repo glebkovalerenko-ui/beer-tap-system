@@ -174,6 +174,55 @@ def _seed_closed_timeout_visit(db_session):
     return visit
 
 
+def _seed_operator_pour_extras(db_session):
+    now = datetime.now(timezone.utc)
+    visit = db_session.query(models.Visit).filter(models.Visit.card_uid == "04AB7815CD6B80").first()
+    tap = db_session.query(models.Tap).filter(models.Tap.tap_id == 1).first()
+    keg = db_session.query(models.Keg).first()
+    assert visit is not None
+    assert tap is not None
+    assert keg is not None
+
+    non_sale_flow = models.NonSaleFlow(
+        event_id="operator-flow-1",
+        tap=tap,
+        keg=keg,
+        volume_ml=180,
+        accounted_volume_ml=180,
+        duration_ms=2200,
+        flow_category="maintenance",
+        session_state="idle",
+        reason="cleaning_cycle",
+        card_present=False,
+        valve_open=True,
+        card_uid=visit.card_uid,
+        short_id="FLOW001",
+        started_at=now,
+        last_seen_at=now,
+        finalized_at=now,
+    )
+    denied_log = models.AuditLog(
+        actor_id="operator",
+        action="insufficient_funds_denied",
+        target_entity="Visit",
+        target_id=str(visit.visit_id),
+        details=json.dumps(
+            {
+                "card_uid": visit.card_uid,
+                "visit_id": str(visit.visit_id),
+                "guest_id": str(visit.guest_id),
+                "tap_id": 1,
+                "balance": "0.00",
+                "minimum_charge": "0.70",
+            }
+        ),
+        timestamp=now,
+    )
+    db_session.add_all([non_sale_flow, denied_log])
+    db_session.commit()
+    return non_sale_flow, denied_log
+
+
 def test_operator_today_returns_projection_bundle(client, db_session):
     _seed_operator_fixture(db_session)
 
@@ -304,6 +353,71 @@ def test_operator_sessions_return_projection_filters_and_detail(client, db_sessi
     assert detail_payload["safe_actions"]["mark_lost_card"]["allowed"] is True
     assert any(item["kind"] == "open" for item in detail_payload["narrative"])
     assert any(item["kind"] == "sync_result" for item in detail_payload["narrative"])
+
+
+def test_operator_pours_return_unified_journal_filters_and_detail(client, db_session):
+    _seed_operator_fixture(db_session)
+    flow, _ = _seed_operator_pour_extras(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    response = client.get("/api/operator/pours", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["header"]["total_pours"] >= 3
+    assert any(item["source_kind"] == "pour" for item in payload["items"])
+    assert any(item["source_kind"] == "non_sale_flow" for item in payload["items"])
+    assert any(item["status"] == "denied" for item in payload["items"])
+
+    denied_only = client.get(
+        "/api/operator/pours",
+        params={"denied_only": "true"},
+        headers=headers,
+    )
+    assert denied_only.status_code == 200
+    denied_payload = denied_only.json()
+    assert denied_payload["header"]["denied_pours"] == len(denied_payload["items"])
+    assert denied_payload["items"]
+    assert all(item["status"] == "denied" for item in denied_payload["items"])
+
+    non_sale_only = client.get(
+        "/api/operator/pours",
+        params={"non_sale_only": "true"},
+        headers=headers,
+    )
+    assert non_sale_only.status_code == 200
+    non_sale_payload = non_sale_only.json()
+    assert any(item["pour_ref"] == f"flow:{flow.non_sale_flow_id}" for item in non_sale_payload["items"])
+
+    sale_item = next(item for item in payload["items"] if item["source_kind"] == "pour")
+    detail_response = client.get(f"/api/operator/pours/{sale_item['pour_ref']}", headers=headers)
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["summary"]["pour_ref"] == sale_item["pour_ref"]
+    assert detail_payload["lifecycle"]
+    assert detail_payload["safe_actions"]["open_tap"]["allowed"] is True
+
+
+def test_operator_search_returns_grouped_results_across_operator_entities(client, db_session):
+    _seed_operator_fixture(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    response = client.get(
+        "/api/operator/search",
+        params={"query": "Ivanov", "limit": 5},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["query"] == "Ivanov"
+    assert payload["total_results"] >= 3
+
+    groups = {group["key"]: group for group in payload["groups"]}
+    assert "guests" in groups
+    assert "visits" in groups
+    assert "cards" in groups
+    assert "pours" in groups
+    assert groups["visits"]["items"][0]["canonical_visit_status"]
+    assert groups["pours"]["items"][0]["route"] == "pours"
 
 
 def test_operator_system_health_returns_mode_queue_and_blocked_actions(client, db_session):

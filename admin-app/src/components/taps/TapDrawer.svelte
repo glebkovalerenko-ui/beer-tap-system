@@ -254,19 +254,19 @@
         <article class="current-session">
           <div class="section-head compact">
             <div>
-              <h3>Текущая сессия</h3>
+              <h3>Активный визит</h3>
               <p>Активный гость, налив и оперативные действия по визиту.</p>
             </div>
           </div>
 
           <div class="session-panel">
             <div class="session-copy">
-              <strong>{session?.guestName || 'Сессия сейчас не открыта'}</strong>
+              <strong>{session?.guestName || 'Сейчас на этом кране нет активного визита'}</strong>
               <p>
                 {#if session}
                   Карта {session.cardUid || 'не привязана'} · открыта {session.openedAt ? formatDateTimeRu(session.openedAt) : 'недавно'}
                 {:else}
-                  Откройте сессию, если гость уже у крана, или заблокируйте линию до начала работы.
+                  Откройте визит, если гость уже у крана, или заблокируйте линию до начала работы.
                 {/if}
               </p>
               <div class="session-metrics">
@@ -307,7 +307,7 @@
                   >{action.title}</GuardedActionButton>
                 {/each}
                 <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)} disabled={!session}>
-                  Открыть сессию
+                  Открыть визит
                 </button>
               </div>
             </div>

@@ -148,7 +148,7 @@ function labelFromState(state) {
 function reasonFromEvent(item) {
   if (!item) return null;
   if (item.reason === 'flow_detected_when_valve_closed_without_active_session') {
-    return 'Контроллер зафиксировал поток без активной сессии или при закрытом клапане.';
+    return 'Контроллер зафиксировал поток без активного визита или при закрытом клапане.';
   }
   if (item.status === 'rejected' && item.item_type === 'pour') {
     return 'Последний налив был отклонён и требует проверки продажи.';
@@ -180,14 +180,14 @@ function deriveOperatorState(rawTap, activeSession, recentEvents) {
     return {
       state: TAP_OPERATOR_STATES.SYNCING,
       reason: 'Кран ждёт подтверждения локальных данных от backend.',
-      telemetry: activeSession ? 'Есть локальная активная сессия.' : null,
+      telemetry: activeSession ? 'Есть локальный активный визит.' : null,
     };
   }
 
   if (activeSession || recentEvents.some((item) => item.reason === 'authorized_pour_in_progress' || item.event_status === 'started')) {
     return {
       state: TAP_OPERATOR_STATES.POURING,
-      reason: activeSession ? 'Есть активная сессия, поток подтверждён.' : 'Контроллер уже сообщил о начале потока.',
+      reason: activeSession ? 'Есть активный визит, поток подтверждён.' : 'Контроллер уже сообщил о начале потока.',
       telemetry: activeSession?.card_uid ? `Карта ${activeSession.card_uid}` : null,
     };
   }
@@ -294,8 +294,8 @@ function buildSessionAction(activeSession) {
   const visitId = activeSession?.visit_id || null;
   return visitId
     ? {
-        label: `Сессия #${visitId}`,
-        href: '#/sessions',
+        label: `Визит #${visitId}`,
+        href: '#/visits',
         visitId,
       }
     : null;
@@ -334,21 +334,21 @@ function describeOperatorEvent(item, activeSession) {
       title: item.status === 'rejected' ? 'Продажа отклонена' : 'Продажа завершена',
       description: item.status === 'rejected'
         ? 'Налив не был подтверждён как продажа.'
-        : 'Завершён платный налив по активной сессии.',
+        : 'Завершён платный налив по активному визиту.',
     };
   }
 
   if (item?.reason === 'authorized_pour_in_progress' || item?.session_state === 'authorized_session') {
     return {
-      title: item?.event_status === 'stopped' ? 'Налив по сессии остановлен' : 'Идёт налив по активной сессии',
-      description: 'Контроллер фиксирует пролив в рамках авторизованной сессии.',
+      title: item?.event_status === 'stopped' ? 'Налив по визиту остановлен' : 'Идёт налив по активному визиту',
+      description: 'Контроллер фиксирует пролив в рамках авторизованного визита.',
     };
   }
 
   if (item?.reason === 'flow_detected_when_valve_closed_without_active_session') {
     return {
-      title: 'Пролив без активной сессии',
-      description: 'Поток зафиксирован при закрытом клапане или без открытой сессии.',
+      title: 'Пролив без активного визита',
+      description: 'Поток зафиксирован при закрытом клапане или без открытого визита.',
     };
   }
 
@@ -362,7 +362,7 @@ function describeOperatorEvent(item, activeSession) {
   if (item?.event_status === 'started') {
     return {
       title: 'Поток зафиксирован',
-      description: activeSession ? 'Есть признаки нового пролива по текущей сессии.' : 'Контроллер сообщил о начале потока.',
+      description: activeSession ? 'Есть признаки нового пролива по текущему визиту.' : 'Контроллер сообщил о начале потока.',
     };
   }
 
@@ -391,8 +391,8 @@ function buildOperatorHistory(recentEvents, activeSession) {
       rawStatus: item?.status || item?.event_status || item?.reason || null,
       sessionAction: visitId
         ? {
-            label: `Сессия #${visitId}`,
-            href: '#/sessions',
+            label: `Визит #${visitId}`,
+            href: '#/visits',
             visitId,
           }
         : null,
@@ -437,8 +437,8 @@ function deriveTapAttentionItems(tapView) {
       severity: 'warning',
       title: tapLabel,
       description: 'Есть локальный пролив, ожидающий синхронизацию.',
-      actionLabel: 'Открыть сессию',
-      href: '#/sessions',
+      actionLabel: 'Открыть визит',
+      href: '#/visits',
       visitId: tapView.active_session?.visit_id || null,
     });
   }
@@ -551,7 +551,7 @@ function buildTapView(rawTap, context = {}) {
       },
       syncState: {
         code: syncState,
-        label: syncState === 'syncing' ? 'Ожидает синхронизацию с backend' : syncState === 'live' ? 'Локальная сессия активна' : 'Синхронизирован',
+        label: syncState === 'syncing' ? 'Ожидает синхронизацию с backend' : syncState === 'live' ? 'Локальный визит активен' : 'Синхронизирован',
       },
       currentPour: {
         volumeMl: currentPourVolumeMl,
@@ -560,7 +560,7 @@ function buildTapView(rawTap, context = {}) {
       },
       recentEvents,
       operatorHistory: buildOperatorHistory(recentEvents, activeSession),
-      liveStatus: rawTap.live_status || (activeSession ? 'Сессия открыта, контроллер видит линию.' : rawTap.display_enabled === false ? 'Экран отключён, но кран управляется локально.' : 'Телеметрия поступает в штатном режиме.'),
+      liveStatus: rawTap.live_status || (activeSession ? 'Визит открыт, контроллер видит линию.' : rawTap.display_enabled === false ? 'Экран отключён, но кран управляется локально.' : 'Телеметрия поступает в штатном режиме.'),
     },
   };
 

@@ -20,7 +20,7 @@ test('buildTapQuickActions returns ordered operator actions for active tap', () 
   assert.equal(actions.find((action) => action.id === 'screen')?.disabled, false);
 });
 
-test('buildTapQuickActions explains why stop is unavailable without an active session', () => {
+test('buildTapQuickActions explains why stop is unavailable without an active visit', () => {
   const actions = buildTapQuickActions({
     tap: { tap_id: 7, display_name: 'Кран 7', status: 'active', keg_id: null },
     session: null,
@@ -33,7 +33,7 @@ test('buildTapQuickActions explains why stop is unavailable without an active se
   });
 
   assert.deepEqual(actions.map((action) => action.id), ['open', 'stop', 'toggle-lock', 'keg', 'history']);
-  assert.match(actions.find((action) => action.id === 'stop')?.reason || '', /no active session/i);
+  assert.match(actions.find((action) => action.id === 'stop')?.reason || '', /no active visit/i);
   assert.equal(actions.find((action) => action.id === 'toggle-lock')?.disabled, false);
 });
 

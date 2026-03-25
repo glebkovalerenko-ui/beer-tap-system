@@ -680,6 +680,7 @@ class OperatorSessionJournalHeader(BaseModel):
 
 
 class OperatorSessionJournalItem(SessionHistoryListItem):
+    canonical_visit_status: Literal["active", "awaiting_action", "pouring_now", "completed", "needs_attention", "blocked"] = "active"
     is_active: bool = False
     has_zero_volume_abort: bool = False
     last_operator_action: Optional[SessionOperatorAction] = None
@@ -1251,6 +1252,7 @@ class CardGuestContextActiveVisit(BaseModel):
     guest_full_name: str
     phone_number: str
     status: str
+    canonical_visit_status: Literal["active", "awaiting_action", "pouring_now", "completed", "needs_attention", "blocked"] = "active"
     card_uid: Optional[str] = None
     active_tap_id: Optional[int] = None
     opened_at: datetime
@@ -1271,6 +1273,117 @@ class CardGuestContextModel(BaseModel):
     lookup_summary_items: list[CardGuestSummaryItem] = []
     action_policies: CardGuestActionPolicySet
     allowed_quick_actions: list[str] = []
+
+
+class OperatorPourJournalFilterParams(BaseModel):
+    period_preset: Literal["today", "shift", "range"] = "today"
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    tap_id: Optional[int] = None
+    guest_query: Optional[str] = None
+    visit_id: Optional[uuid.UUID] = None
+    status: Optional[str] = None
+    problem_only: bool = False
+    non_sale_only: bool = False
+    zero_volume_only: bool = False
+    timeout_only: bool = False
+    denied_only: bool = False
+    sale_mode: Literal["all", "sale", "non_sale"] = "all"
+
+
+class OperatorPourJournalHeader(BaseModel):
+    total_pours: int = 0
+    problem_pours: int = 0
+    sale_pours: int = 0
+    non_sale_pours: int = 0
+    denied_pours: int = 0
+    zero_volume_pours: int = 0
+    timeout_pours: int = 0
+
+
+class OperatorPourJournalItem(BaseModel):
+    pour_ref: str
+    source_kind: Literal["pour", "non_sale_flow", "denied"]
+    pour_id: Optional[uuid.UUID] = None
+    visit_id: Optional[uuid.UUID] = None
+    guest_id: Optional[uuid.UUID] = None
+    tap_id: Optional[int] = None
+    tap_label: Optional[str] = None
+    guest_full_name: Optional[str] = None
+    card_uid: Optional[str] = None
+    beverage_name: Optional[str] = None
+    short_id: Optional[str] = None
+    status: Literal["completed", "timeout", "denied", "non_sale", "zero_volume", "syncing", "attention"] = "completed"
+    sale_kind: Literal["sale", "non_sale"] = "sale"
+    sync_state: str = "not_started"
+    volume_ml: int = 0
+    amount_charged: Optional[Decimal] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    occurred_at: datetime
+    completion_reason: Optional[str] = None
+    has_problem: bool = False
+
+
+class OperatorPourLifecycleItem(BaseModel):
+    key: str
+    label: str
+    timestamp: Optional[datetime] = None
+    status: Literal["done", "warning", "critical", "pending", "info"] = "info"
+    value: Optional[str] = None
+
+
+class OperatorPourActionPolicySet(BaseModel):
+    open_visit: OperatorActionPolicy
+    open_guest: OperatorActionPolicy
+    open_tap: OperatorActionPolicy
+    reconcile: OperatorActionPolicy
+
+
+class OperatorPourJournalModel(BaseModel):
+    generated_at: datetime
+    applied_filters: OperatorPourJournalFilterParams
+    header: OperatorPourJournalHeader
+    items: list[OperatorPourJournalItem] = []
+
+
+class OperatorPourDetailModel(BaseModel):
+    generated_at: datetime
+    summary: OperatorPourJournalItem
+    lifecycle: list[OperatorPourLifecycleItem] = []
+    display_context: Optional[SessionDisplayContext] = None
+    operator_actions: list[SessionOperatorAction] = []
+    safe_actions: OperatorPourActionPolicySet
+
+
+class OperatorSearchResultItem(BaseModel):
+    key: str
+    kind: Literal["guest", "visit", "tap", "card", "pour", "keg"]
+    title: str
+    subtitle: Optional[str] = None
+    meta: Optional[str] = None
+    route: Literal["guests", "visits", "taps", "lost-cards", "pours", "kegs-beverages", "incidents", "system"]
+    href: str
+    guest_id: Optional[uuid.UUID] = None
+    visit_id: Optional[uuid.UUID] = None
+    tap_id: Optional[int] = None
+    card_uid: Optional[str] = None
+    pour_ref: Optional[str] = None
+    keg_id: Optional[uuid.UUID] = None
+    canonical_visit_status: Optional[Literal["active", "awaiting_action", "pouring_now", "completed", "needs_attention", "blocked"]] = None
+
+
+class OperatorSearchGroup(BaseModel):
+    key: Literal["guests", "visits", "taps", "cards", "pours", "kegs"]
+    label: str
+    items: list[OperatorSearchResultItem] = []
+
+
+class OperatorSearchModel(BaseModel):
+    generated_at: datetime
+    query: str
+    total_results: int = 0
+    groups: list[OperatorSearchGroup] = []
 
 
 class SystemStateUpdate(BaseModel):

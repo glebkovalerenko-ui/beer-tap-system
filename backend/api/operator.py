@@ -101,6 +101,74 @@ def read_operator_session_detail(
     )
 
 
+@router.get("/pours", response_model=schemas.OperatorPourJournalModel, summary="Operator pour journal")
+def read_operator_pours(
+    period_preset: str = Query(default="today", alias="period_preset"),
+    date_from: str | None = Query(default=None, alias="date_from"),
+    date_to: str | None = Query(default=None, alias="date_to"),
+    tap_id: int | None = Query(default=None, alias="tap_id"),
+    guest_query: str | None = Query(default=None, alias="guest_query"),
+    visit_id: uuid.UUID | None = Query(default=None, alias="visit_id"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    problem_only: bool = Query(default=False, alias="problem_only"),
+    non_sale_only: bool = Query(default=False, alias="non_sale_only"),
+    zero_volume_only: bool = Query(default=False, alias="zero_volume_only"),
+    timeout_only: bool = Query(default=False, alias="timeout_only"),
+    denied_only: bool = Query(default=False, alias="denied_only"),
+    sale_mode: str = Query(default="all", alias="sale_mode"),
+    current_user: dict = Depends(security.require_permissions("sessions_view")),
+    db: Session = Depends(get_db),
+):
+    parsed_filters = schemas.OperatorPourJournalFilterParams(
+        period_preset=period_preset,
+        date_from=date_from,
+        date_to=date_to,
+        tap_id=tap_id,
+        guest_query=guest_query,
+        visit_id=visit_id,
+        status=status_filter,
+        problem_only=problem_only,
+        non_sale_only=non_sale_only,
+        zero_volume_only=zero_volume_only,
+        timeout_only=timeout_only,
+        denied_only=denied_only,
+        sale_mode=sale_mode,
+    )
+    return operator_crud.get_operator_pours(
+        db=db,
+        filters=parsed_filters,
+        current_user=current_user,
+    )
+
+
+@router.get("/pours/{pour_ref:path}", response_model=schemas.OperatorPourDetailModel, summary="Operator pour detail")
+def read_operator_pour_detail(
+    pour_ref: str,
+    current_user: dict = Depends(security.require_permissions("sessions_view")),
+    db: Session = Depends(get_db),
+):
+    return operator_crud.get_operator_pour_detail(
+        db=db,
+        pour_ref=pour_ref,
+        current_user=current_user,
+    )
+
+
+@router.get("/search", response_model=schemas.OperatorSearchModel, summary="Operator global quick search")
+def read_operator_search(
+    query: str = Query(..., min_length=1),
+    limit: int | None = Query(default=None, ge=1, le=8),
+    current_user: dict = Depends(security.require_permissions("taps_view")),
+    db: Session = Depends(get_db),
+):
+    return operator_crud.search_operator_workspace(
+        db=db,
+        query=query,
+        current_user=current_user,
+        limit=limit,
+    )
+
+
 @router.get("/system", response_model=schemas.OperatorSystemHealthModel, summary="Operator system health")
 def read_operator_system(
     current_user: dict = Depends(security.require_permissions("system_health_view")),
