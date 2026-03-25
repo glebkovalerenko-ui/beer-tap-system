@@ -30,6 +30,9 @@ function createIncidentStore() {
   const initialState = {
     items: [],
     loading: false,
+    isLoading: false,
+    lastFetchedAt: null,
+    staleTtlMs: 10000,
     error: null,
     actionLoading: false,
     actionError: null,
@@ -40,6 +43,7 @@ function createIncidentStore() {
   const { subscribe, set, update } = writable(initialState);
   const store = { subscribe };
   let timer = null;
+  let incidentsInFlight = null;
 
   function withAuth() {
     const token = get(sessionStore).token;
@@ -77,23 +81,39 @@ function createIncidentStore() {
     return { capabilities, readOnly, readOnlyReason };
   }
 
-  async function fetchIncidents() {
+  async function fetchIncidents({ force = false, staleTtlMs = null } = {}) {
     const token = get(sessionStore).token;
     if (!token) return;
-    update((state) => ({ ...state, loading: state.items.length === 0, error: null, actionError: null }));
+    const state = get(store);
+    const ttlMs = Number.isFinite(staleTtlMs) ? Number(staleTtlMs) : state.staleTtlMs;
+    const hasFreshData = state.lastFetchedAt && (Date.now() - state.lastFetchedAt) < ttlMs;
+    if (!force && hasFreshData) {
+      return state.items;
+    }
+    if (incidentsInFlight) {
+      return incidentsInFlight;
+    }
+
+    update((nextState) => ({ ...nextState, loading: nextState.items.length === 0, isLoading: true, error: null, actionError: null }));
     try {
-      const response = await invoke('get_incidents', { token, limit: 100 });
+      incidentsInFlight = invoke('get_incidents', { token, limit: 100 });
+      const response = await incidentsInFlight;
       const items = Array.isArray(response) ? response : (response?.items || []);
       const capabilityState = resolveCapabilities(Array.isArray(response) ? null : response?.mutation_capabilities);
       update((state) => ({
         ...state,
         items,
         loading: false,
+        isLoading: false,
+        lastFetchedAt: Date.now(),
         error: null,
         ...capabilityState,
       }));
+      return items;
     } catch (error) {
-      update((state) => ({ ...state, loading: false, error: toErrorMessage('incidentStore.fetchIncidents', error) }));
+      update((state) => ({ ...state, loading: false, isLoading: false, error: toErrorMessage('incidentStore.fetchIncidents', error) }));
+    } finally {
+      incidentsInFlight = null;
     }
   }
 
@@ -108,6 +128,7 @@ function createIncidentStore() {
     try {
       const item = await invoke(command, { token, incidentId, payload });
       mergeIncident(item);
+      fetchIncidents({ force: true }).catch(() => {});
       return item;
     } catch (error) {
       notifyForbiddenIfNeeded(error);

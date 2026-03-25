@@ -16,8 +16,12 @@ function createVisitStore() {
     sessionHistoryDetail: null,
     historyLoading: false,
     loading: false,
+    isLoading: false,
+    lastFetchedAt: null,
+    staleTtlMs: 15000,
     error: null,
   });
+  let activeVisitsInFlight = null;
 
   const withAuth = () => {
     const token = get(sessionStore).token;
@@ -36,17 +40,30 @@ function createVisitStore() {
       update((s) => ({ ...s, sessionHistoryDetail: null }));
     },
 
-    fetchActiveVisits: async () => {
+    fetchActiveVisits: async ({ force = false, staleTtlMs = null } = {}) => {
       const token = withAuth();
-      update((s) => ({ ...s, loading: true, error: null }));
+      const state = get({ subscribe });
+      const ttlMs = Number.isFinite(staleTtlMs) ? Number(staleTtlMs) : state.staleTtlMs;
+      const hasFreshData = state.lastFetchedAt && (Date.now() - state.lastFetchedAt) < ttlMs;
+      if (!force && hasFreshData && state.activeVisits.length > 0) {
+        return state.activeVisits;
+      }
+      if (activeVisitsInFlight) {
+        return activeVisitsInFlight;
+      }
+
+      update((s) => ({ ...s, loading: true, isLoading: true, error: null }));
       try {
-        const activeVisits = await invoke('get_active_visits', { token });
-        update((s) => ({ ...s, activeVisits, loading: false }));
+        activeVisitsInFlight = invoke('get_active_visits', { token });
+        const activeVisits = await activeVisitsInFlight;
+        update((s) => ({ ...s, activeVisits, loading: false, isLoading: false, lastFetchedAt: Date.now() }));
         return activeVisits;
       } catch (error) {
         const message = toErrorMessage('visitStore.fetchActiveVisits', error);
-        update((s) => ({ ...s, loading: false, error: message }));
+        update((s) => ({ ...s, loading: false, isLoading: false, error: message }));
         throw new Error(message);
+      } finally {
+        activeVisitsInFlight = null;
       }
     },
 

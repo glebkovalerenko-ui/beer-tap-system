@@ -566,6 +566,9 @@ function createTapStore() {
     taps: [],
     summary: deriveTapSummary([]),
     loading: false,
+    isLoading: false,
+    lastFetchedAt: null,
+    staleTtlMs: 15000,
     error: null,
     context: {
       activeVisits: [],
@@ -575,6 +578,7 @@ function createTapStore() {
 
   const { subscribe, set, update } = writable(initialState);
   let currentState = initialState;
+  let tapsInFlight = null;
   subscribe((state) => {
     currentState = state;
   });
@@ -596,17 +600,30 @@ function createTapStore() {
   return {
     subscribe,
 
-    fetchTaps: async () => {
+    fetchTaps: async ({ force = false, staleTtlMs = null } = {}) => {
       const token = get(sessionStore).token;
-      if (!token) return;
+      if (!token) return [];
+      const ttlMs = Number.isFinite(staleTtlMs) ? Number(staleTtlMs) : currentState.staleTtlMs;
+      const hasFreshData = currentState.lastFetchedAt && (Date.now() - currentState.lastFetchedAt) < ttlMs;
+      if (!force && hasFreshData && currentState.rawTaps.length > 0) {
+        return currentState.rawTaps;
+      }
+      if (tapsInFlight) {
+        return tapsInFlight;
+      }
 
-      update((state) => ({ ...state, loading: true, error: null }));
+      update((state) => ({ ...state, loading: true, isLoading: true, error: null }));
       try {
-        const taps = await invoke('get_taps', { token });
-        commit(refreshDerived({ ...currentState, rawTaps: taps, loading: false, error: null }));
+        tapsInFlight = invoke('get_taps', { token });
+        const taps = await tapsInFlight;
+        commit(refreshDerived({ ...currentState, rawTaps: taps, loading: false, isLoading: false, lastFetchedAt: Date.now(), error: null }));
+        return taps;
       } catch (error) {
         const errorMessage = toErrorMessage('tapStore.fetchTaps', error);
-        commit({ ...currentState, rawTaps: [], taps: [], loading: false, error: errorMessage });
+        commit({ ...currentState, rawTaps: [], taps: [], loading: false, isLoading: false, error: errorMessage });
+        return [];
+      } finally {
+        tapsInFlight = null;
       }
     },
 

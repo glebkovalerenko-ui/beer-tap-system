@@ -14,27 +14,46 @@ function createGuestStore() {
   const { subscribe, set, update } = writable({
     guests: [],
     loading: false,
+    isLoading: false,
+    lastFetchedAt: null,
+    staleTtlMs: 30000,
     error: null,
   });
+  let guestsInFlight = null;
 
   return {
     subscribe,
 
-    fetchGuests: async () => {
+    fetchGuests: async ({ force = false, staleTtlMs = null } = {}) => {
       const token = get(sessionStore).token;
       if (!token) {
-        set({ guests: [], loading: false, error: null });
+        set({ guests: [], loading: false, isLoading: false, lastFetchedAt: null, staleTtlMs: 30000, error: null });
         console.warn('Загрузка гостей отменена: отсутствует токен авторизации.');
-        return;
+        return [];
       }
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      const state = get({ subscribe });
+      const ttlMs = Number.isFinite(staleTtlMs) ? Number(staleTtlMs) : state.staleTtlMs;
+      const hasFreshData = state.lastFetchedAt && (Date.now() - state.lastFetchedAt) < ttlMs;
+      if (!force && hasFreshData && state.guests.length > 0) {
+        return state.guests;
+      }
+      if (guestsInFlight) {
+        return guestsInFlight;
+      }
+
+      update((s) => ({ ...s, loading: true, isLoading: true, error: null }));
       try {
-        const guests = await invoke('get_guests', { token });
-        set({ guests, loading: false, error: null });
+        guestsInFlight = invoke('get_guests', { token });
+        const guests = await guestsInFlight;
+        set({ ...state, guests, loading: false, isLoading: false, lastFetchedAt: Date.now(), error: null });
+        return guests;
       } catch (error) {
         const errorMessage = toErrorMessage('guestStore.fetchGuests', error);
-        set({ guests: [], loading: false, error: errorMessage });
+        set({ ...state, guests: [], loading: false, isLoading: false, error: errorMessage });
+        throw new Error(errorMessage);
+      } finally {
+        guestsInFlight = null;
       }
     },
 
@@ -42,17 +61,18 @@ function createGuestStore() {
       const token = get(sessionStore).token;
       if (!token) throw new Error('Требуется повторный вход в систему');
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      update((s) => ({ ...s, loading: true, isLoading: true, error: null }));
       try {
         const newGuest = await invoke('create_guest', { token, guestData });
         update((s) => ({
           ...s,
           guests: [...s.guests, newGuest].sort((a, b) => a.last_name.localeCompare(b.last_name)),
           loading: false,
+          isLoading: false,
         }));
       } catch (error) {
         const errorMessage = toErrorMessage('guestStore.createGuest', error);
-        update((s) => ({ ...s, loading: false, error: errorMessage }));
+        update((s) => ({ ...s, loading: false, isLoading: false, error: errorMessage }));
         throw new Error(errorMessage);
       }
     },
@@ -61,16 +81,16 @@ function createGuestStore() {
       const token = get(sessionStore).token;
       if (!token) throw new Error('Требуется повторный вход в систему');
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      update((s) => ({ ...s, loading: true, isLoading: true, error: null }));
       try {
         const updatedGuest = await invoke('update_guest', { token, guestId, guestData });
         update((s) => {
           const updatedGuests = s.guests.map((g) => (g.guest_id === guestId ? updatedGuest : g));
-          return { ...s, guests: updatedGuests, loading: false };
+          return { ...s, guests: updatedGuests, loading: false, isLoading: false };
         });
       } catch (error) {
         const errorMessage = toErrorMessage('guestStore.updateGuest', error);
-        update((s) => ({ ...s, loading: false, error: errorMessage }));
+        update((s) => ({ ...s, loading: false, isLoading: false, error: errorMessage }));
         throw new Error(errorMessage);
       }
     },
@@ -98,16 +118,16 @@ function createGuestStore() {
       const token = get(sessionStore).token;
       if (!token) throw new Error('Требуется повторный вход в систему');
 
-      update((s) => ({ ...s, loading: true, error: null }));
+      update((s) => ({ ...s, loading: true, isLoading: true, error: null }));
       try {
         const updatedGuest = await invoke('top_up_balance', { token, guestId, topUpData });
         update((s) => {
           const updatedGuests = s.guests.map((g) => (g.guest_id === guestId ? updatedGuest : g));
-          return { ...s, guests: updatedGuests, loading: false };
+          return { ...s, guests: updatedGuests, loading: false, isLoading: false };
         });
       } catch (error) {
         const errorMessage = toErrorMessage('guestStore.topUpBalance', error);
-        update((s) => ({ ...s, loading: false, error: errorMessage }));
+        update((s) => ({ ...s, loading: false, isLoading: false, error: errorMessage }));
         throw new Error(errorMessage);
       }
     },

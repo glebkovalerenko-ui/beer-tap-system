@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { guestStore } from '../stores/guestStore.js';
-  import { sessionStore } from '../stores/sessionStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
   import { roleStore } from '../stores/roleStore.js';
@@ -10,6 +9,7 @@
   import { pourStore } from '../stores/pourStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { cardsGuestsWorkflowStore } from '../stores/cardsGuestsWorkflowStore.js';
+  import { ensureCardsGuestsData } from '../stores/operatorShellOrchestrator.js';
   import { normalizeError } from '../lib/errorUtils.js';
   import { formatDateTimeRu, formatRubAmount } from '../lib/formatters.js';
   import { fullName, resolveLookupScenario } from '../lib/cardsGuests/scenarios/lookup.js';
@@ -29,7 +29,6 @@
   let topUpError = '';
   let isManagementModalOpen = false;
   let formError = '';
-  let initialLoadAttempted = false;
   let reissueUidInput = '';
   let reissueError = '';
   let isReissueBusy = false;
@@ -48,20 +47,6 @@
   $: canToggleBlock = workflow.permissions.canToggleBlock;
   $: canReissue = workflow.permissions.canReissue;
   $: hasManagementAccess = canToggleBlock || canReissue;
-
-  $: {
-    if ($sessionStore.token && !initialLoadAttempted) {
-      guestStore.fetchGuests();
-      visitStore.fetchActiveVisits();
-      initialLoadAttempted = true;
-    }
-  }
-
-  $: {
-    if (!$sessionStore.token && initialLoadAttempted) {
-      initialLoadAttempted = false;
-    }
-  }
 
   $: guests = $guestStore.guests || [];
   $: activeVisits = $visitStore.activeVisits || [];
@@ -334,7 +319,7 @@
   }
 
   onMount(async () => {
-    await Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()]);
+    await ensureCardsGuestsData({ reason: 'route-enter' });
   });
 </script>
 
@@ -351,7 +336,7 @@
         <p>Route работает как тонкий контейнер: orchestration сценариев, wiring UI-модулей и переходы в /sessions.</p>
       </div>
       <div class="header-actions">
-        <button on:click={() => Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()])} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
+        <button on:click={() => ensureCardsGuestsData({ reason: 'manual-refresh', force: true })} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
       </div>
     </header>
 

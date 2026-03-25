@@ -3,7 +3,6 @@
   import { incidentStore } from '../stores/incidentStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { shiftStore } from '../stores/shiftStore.js';
-  import { sessionStore } from '../stores/sessionStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { visitStore } from '../stores/visitStore.js';
@@ -18,7 +17,6 @@
   let now = new Date();
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
-  let initialLoadAttempted = false;
 
   function openTap(item) {
     navigateWithFocus({ target: 'tap', tapId: item.tap_id, source: item.tap_name || item.title });
@@ -69,13 +67,6 @@
 
     return () => clearInterval(timer);
   });
-
-  $: if ($sessionStore.token && !initialLoadAttempted) {
-    tapStore.fetchTaps();
-    visitStore.fetchActiveVisits();
-    shiftStore.fetchCurrent();
-    initialLoadAttempted = true;
-  }
 
   $: tapStore.setOperationalContext({
     activeVisits: $visitStore.activeVisits || [],

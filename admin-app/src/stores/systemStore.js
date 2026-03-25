@@ -113,10 +113,14 @@ const createSystemStore = () => {
     subsystems: [],
     health: deriveHealthSummary(null),
     loading: false,
+    isLoading: false,
+    lastFetchedAt: null,
+    staleTtlMs: 10000,
     error: null,
   });
 
   let pollingInterval = null;
+  let systemStatusInFlight = null;
   const POLLING_RATE_MS = 10000;
 
   const applySummary = (summary) => update((store) => ({
@@ -128,32 +132,50 @@ const createSystemStore = () => {
     subsystems: summary?.subsystems || [],
     health: deriveHealthSummary(summary),
     loading: false,
+    isLoading: false,
+    lastFetchedAt: Date.now(),
     error: null,
   }));
 
-  const fetchSystemStatus = async () => {
+  const fetchSystemStatus = async ({ force = false, staleTtlMs = null } = {}) => {
     const token = get(sessionStore).token;
     if (!token) return;
+    const state = get({ subscribe });
+    const ttlMs = Number.isFinite(staleTtlMs) ? Number(staleTtlMs) : state.staleTtlMs;
+    const hasFreshData = state.lastFetchedAt && (Date.now() - state.lastFetchedAt) < ttlMs;
+    if (!force && hasFreshData && state.generatedAt) {
+      return state;
+    }
+    if (systemStatusInFlight) {
+      return systemStatusInFlight;
+    }
+
+    update((store) => ({ ...store, loading: true, isLoading: true }));
     try {
-      const summary = await invoke('get_system_status', { token });
+      systemStatusInFlight = invoke('get_system_status', { token });
+      const summary = await systemStatusInFlight;
       applySummary(summary);
+      return summary;
     } catch (err) {
       const message = toErrorMessage('systemStore.fetchSystemStatus', err);
-      update((store) => ({ ...store, health: deriveHealthSummary({ subsystems: store.subsystems }, message), loading: false, error: message }));
+      update((store) => ({ ...store, health: deriveHealthSummary({ subsystems: store.subsystems }, message), loading: false, isLoading: false, error: message }));
+      return null;
+    } finally {
+      systemStatusInFlight = null;
     }
   };
 
   const setEmergencyStop = async (enabled) => {
     const token = get(sessionStore).token;
     if (!token) throw new Error('Требуется повторный вход в систему');
-    update((store) => ({ ...store, loading: true }));
+    update((store) => ({ ...store, loading: true, isLoading: true }));
     try {
       const summary = await invoke('set_emergency_stop', { token, value: enabled ? 'true' : 'false' });
       applySummary(summary);
     } catch (err) {
       notifyForbiddenIfNeeded(err);
       const message = toErrorMessage('systemStore.setEmergencyStop', err);
-      update((store) => ({ ...store, loading: false, error: message }));
+      update((store) => ({ ...store, loading: false, isLoading: false, error: message }));
       throw new Error(message);
     }
   };

@@ -11,6 +11,7 @@
   import { confirmShiftAction } from '../../lib/shiftActionConfirm.js';
   import { healthStateLabel } from '../../lib/healthStatus.js';
   import { SHELL_COPY } from '../../lib/operatorLabels.js';
+  import { ensureOperatorShellData } from '../../stores/operatorShellOrchestrator.js';
   import ShellStatusPills from './ShellStatusPills.svelte';
 
   let now = new Date();
@@ -37,6 +38,7 @@
 
     try {
       await shiftStore.openShift();
+      await ensureOperatorShellData({ reason: 'shift-open-close', force: true });
       uiStore.notifySuccess('Смена открыта');
     } catch (error) {
       uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть смену');
@@ -49,6 +51,7 @@
 
     try {
       await shiftStore.closeShift();
+      await ensureOperatorShellData({ reason: 'shift-open-close', force: true });
       uiStore.notifySuccess('Смена закрыта');
     } catch (error) {
       uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось закрыть смену');
