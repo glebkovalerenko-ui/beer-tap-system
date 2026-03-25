@@ -10,6 +10,7 @@
   import { formatDateTimeRu, formatTimeRu } from '../../lib/formatters.js';
   import { confirmShiftAction } from '../../lib/shiftActionConfirm.js';
   import { healthStateLabel } from '../../lib/healthStatus.js';
+  import { SHELL_COPY } from '../../lib/operatorLabels.js';
   import ShellStatusPills from './ShellStatusPills.svelte';
 
   let now = new Date();
@@ -70,10 +71,10 @@
 </script>
 
 <header class="topbar ui-card">
-  <section class="summary-block" aria-label="Единая operational summary панель">
+  <section class="summary-block" aria-label={SHELL_COPY.operationalSummaryAria}>
     <div class="summary-heading">
       <div class="headline-group">
-        <p class="eyebrow">Operational summary</p>
+        <p class="eyebrow">{SHELL_COPY.operationalSummaryEyebrow}</p>
         <div class="headline-row">
           <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
           <span class="overall-health" data-tone={overallState}>{overallStateLabel}</span>
@@ -108,7 +109,7 @@
 
     <div class="context-grid">
       <div class="guest-context">
-        <span class="context-label">Guest context</span>
+        <span class="context-label">{SHELL_COPY.guestContext}</span>
         <div class="context-card">
           <strong>{$guestContextStore.guestName || 'Гость не выбран'}</strong>
           <span>{($guestContextStore.cardUid ? `****${$guestContextStore.cardUid.slice(-4)}` : 'без карты')} · {$guestContextStore.isActive === null ? '—' : ($guestContextStore.isActive ? 'активен' : 'заблокирован')}</span>
@@ -122,7 +123,7 @@
             <strong>{operatorName}</strong>
             <span>Роль: {$roleStore.label}</span>
           </div>
-          <button class="ghost" on:click={() => sessionStore.logout()}>Logout</button>
+          <button class="ghost" on:click={() => sessionStore.logout()}>{SHELL_COPY.logout}</button>
         </div>
       </div>
     </div>

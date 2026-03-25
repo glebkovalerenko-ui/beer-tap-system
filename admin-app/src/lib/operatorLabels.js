@@ -91,3 +91,35 @@ export const COMMON_COPY = {
   apply: 'Применить',
   reset: 'Сбросить',
 };
+
+export const SHELL_COPY = {
+  operationalSummaryEyebrow: 'Операционная сводка',
+  operationalSummaryAria: 'Единая панель операционной сводки',
+  guestContext: 'Контекст гостя',
+  logout: 'Выйти',
+  syncClean: 'Синхронизация: чисто',
+  syncUnsynced: (count) => `Синхронизация: ${count} несинхр.`,
+  syncOfflineQueue: (count) => `Очередь синхронизации: ${count} офлайн`,
+  syncUnsyncedTitle: 'Есть локальные проливы, ожидающие синхронизации с бэкендом.',
+  syncOfflineTitle: 'Есть устройства с локальными/офлайн проблемами, влияющими на оперативную синхронизацию.',
+  syncCleanTitle: 'Несинхронизированных проливов и офлайн-хвостов не обнаружено.',
+};
+
+export const TAP_SCREENS_COPY = {
+  guestFacingOverrideLoadError: 'Не удалось загрузить гостевое переопределение.',
+  managementOnlySettings: 'Настройки экрана доступны только ролям управления и инженерии.',
+  introText: 'Ниже видно, какой сценарий, брендирование и текущее состояние сейчас видит гость на каждом экране крана.',
+  sectionHint: 'Карточка сразу собирает сводку из состояния крана, переопределения экрана и полей напитка/дисплея — без открытия модального окна.',
+  tapLabel: 'Кран',
+  previewAria: (name) => `Гостевой предпросмотр: ${name}`,
+  displayEnabled: 'Экран крана включён',
+  displayDisabled: 'Экран крана выключен',
+  guestScenario: 'Текущий гостевой сценарий',
+  brandingSummary: 'Сводка брендирования',
+  displayRuntime: 'Состояние экрана',
+  controller: 'Контроллер',
+  operatorNote: 'Комментарий оператора',
+  operatorSummary: 'Сводка для оператора',
+  overrideSummaryUnavailable: 'Сводка переопределения недоступна',
+};
+
