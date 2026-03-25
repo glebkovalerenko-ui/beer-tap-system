@@ -67,10 +67,13 @@ function createIncidentStore() {
     const capabilities = { ...DEFAULT_MUTATION_CAPABILITIES };
     for (const key of Object.keys(capabilities)) {
       const candidate = serverCapabilities?.[key];
-      if (candidate && typeof candidate.enabled === 'boolean') {
+      const enabled = typeof candidate?.allowed === 'boolean'
+        ? candidate.allowed
+        : (typeof candidate?.enabled === 'boolean' ? candidate.enabled : null);
+      if (candidate && typeof enabled === 'boolean') {
         capabilities[key] = {
-          enabled: candidate.enabled,
-          reason: candidate.enabled ? null : (candidate.reason || defaultReadOnlyReason),
+          enabled,
+          reason: enabled ? null : (candidate.disabled_reason || candidate.reason || defaultReadOnlyReason),
         };
       }
     }

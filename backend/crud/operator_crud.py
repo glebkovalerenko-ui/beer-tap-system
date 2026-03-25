@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
@@ -71,6 +71,141 @@ def _tap_action_policies(current_user: dict | None) -> schemas.TapActionPolicySe
         screen=_action_policy(current_user, permission="display_override"),
         keg=_action_policy(current_user, permission="taps_control"),
         history=_action_policy(current_user, permission="sessions_view"),
+    )
+
+
+def _contextualize_policy(
+    policy: schemas.OperatorActionPolicy,
+    *,
+    allowed: bool,
+    disabled_reason: str | None = None,
+) -> schemas.OperatorActionPolicy:
+    if allowed:
+        return policy
+    return schemas.OperatorActionPolicy(
+        allowed=False,
+        confirm_required=policy.confirm_required,
+        second_approval_required=policy.second_approval_required,
+        reason_code_required=policy.reason_code_required,
+        disabled_reason=disabled_reason or policy.disabled_reason,
+    )
+
+
+def _normalize_completion_source(summary: schemas.SessionHistoryListItem) -> str:
+    raw = str(summary.completion_source or "").strip().lower()
+    actions = {
+        str(action.action or "").strip().lower()
+        for action in (summary.operator_actions or [])
+    }
+
+    if summary.contains_non_sale_flow:
+        return "no_sale_flow"
+    if raw in {"card_removed", "card_removed_close"} or "card_removed" in raw:
+        return "card_removed"
+    if raw in {"timeout", "timeout_close"} or raw.endswith("_timeout") or "timeout" in raw:
+        return "timeout"
+    if raw.startswith("blocked_") or actions.intersection({"lost_card_blocked", "insufficient_funds_blocked", "card_in_use_on_other_tap"}):
+        return "blocked"
+    if raw.startswith("denied_") or "insufficient_funds_denied" in actions:
+        return "denied"
+    if raw == "sync_pending" and summary.has_unsynced:
+        return "timeout"
+    if raw:
+        return "normal"
+    if summary.operator_status == "Прервана":
+        return "blocked"
+    return "" if summary.visit_status == "active" else "normal"
+
+
+def _is_zero_volume_abort(summary: schemas.SessionHistoryListItem) -> bool:
+    lifecycle = summary.lifecycle
+    return (
+        summary.operator_status == "Прервана"
+        and lifecycle.first_pour_started_at is None
+        and lifecycle.last_pour_ended_at is None
+    )
+
+
+def _to_operator_session_item(summary: schemas.SessionHistoryListItem) -> schemas.OperatorSessionJournalItem:
+    last_operator_action = summary.operator_actions[-1] if summary.operator_actions else None
+    completion_source = _normalize_completion_source(summary) or None
+    return schemas.OperatorSessionJournalItem(
+        **{
+            **summary.model_dump(),
+            "completion_source": completion_source,
+        },
+        is_active=summary.visit_status == "active",
+        has_zero_volume_abort=_is_zero_volume_abort(summary),
+        last_operator_action=last_operator_action,
+    )
+
+
+def _resolve_session_period(
+    db: Session,
+    filters: schemas.OperatorSessionJournalFilterParams,
+) -> tuple[date | None, date | None]:
+    if filters.period_preset == "range":
+        return filters.date_from, filters.date_to
+
+    if filters.period_preset == "shift":
+        shift_state = shift_crud.get_current_shift_state(db)
+        if shift_state.get("status") == "open" and shift_state.get("shift"):
+            shift = shift_state["shift"]
+            opened_at = shift.opened_at.date() if shift.opened_at else None
+            closed_at = shift.closed_at.date() if shift.closed_at else _utcnow().date()
+            return opened_at, closed_at
+
+    today = _utcnow().date()
+    return today, today
+
+
+def _session_action_policies(
+    current_user: dict | None,
+    summary: schemas.OperatorSessionJournalItem,
+) -> schemas.OperatorSessionActionPolicySet:
+    is_active = summary.is_active
+    has_card = bool(summary.card_uid)
+    return schemas.OperatorSessionActionPolicySet(
+        close=_contextualize_policy(
+            _action_policy(
+                current_user,
+                permission="sessions_view",
+                confirm_required=True,
+                reason_code_required=True,
+            ),
+            allowed=is_active,
+            disabled_reason="Session is already closed.",
+        ),
+        force_unlock=_contextualize_policy(
+            _action_policy(
+                current_user,
+                permission="maintenance_actions",
+                confirm_required=True,
+                reason_code_required=True,
+            ),
+            allowed=is_active,
+            disabled_reason="Only active sessions can be force-unlocked.",
+        ),
+        reconcile=_contextualize_policy(
+            _action_policy(
+                current_user,
+                permission="maintenance_actions",
+                confirm_required=True,
+                reason_code_required=True,
+            ),
+            allowed=is_active,
+            disabled_reason="Manual reconcile is only available for active sessions.",
+        ),
+        mark_lost_card=_contextualize_policy(
+            _action_policy(
+                current_user,
+                permission="cards_block_manage",
+                confirm_required=True,
+                reason_code_required=True,
+            ),
+            allowed=is_active and has_card,
+            disabled_reason="Active card context is required to mark a card as lost.",
+        ),
     )
 
 
@@ -429,6 +564,208 @@ def _sort_attention_items(items: list[schemas.OperatorAttentionItem]) -> list[sc
     )
 
 
+def get_operator_sessions(
+    db: Session,
+    *,
+    filters: schemas.OperatorSessionJournalFilterParams,
+    current_user: dict | None,
+) -> schemas.OperatorSessionJournalModel:
+    resolved_from, resolved_to = _resolve_session_period(db, filters)
+    legacy_items = visit_crud.get_session_history(
+        db=db,
+        date_from=resolved_from,
+        date_to=resolved_to,
+        tap_id=filters.tap_id,
+        status=filters.status,
+        card_uid=filters.card_uid,
+        incident_only=filters.incident_only,
+        unsynced_only=filters.unsynced_only,
+    )
+
+    operator_items: list[schemas.OperatorSessionJournalItem] = []
+    for item in legacy_items:
+        normalized_completion = _normalize_completion_source(item)
+        zero_volume_abort = _is_zero_volume_abort(item)
+        if filters.completion_source and normalized_completion != filters.completion_source:
+            continue
+        if filters.zero_volume_abort_only and not zero_volume_abort:
+            continue
+        if filters.active_only and item.visit_status != "active":
+            continue
+        operator_items.append(_to_operator_session_item(item))
+
+    operator_items.sort(
+        key=lambda item: (
+            0 if item.is_active else 1,
+            -int((_as_utc(item.last_event_at) or _utcnow()).timestamp()),
+        )
+    )
+
+    pinned_active_sessions = [item for item in operator_items if item.is_active]
+    journal_items = (
+        pinned_active_sessions
+        if filters.active_only
+        else [item for item in operator_items if not item.is_active]
+    )
+    header = schemas.OperatorSessionJournalHeader(
+        total_sessions=len(operator_items),
+        active_sessions=sum(1 for item in operator_items if item.is_active),
+        incident_sessions=sum(1 for item in operator_items if item.has_incident),
+        unsynced_sessions=sum(1 for item in operator_items if item.has_unsynced),
+        zero_volume_abort_sessions=sum(1 for item in operator_items if item.has_zero_volume_abort),
+    )
+    applied_filters = schemas.OperatorSessionJournalFilterParams(
+        **{
+            **filters.model_dump(),
+            "date_from": resolved_from,
+            "date_to": resolved_to,
+        }
+    )
+    return schemas.OperatorSessionJournalModel(
+        generated_at=_utcnow(),
+        applied_filters=applied_filters,
+        header=header,
+        pinned_active_sessions=pinned_active_sessions,
+        items=journal_items,
+    )
+
+
+def get_operator_session_detail(
+    db: Session,
+    *,
+    visit_id,
+    current_user: dict | None,
+) -> schemas.OperatorSessionDetailModel:
+    detail = visit_crud.get_session_history_detail(db=db, visit_id=visit_id)
+    summary = _to_operator_session_item(detail)
+    return schemas.OperatorSessionDetailModel(
+        generated_at=_utcnow(),
+        summary=summary,
+        narrative=detail.narrative,
+        display_context=detail.display_context,
+        operator_actions=detail.operator_actions,
+        safe_actions=_session_action_policies(current_user, summary),
+    )
+
+
+def get_operator_system_health(
+    db: Session,
+    *,
+    current_user: dict | None,
+) -> schemas.OperatorSystemHealthModel:
+    summary = incident_crud.get_system_summary(db)
+    subsystems = summary.get("subsystems", [])
+    by_name = {str(item.get("name") or ""): item for item in subsystems}
+    backend_state = str((by_name.get("backend") or {}).get("state") or "ok")
+    controllers_state = str((by_name.get("controllers") or {}).get("state") or "ok")
+    readers_state = str((by_name.get("readers") or {}).get("state") or "ok")
+    displays_state = str((by_name.get("display_agents") or {}).get("state") or "ok")
+
+    pending_sync_rows = (
+        db.query(models.Pour)
+        .filter(models.Pour.sync_status == "pending_sync")
+        .all()
+    )
+    pending_items = len(pending_sync_rows)
+    unsynced_sessions = len({str(row.visit_id) for row in pending_sync_rows if row.visit_id is not None})
+    oldest_pending_age_seconds = None
+    if pending_sync_rows:
+        oldest_pending = min(
+            (
+                row.authorized_at
+                or row.poured_at
+                or row.created_at
+                for row in pending_sync_rows
+                if (row.authorized_at or row.poured_at or row.created_at) is not None
+            ),
+            default=None,
+        )
+        if oldest_pending is not None:
+            oldest_pending_age_seconds = max(
+                0,
+                int((_utcnow() - _as_utc(oldest_pending)).total_seconds()),
+            )
+
+    stale_devices = [
+        device
+        for subsystem in subsystems
+        for device in subsystem.get("devices", [])
+        if str(device.get("state") or "ok") in {"warning", "critical", "error", "offline", "unknown", "degraded"}
+    ]
+    stale_summary = schemas.OperatorSystemStaleSummary(
+        stale_device_count=len(stale_devices),
+        stale_controller_count=sum(1 for device in stale_devices if str(device.get("device_type")) == "controller"),
+        stale_reader_count=sum(1 for device in stale_devices if str(device.get("device_type")) == "reader"),
+        stale_display_count=sum(1 for device in stale_devices if str(device.get("device_type")) == "display_agent"),
+    )
+
+    backend_problem = backend_state in {"warning", "critical", "error", "offline", "unknown", "degraded"}
+    field_problem = any(
+        state in {"warning", "critical", "error", "offline", "unknown", "degraded"}
+        for state in (controllers_state, readers_state, displays_state)
+    )
+    if backend_problem and field_problem:
+        mode = "offline"
+        reason = "Backend and field devices both need attention; only cached context is reliable."
+    elif backend_problem:
+        mode = "backend_degraded"
+        reason = "Backend freshness is degraded; critical write actions should pause until resync."
+    elif field_problem:
+        mode = "controller_only"
+        reason = "One or more field devices need attention; operator commands can be partially blocked."
+    else:
+        mode = "online"
+        reason = "All core operator subsystems are responding normally."
+
+    session_mutation_blocked = mode != "online"
+    blocked_reason = None if not session_mutation_blocked else "Operator actions are temporarily blocked until data is fresh again."
+    blocked_actions = {
+        "emergency_stop": _action_policy(current_user, permission="maintenance_actions", confirm_required=True),
+        "tap_control": _contextualize_policy(
+            _action_policy(current_user, permission="taps_control", confirm_required=True, reason_code_required=True),
+            allowed=not session_mutation_blocked,
+            disabled_reason=blocked_reason,
+        ),
+        "session_mutation": _contextualize_policy(
+            _action_policy(current_user, permission="sessions_view", confirm_required=True, reason_code_required=True),
+            allowed=not session_mutation_blocked,
+            disabled_reason=blocked_reason,
+        ),
+        "incident_mutation": _contextualize_policy(
+            _action_policy(current_user, permission="incidents_manage", confirm_required=True, reason_code_required=True),
+            allowed=not session_mutation_blocked,
+            disabled_reason=blocked_reason,
+        ),
+    }
+
+    actionable_next_steps: list[str] = []
+    if mode == "backend_degraded":
+        actionable_next_steps.append("Wait for backend reconnect or trigger a manual refresh before committing risky actions.")
+    if mode == "controller_only":
+        actionable_next_steps.append("Open the affected tap and check controller, reader, and display state on-site.")
+    if pending_items > 0:
+        actionable_next_steps.append(f"Review sync backlog: {pending_items} pending items across {unsynced_sessions} sessions.")
+    if stale_summary.stale_device_count > 0:
+        actionable_next_steps.append(f"Inspect {stale_summary.stale_device_count} stale devices from the System panel.")
+    if not actionable_next_steps:
+        actionable_next_steps.append("No blocked actions right now; continue regular shift workflow.")
+
+    return schemas.OperatorSystemHealthModel(
+        **summary,
+        mode=mode,
+        reason=reason,
+        queue_summary=schemas.OperatorSystemQueueSummary(
+            pending_items=pending_items,
+            unsynced_sessions=unsynced_sessions,
+            oldest_pending_age_seconds=oldest_pending_age_seconds,
+            retry_count=0,
+        ),
+        stale_summary=stale_summary,
+        blocked_actions=blocked_actions,
+        actionable_next_steps=actionable_next_steps,
+    )
+
+
 def get_operator_today(db: Session, *, current_user: dict | None) -> schemas.OperatorTodayModel:
     incidents = incident_crud.list_incidents(db, limit=20)
     tap_cards = _build_tap_cards(db, current_user=current_user)
@@ -443,7 +780,7 @@ def get_operator_today(db: Session, *, current_user: dict | None) -> schemas.Ope
         today_summary=pour_crud.get_today_summary(db),
         flow_summary=flow_accounting_crud.get_flow_summary(db),
         feed_items=pour_crud.get_live_feed(db, limit=20),
-        system_health=incident_crud.get_system_summary(db),
+        system_health=get_operator_system_health(db, current_user=current_user),
         incidents=incidents,
         attention_items=attention_items,
         priority_cta_source=attention_items[0].key if attention_items else None,

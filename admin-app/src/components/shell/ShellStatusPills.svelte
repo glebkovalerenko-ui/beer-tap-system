@@ -1,6 +1,8 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
+
   import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
+  import { operatorConnectionStore } from '../../stores/operatorConnectionStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
   import { systemStore } from '../../stores/systemStore.js';
   import { tapStore } from '../../stores/tapStore.js';
@@ -20,16 +22,18 @@
   }
 
   function nfcStateLabel(status) {
-    if (status === 'ok') return 'Готов';
-    if (status === 'recovering') return 'Восстанавливается';
-    if (status === 'disconnected') return 'Отключён';
-    if (status === 'scanning' || status === 'initializing') return 'Подключается';
-    return 'Ошибка';
+    if (status === 'ok') return 'Ready';
+    if (status === 'recovering') return 'Recovering';
+    if (status === 'disconnected') return 'Disconnected';
+    if (status === 'scanning' || status === 'initializing') return 'Connecting';
+    return 'Error';
   }
 
   function syncIndicator(summary = {}) {
     const unsynced = Number(summary.unsyncedFlowCount || 0);
-    const offline = Number(summary.readerOfflineCount || 0) + Number(summary.displayOfflineCount || 0) + Number(summary.controllerOfflineCount || 0);
+    const offlineCount = Number(summary.readerOfflineCount || 0)
+      + Number(summary.displayOfflineCount || 0)
+      + Number(summary.controllerOfflineCount || 0);
 
     if (unsynced > 0) {
       return {
@@ -39,9 +43,9 @@
       };
     }
 
-    if (offline > 0) {
+    if (offlineCount > 0) {
       return {
-        text: SHELL_COPY.syncOfflineQueue(offline),
+        text: SHELL_COPY.syncOfflineQueue(offlineCount),
         tone: 'warn',
         title: SHELL_COPY.syncOfflineTitle,
       };
@@ -51,6 +55,38 @@
       text: SHELL_COPY.syncClean,
       tone: 'ok',
       title: SHELL_COPY.syncCleanTitle,
+    };
+  }
+
+  function connectionIndicator(connection = {}) {
+    if (connection.mode === 'offline') {
+      return {
+        text: 'Backend: Offline',
+        tone: 'error',
+      title: connection.reason || 'Backend connection is lost and risky actions are blocked.',
+      };
+    }
+
+    if (connection.mode !== 'online') {
+      return {
+        text: `Backend: ${connection.transport === 'websocket' ? 'Degraded' : 'Read-only'}`,
+        tone: 'warn',
+        title: connection.reason || 'Backend is currently in degraded mode.',
+      };
+    }
+
+    if (connection.transport !== 'websocket') {
+      return {
+        text: connection.transport === 'short_polling' ? 'Realtime: Polling' : 'Realtime: Reduced',
+        tone: 'warn',
+        title: connection.reason || 'Realtime временно переведён на polling.',
+      };
+    }
+
+    return {
+      text: 'Realtime: Live',
+      tone: 'ok',
+      title: 'Data is updating over websocket.',
     };
   }
 
@@ -66,24 +102,28 @@
 
   $: primaryHealthPills = $systemStore.health.primaryPills || [];
   $: syncPill = syncIndicator($tapStore.summary || {});
+  $: connectionPill = connectionIndicator($operatorConnectionStore || {});
   $: nfcLabel = nfcStateLabel($nfcReaderStore.status);
 </script>
 
 <div class="pill-groups">
   {#if showOperational}
-    <div class="pills secondary" aria-label="Операционные статусы рабочего места">
+    <div class="pills secondary" aria-label="Operational workstation statuses">
       <span class="pill secondary-pill" class:ok={$shiftStore.isOpen} class:warn={!$shiftStore.isOpen}>
-        Смена: {$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}
+        Shift: {$shiftStore.isOpen ? 'Open' : 'Closed'}
       </span>
       <span class="pill secondary-pill" class:ok={online} class:error={!online}>
-        Сеть: {online ? 'Онлайн' : 'Офлайн'}
+        Network: {online ? 'Online' : 'Offline'}
+      </span>
+      <span class="pill secondary-pill" class:ok={connectionPill.tone === 'ok'} class:warn={connectionPill.tone === 'warn'} class:error={connectionPill.tone === 'error'} title={connectionPill.title}>
+        {connectionPill.text}
       </span>
       <span
         class="pill secondary-pill"
         class:ok={$nfcReaderStore.status === 'ok'}
         class:warn={$nfcReaderStore.status === 'recovering' || $nfcReaderStore.status === 'disconnected' || $nfcReaderStore.status === 'scanning' || $nfcReaderStore.status === 'initializing'}
         class:error={$nfcReaderStore.status === 'error'}
-        title={$nfcReaderStore.message || $nfcReaderStore.error || 'Статус NFC-считывателя'}
+        title={$nfcReaderStore.message || $nfcReaderStore.error || 'NFC reader status'}
       >
         NFC: {nfcLabel}
       </span>
@@ -94,7 +134,7 @@
   {/if}
 
   {#if showHealth}
-    <div class="pills primary" aria-label="Статус ключевых подсистем">
+    <div class="pills primary" aria-label="Key subsystem statuses">
       {#each primaryHealthPills as item (item.key)}
         <span class="pill" class:ok={healthTone(item.state) === 'ok'} class:warn={warningStates.includes(item.state)} class:error={errorStates.includes(item.state)} title={item.detail}>
           {formatHealthPill(item)}

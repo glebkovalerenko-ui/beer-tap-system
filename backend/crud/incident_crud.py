@@ -429,6 +429,7 @@ def get_system_summary(db: Session) -> dict:
     overall_state = "critical" if any(item["state"] == "critical" for item in subsystems) else "warning" if any(item["state"] == "warning" for item in subsystems) else "ok"
     return {
         "emergency_stop": emergency_stop,
+        "value": "true" if emergency_stop else "false",
         "overall_state": overall_state,
         "generated_at": _utcnow(),
         "open_incident_count": max(open_non_sale + (1 if emergency_stop else 0), open_incident_overlays),

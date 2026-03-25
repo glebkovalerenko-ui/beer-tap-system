@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
 
+  import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import Modal from '../components/common/Modal.svelte';
   import SideDrawer from '../components/common/SideDrawer.svelte';
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
@@ -9,6 +10,7 @@
   import { resolveSessionHistoryTargets } from '../lib/tapWorkspaceHelpers.js';
   import { beverageStore } from '../stores/beverageStore.js';
   import { kegStore } from '../stores/kegStore.js';
+  import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import { tapStore } from '../stores/tapStore.js';
@@ -29,6 +31,9 @@
   let taps = [];
   $: permissions = /** @type {any} */ ($roleStore.permissions || {});
   $: taps = /** @type {any[]} */ ($tapStore.taps || []);
+  $: routeReadOnlyReason = $operatorConnectionStore.readOnly
+    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Tap mutations stay read-only until fresh data returns.')
+    : '';
 
   /** @typedef {import('../lib/tapWorkspaceHelpers.js').TapWorkspaceOpenHistoryPayload} TapHistoryPayload */
   /** @typedef {CustomEvent<{ tap: any }>} TapDetailEvent */
@@ -101,6 +106,10 @@
 
   /** @param {string} permissionKey @param {string} message */
   function requirePermission(permissionKey, message) {
+    if (routeReadOnlyReason) {
+      uiStore.notifyWarning(routeReadOnlyReason);
+      return false;
+    }
     if (permissions[permissionKey]) {
       return true;
     }
@@ -225,9 +234,20 @@
       <h1>{ROUTE_COPY.taps.title}</h1>
       <p>{ROUTE_COPY.taps.description}</p>
     </div>
+    <DataFreshnessChip
+      label="Taps"
+      lastFetchedAt={$tapStore.lastFetchedAt}
+      staleAfterMs={$tapStore.staleTtlMs}
+      mode={$operatorConnectionStore.mode}
+      transport={$operatorConnectionStore.transport}
+      reason={$operatorConnectionStore.reason}
+    />
   </div>
 
   <section class="operator-layout">
+    {#if routeReadOnlyReason}
+      <div class="error-banner">{routeReadOnlyReason}</div>
+    {/if}
     <div class="section-header">
       <div>
         <h2>Рабочая зона по кранам</h2>
@@ -245,6 +265,7 @@
         canControl={permissions.taps_control}
         canDisplayOverride={permissions.display_override}
         {permissions}
+        readOnlyReason={routeReadOnlyReason}
         on:open-detail={(event) => selectTap(event.detail.tap)}
         on:assign={handleOpenAssignModal}
         on:display-settings={handleOpenTapDisplaySettings}
@@ -286,6 +307,7 @@
       <TapDrawer
         tap={selectedTap}
         {permissions}
+        readOnlyReason={routeReadOnlyReason}
         on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
         on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}
@@ -317,6 +339,7 @@
   .page-header p, .section-hint { margin: 0.3rem 0 0; color: var(--text-secondary, #64748b); }
   .operator-layout { display: grid; gap: 1rem; position: relative; }
   .error { margin: 0; color: #b91c1c; }
+  .error-banner { margin: 0; padding: 0.9rem 1rem; border: 1px solid #fcd34d; border-radius: 14px; background: #fff7ed; color: #9a3412; }
   .restricted { padding: 1rem; }
   @media (max-width: 980px) {
     .page-header, .section-header { grid-template-columns: 1fr; display: grid; }

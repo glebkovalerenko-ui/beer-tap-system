@@ -9,6 +9,7 @@ import schemas
 import security
 from crud import shift_crud, visit_crud
 from database import get_db
+from operator_stream import operator_stream_hub
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 
 router = APIRouter(
@@ -25,7 +26,10 @@ def open_visit(
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
     shift_crud.ensure_open_shift(db)
-    return visit_crud.open_visit(db=db, guest_id=payload.guest_id, card_uid=payload.card_uid)
+    visit = visit_crud.open_visit(db=db, guest_id=payload.guest_id, card_uid=payload.card_uid)
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_opened")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_opened")
+    return visit
 
 
 @router.post("/{visit_id}/close", response_model=schemas.Visit, summary="Close active visit")
@@ -35,12 +39,16 @@ def close_visit(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    return visit_crud.close_visit(
+    visit = visit_crud.close_visit(
         db=db,
         visit_id=visit_id,
         closed_reason=payload.closed_reason,
         card_returned=payload.card_returned,
     )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_closed")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_closed")
+    operator_stream_hub.emit_invalidation(resource="taps", reason="visit_closed")
+    return visit
 
 
 @router.post("/authorize-pour", response_model=schemas.VisitPourAuthorizeResponse, summary="Authorize pour and set active tap lock")
@@ -160,12 +168,16 @@ def report_lost_card_from_visit(
         comment=payload.comment,
         actor_id=current_user["username"] if current_user else None,
     )
-    return schemas.VisitReportLostCardResponse(
+    response = schemas.VisitReportLostCardResponse(
         visit=visit,
         lost_card=lost_card,
         lost=True,
         already_marked=not created,
     )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), severity="warning", reason="visit_report_lost_card")
+    operator_stream_hub.emit_invalidation(resource="incident", reason="visit_report_lost_card")
+    operator_stream_hub.emit_invalidation(resource="today", reason="visit_report_lost_card")
+    return response
 
 
 @router.post("/{visit_id}/force-unlock", response_model=schemas.Visit, summary="Force unlock active tap for visit")
@@ -175,13 +187,18 @@ def force_unlock_visit(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    return visit_crud.force_unlock_visit(
+    visit = visit_crud.force_unlock_visit(
         db=db,
         visit_id=visit_id,
         reason=payload.reason,
         comment=payload.comment,
         actor_id=current_user["username"] if current_user else "operator",
     )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), severity="warning", reason="visit_force_unlock")
+    operator_stream_hub.emit_invalidation(resource="taps", reason="visit_force_unlock")
+    operator_stream_hub.emit_invalidation(resource="incident", reason="visit_force_unlock")
+    operator_stream_hub.emit_invalidation(resource="today", reason="visit_force_unlock")
+    return visit
 
 
 @router.post("/{visit_id}/reconcile-pour", response_model=schemas.Visit, summary="Manually reconcile pour and unlock visit")
@@ -191,7 +208,7 @@ def reconcile_pour(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    return visit_crud.reconcile_pour(
+    visit = visit_crud.reconcile_pour(
         db=db,
         visit_id=visit_id,
         tap_id=payload.tap_id,
@@ -203,6 +220,11 @@ def reconcile_pour(
         comment=payload.comment,
         actor_id=current_user["username"] if current_user else "operator",
     )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), severity="warning", reason="visit_reconcile")
+    operator_stream_hub.emit_invalidation(resource="taps", reason="visit_reconcile")
+    operator_stream_hub.emit_invalidation(resource="incident", reason="visit_reconcile")
+    operator_stream_hub.emit_invalidation(resource="today", reason="visit_reconcile")
+    return visit
 
 
 @router.get("/active/by-card/{card_uid}", response_model=schemas.Visit, summary="Get active visit by card UID")
@@ -291,4 +313,7 @@ def assign_card_to_visit(
     db: Session = Depends(get_db),
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    return visit_crud.assign_card_to_active_visit(db=db, visit_id=visit_id, card_uid=payload.card_uid)
+    visit = visit_crud.assign_card_to_active_visit(db=db, visit_id=visit_id, card_uid=payload.card_uid)
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_assign_card")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_assign_card")
+    return visit

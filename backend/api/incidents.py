@@ -8,6 +8,7 @@ import schemas
 import security
 from crud import incident_crud
 from database import get_db
+from operator_stream import operator_stream_hub
 
 router = APIRouter(
     prefix="/incidents",
@@ -28,8 +29,24 @@ def _flag_enabled(name: str, default: bool = True) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
-def _build_capability(*, enabled: bool, reason: str | None = None) -> schemas.IncidentMutationCapability:
-    return schemas.IncidentMutationCapability(enabled=enabled, reason=reason if not enabled else None)
+def _build_capability(
+    *,
+    enabled: bool,
+    reason: str | None = None,
+    confirm_required: bool = False,
+    second_approval_required: bool = False,
+    reason_code_required: bool = False,
+) -> schemas.IncidentMutationCapability:
+    disabled_reason = reason if not enabled else None
+    return schemas.IncidentMutationCapability(
+        enabled=enabled,
+        reason=disabled_reason,
+        allowed=enabled,
+        confirm_required=confirm_required,
+        second_approval_required=second_approval_required,
+        reason_code_required=reason_code_required,
+        disabled_reason=disabled_reason,
+    )
 
 
 def _incident_capabilities(current_user: dict | None) -> schemas.IncidentMutationCapabilities:
@@ -62,8 +79,8 @@ def _incident_capabilities(current_user: dict | None) -> schemas.IncidentMutatio
     return schemas.IncidentMutationCapabilities(
         claim=_build_capability(enabled=True),
         note=_build_capability(enabled=True),
-        escalate=_build_capability(enabled=True),
-        close=_build_capability(enabled=True),
+        escalate=_build_capability(enabled=True, confirm_required=True, reason_code_required=True),
+        close=_build_capability(enabled=True, confirm_required=True, reason_code_required=True),
     )
 
 
@@ -89,7 +106,11 @@ def claim_incident(
     db: Session = Depends(get_db),
 ):
     actor_id = (current_user or {}).get("username")
-    return incident_crud.claim_incident(db, incident_id=incident_id, owner=payload.owner.strip(), note=payload.note, actor_id=str(actor_id) if actor_id else None)
+    incident = incident_crud.claim_incident(db, incident_id=incident_id, owner=payload.owner.strip(), note=payload.note, actor_id=str(actor_id) if actor_id else None)
+    operator_stream_hub.emit_invalidation(resource="incident", entity_id=incident_id, reason="incident_claim")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=incident_id, reason="incident_claim")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=incident_id, reason="incident_claim")
+    return incident
 
 
 @router.post("/{incident_id}/notes", response_model=schemas.IncidentListItem, summary="Добавить заметку к инциденту")
@@ -101,7 +122,10 @@ def add_incident_note(
     db: Session = Depends(get_db),
 ):
     actor_id = (current_user or {}).get("username")
-    return incident_crud.add_note(db, incident_id=incident_id, note=payload.note.strip(), actor_id=str(actor_id) if actor_id else None)
+    incident = incident_crud.add_note(db, incident_id=incident_id, note=payload.note.strip(), actor_id=str(actor_id) if actor_id else None)
+    operator_stream_hub.emit_invalidation(resource="incident", entity_id=incident_id, reason="incident_note")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=incident_id, reason="incident_note")
+    return incident
 
 
 @router.post("/{incident_id}/escalate", response_model=schemas.IncidentListItem, summary="Эскалировать инцидент")
@@ -113,7 +137,11 @@ def escalate_incident(
     db: Session = Depends(get_db),
 ):
     actor_id = (current_user or {}).get("username")
-    return incident_crud.escalate_incident(db, incident_id=incident_id, reason=payload.reason.strip(), note=payload.note.strip() if payload.note else None, actor_id=str(actor_id) if actor_id else None)
+    incident = incident_crud.escalate_incident(db, incident_id=incident_id, reason=payload.reason.strip(), note=payload.note.strip() if payload.note else None, actor_id=str(actor_id) if actor_id else None)
+    operator_stream_hub.emit_invalidation(resource="incident", entity_id=incident_id, severity="warning", reason="incident_escalate")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=incident_id, severity="warning", reason="incident_escalate")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=incident_id, severity="warning", reason="incident_escalate")
+    return incident
 
 
 @router.post("/{incident_id}/close", response_model=schemas.IncidentListItem, summary="Закрыть инцидент")
@@ -130,4 +158,8 @@ def close_incident(
     if not incident_crud.can_role_close_incident(incident, role):
         allowed = ", ".join(incident.get("role_gate_close") or [])
         raise HTTPException(status_code=403, detail=f"Close недоступен для роли {role}. Разрешено: {allowed}")
-    return incident_crud.close_incident(db, incident_id=incident_id, resolution_summary=payload.resolution_summary.strip(), note=payload.note.strip() if payload.note else None, actor_id=str(actor_id) if actor_id else None)
+    updated_incident = incident_crud.close_incident(db, incident_id=incident_id, resolution_summary=payload.resolution_summary.strip(), note=payload.note.strip() if payload.note else None, actor_id=str(actor_id) if actor_id else None)
+    operator_stream_hub.emit_invalidation(resource="incident", entity_id=incident_id, reason="incident_close")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=incident_id, reason="incident_close")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=incident_id, reason="incident_close")
+    return updated_incident

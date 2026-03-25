@@ -1,16 +1,24 @@
 export function buildIncidentCapabilities(capabilitiesRaw = {}) {
+  const isAllowed = (candidate) => {
+    if (typeof candidate?.allowed === 'boolean') {
+      return candidate.allowed;
+    }
+    return Boolean(candidate?.enabled);
+  };
+  const disabledReason = (candidate) => candidate?.disabled_reason || candidate?.reason || null;
+
   return {
     capabilities: {
-      claim: Boolean(capabilitiesRaw.claim?.enabled),
-      escalate: Boolean(capabilitiesRaw.escalate?.enabled),
-      close: Boolean(capabilitiesRaw.close?.enabled),
-      note: Boolean(capabilitiesRaw.note?.enabled),
+      claim: isAllowed(capabilitiesRaw.claim),
+      escalate: isAllowed(capabilitiesRaw.escalate),
+      close: isAllowed(capabilitiesRaw.close),
+      note: isAllowed(capabilitiesRaw.note),
     },
     reasons: {
-      claim: capabilitiesRaw.claim?.reason || null,
-      escalate: capabilitiesRaw.escalate?.reason || null,
-      close: capabilitiesRaw.close?.reason || null,
-      note: capabilitiesRaw.note?.reason || null,
+      claim: disabledReason(capabilitiesRaw.claim),
+      escalate: disabledReason(capabilitiesRaw.escalate),
+      close: disabledReason(capabilitiesRaw.close),
+      note: disabledReason(capabilitiesRaw.note),
     },
   };
 }

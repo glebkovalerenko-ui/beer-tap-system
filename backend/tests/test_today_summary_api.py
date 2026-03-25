@@ -27,7 +27,20 @@ def test_today_summary_uses_shift_aggregate_window(client, db_session):
     )
     card = models.Card(card_uid="SUM-CARD", guest=guest, status="active")
     tap = models.Tap(tap_id=77, display_name="Summary Tap", status="active")
-    keg = models.Keg(initial_volume_ml=5000, current_volume_ml=4500, purchase_price=Decimal("1000.00"), status="in_use")
+    beverage = models.Beverage(
+        name="Summary Lager",
+        brewery="Summary Brewery",
+        style="Lager",
+        abv=Decimal("4.80"),
+        sell_price_per_liter=Decimal("350.00"),
+    )
+    keg = models.Keg(
+        beverage=beverage,
+        initial_volume_ml=5000,
+        current_volume_ml=4500,
+        purchase_price=Decimal("1000.00"),
+        status="in_use",
+    )
     tap.keg = keg
     visit = models.Visit(guest=guest, card=card, status="closed", opened_at=datetime.now(timezone.utc) - timedelta(hours=1))
 
@@ -49,7 +62,7 @@ def test_today_summary_uses_shift_aggregate_window(client, db_session):
         sync_status="pending_sync", short_id="SUM9999", poured_at=datetime.now(timezone.utc) - timedelta(minutes=15),
     )
 
-    db_session.add_all([guest, card, tap, keg, visit, recent_pour, old_pour, pending_pour])
+    db_session.add_all([guest, card, beverage, tap, keg, visit, recent_pour, old_pour, pending_pour])
     db_session.commit()
 
     response = client.get("/api/pours/today-summary", headers=headers)
@@ -58,6 +71,6 @@ def test_today_summary_uses_shift_aggregate_window(client, db_session):
     assert payload["period"] == "shift"
     assert payload["sessions_count"] == 1
     assert payload["volume_ml"] == 350
-    assert payload["revenue"] == 122.5
+    assert float(payload["revenue"]) == 122.5
     assert payload["summary_complete"] is False
     assert "ожидании синхронизации" in payload["fallback_copy"]

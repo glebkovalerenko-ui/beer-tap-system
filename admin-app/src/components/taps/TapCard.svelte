@@ -10,6 +10,7 @@
   export let canControl = false;
   export let canDisplayOverride = false;
   export let permissions = {};
+  export let readOnlyReason = '';
 
   const dispatch = createEventDispatcher();
 
@@ -32,7 +33,18 @@
     canControl,
     canDisplayOverride,
   });
-  $: actionCount = quickActions.length;
+  $: visibleActions = quickActions.map((action) => {
+    if (!readOnlyReason || !['stop', 'toggle-lock'].includes(action.id)) {
+      return action;
+    }
+    return {
+      ...action,
+      guarded: true,
+      disabled: true,
+      reason: readOnlyReason,
+    };
+  });
+  $: actionCount = visibleActions.length;
 
   function emit(name) {
     dispatch(name, { tap });
@@ -137,7 +149,7 @@
   </div>
 
   <div class="card-actions" class:multi-line={actionCount > 2}>
-    {#each quickActions as action (action.id)}
+    {#each visibleActions as action (action.id)}
       {#if action.guarded}
         <GuardedActionButton
           className={`cta${action.tone === 'danger' ? ' danger' : action.tone === 'primary' ? ' primary' : ''}`}

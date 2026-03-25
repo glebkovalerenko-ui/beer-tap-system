@@ -396,6 +396,63 @@ async fn get_operator_tap_detail(
 }
 
 #[tauri::command]
+async fn get_operator_sessions(
+    token: String,
+    period_preset: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    tap_id: Option<i32>,
+    status: Option<String>,
+    card_uid: Option<String>,
+    completion_source: Option<String>,
+    incident_only: bool,
+    unsynced_only: bool,
+    zero_volume_abort_only: bool,
+    active_only: bool,
+) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_sessions(
+        &token,
+        period_preset.as_deref(),
+        date_from.as_deref(),
+        date_to.as_deref(),
+        tap_id,
+        status.as_deref(),
+        card_uid.as_deref(),
+        completion_source.as_deref(),
+        incident_only,
+        unsynced_only,
+        zero_volume_abort_only,
+        active_only,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_session_detail(
+    token: String,
+    visit_id: String,
+) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_session_detail(&token, &visit_id)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_system_status(token: String) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_system_status(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_stream_ticket(token: String) -> Result<serde_json::Value, AppError> {
+    api_client::get_operator_stream_ticket(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn get_pours(token: String, limit: u32) -> Result<Vec<api_client::PourResponse>, AppError> {
     info!("[COMMAND]     API...");
     api_client::get_pours(&token, limit)
@@ -893,6 +950,10 @@ fn main() {
             get_operator_today,
             get_operator_taps,
             get_operator_tap_detail,
+            get_operator_sessions,
+            get_operator_session_detail,
+            get_operator_system_status,
+            get_operator_stream_ticket,
             get_pours,
             get_live_pour_feed,
             get_flow_summary,

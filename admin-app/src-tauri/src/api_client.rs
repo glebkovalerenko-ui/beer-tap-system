@@ -1055,6 +1055,106 @@ pub async fn get_operator_tap_detail(token: &str, tap_id: i32) -> Result<Value, 
     }
 }
 
+pub async fn get_operator_sessions(
+    token: &str,
+    period_preset: Option<&str>,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+    tap_id: Option<i32>,
+    status: Option<&str>,
+    card_uid: Option<&str>,
+    completion_source: Option<&str>,
+    incident_only: bool,
+    unsynced_only: bool,
+    zero_volume_abort_only: bool,
+    active_only: bool,
+) -> Result<Value, String> {
+    let url = build_api_url("operator/sessions");
+    let mut query: Vec<(&str, String)> = Vec::new();
+    if let Some(value) = period_preset {
+        if !value.trim().is_empty() {
+            query.push(("period_preset", value.to_string()));
+        }
+    }
+    if let Some(value) = date_from {
+        if !value.trim().is_empty() {
+            query.push(("date_from", value.to_string()));
+        }
+    }
+    if let Some(value) = date_to {
+        if !value.trim().is_empty() {
+            query.push(("date_to", value.to_string()));
+        }
+    }
+    if let Some(value) = tap_id {
+        query.push(("tap_id", value.to_string()));
+    }
+    if let Some(value) = status {
+        if !value.trim().is_empty() {
+            query.push(("status", value.to_string()));
+        }
+    }
+    if let Some(value) = card_uid {
+        if !value.trim().is_empty() {
+            query.push(("card_uid", value.to_string()));
+        }
+    }
+    if let Some(value) = completion_source {
+        if !value.trim().is_empty() {
+            query.push(("completion_source", value.to_string()));
+        }
+    }
+    if incident_only {
+        query.push(("incident_only", "true".to_string()));
+    }
+    if unsynced_only {
+        query.push(("unsynced_only", "true".to_string()));
+    }
+    if zero_volume_abort_only {
+        query.push(("zero_volume_abort_only", "true".to_string()));
+    }
+    if active_only {
+        query.push(("active_only", "true".to_string()));
+    }
+
+    let response = send(CLIENT.get(&url).query(&query).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_session_detail(token: &str, visit_id: &str) -> Result<Value, String> {
+    let url = build_api_url(&format!("operator/sessions/{}", visit_id));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_system_status(token: &str) -> Result<Value, String> {
+    let url = build_api_url("operator/system");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_stream_ticket(token: &str) -> Result<Value, String> {
+    let url = build_api_url("operator/stream-ticket");
+    let response = send(CLIENT.post(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 // --- Pour Functions ---
 /// Получение списка последних наливов.
 pub async fn get_pours(token: &str, limit: u32) -> Result<Vec<PourResponse>, String> {

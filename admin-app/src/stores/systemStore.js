@@ -112,6 +112,12 @@ const createSystemStore = () => {
     openIncidentCount: 0,
     subsystems: [],
     health: deriveHealthSummary(null),
+    mode: 'online',
+    reason: null,
+    queueSummary: null,
+    staleSummary: null,
+    blockedActions: {},
+    actionableNextSteps: [],
     loading: false,
     isLoading: false,
     lastFetchedAt: null,
@@ -131,6 +137,12 @@ const createSystemStore = () => {
     openIncidentCount: summary?.open_incident_count || 0,
     subsystems: summary?.subsystems || [],
     health: deriveHealthSummary(summary),
+    mode: summary?.mode || 'online',
+    reason: summary?.reason || null,
+    queueSummary: summary?.queue_summary || null,
+    staleSummary: summary?.stale_summary || null,
+    blockedActions: summary?.blocked_actions || {},
+    actionableNextSteps: summary?.actionable_next_steps || [],
     loading: false,
     isLoading: false,
     lastFetchedAt: Date.now(),
@@ -152,13 +164,21 @@ const createSystemStore = () => {
 
     update((store) => ({ ...store, loading: true, isLoading: true }));
     try {
-      systemStatusInFlight = invoke('get_system_status', { token });
+      systemStatusInFlight = invoke('get_operator_system_status', { token });
       const summary = await systemStatusInFlight;
       applySummary(summary);
       return summary;
     } catch (err) {
       const message = toErrorMessage('systemStore.fetchSystemStatus', err);
-      update((store) => ({ ...store, health: deriveHealthSummary({ subsystems: store.subsystems }, message), loading: false, isLoading: false, error: message }));
+      update((store) => ({
+        ...store,
+        health: deriveHealthSummary({ subsystems: store.subsystems }, message),
+        mode: 'backend_degraded',
+        reason: message,
+        loading: false,
+        isLoading: false,
+        error: message,
+      }));
       return null;
     } finally {
       systemStatusInFlight = null;

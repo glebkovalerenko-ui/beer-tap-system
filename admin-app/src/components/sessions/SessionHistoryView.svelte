@@ -2,17 +2,22 @@
   // @ts-nocheck
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { visitStore } from '../../stores/visitStore.js';
-  import { shiftStore } from '../../stores/shiftStore.js';
+
   import { formatDateTimeRu } from '../../lib/formatters.js';
-  import { matchesSessionFilters } from './sessionFilters.js';
+  import { operatorConnectionStore } from '../../stores/operatorConnectionStore.js';
+  import { sessionsStore } from '../../stores/sessionsStore.js';
+  import { shiftStore } from '../../stores/shiftStore.js';
+  import { uiStore } from '../../stores/uiStore.js';
+  import DataFreshnessChip from '../common/DataFreshnessChip.svelte';
+  import SessionHistoryDetailDrawer from './SessionHistoryDetailDrawer.svelte';
+  import SessionHistoryFiltersPanel from './SessionHistoryFiltersPanel.svelte';
+  import SessionHistoryJournal from './SessionHistoryJournal.svelte';
   import {
     completionSourceLabels,
     describeCompletionSource,
     describeCompletionSourceDetails,
     describeFlags,
     isZeroVolumeAbort,
-    mergeVisits,
     normalizeVisit,
   } from './sessionNormalize.js';
   import {
@@ -22,9 +27,6 @@
     normalizedOperatorActions,
     syncLabels,
   } from './sessionNarrative.js';
-  import SessionHistoryFiltersPanel from './SessionHistoryFiltersPanel.svelte';
-  import SessionHistoryJournal from './SessionHistoryJournal.svelte';
-  import SessionHistoryDetailDrawer from './SessionHistoryDetailDrawer.svelte';
 
   const DEFAULT_FILTERS = {
     periodPreset: 'today',
@@ -41,15 +43,15 @@
   };
 
   const narrativeKindLabels = {
-    open: 'Сессия открыта',
-    authorize: 'Карта подтверждена',
-    pour_start: 'Налив начался',
-    pour_end: 'Налив завершён',
-    sync: 'Статус синхронизации обновлён',
-    close: 'Сессия закрыта',
-    abort: 'Сессия прервана',
-    incident: 'Зафиксирован инцидент',
-    action: 'Действие оператора',
+    open: 'Session opened',
+    authorize: 'Card authorized',
+    pour_start: 'Pour started',
+    pour_end: 'Pour finished',
+    sync: 'Sync status updated',
+    close: 'Session closed',
+    abort: 'Session aborted',
+    incident: 'Incident recorded',
+    action: 'Operator action',
   };
 
   let filters = { ...DEFAULT_FILTERS };
@@ -58,23 +60,23 @@
   let focusResolved = false;
   let selectedVisitId = '';
 
-  $: activeItems = ($visitStore.activeVisits || []).map((item) => normalizeVisit(item, 'active'));
-  $: historyItems = ($visitStore.sessionHistory || []).map((item) => normalizeVisit(item, 'history'));
-  $: mergedItems = mergeVisits(activeItems, historyItems);
-  $: filteredItems = mergedItems.filter((item) => matchesSessionFilters(item, filters, getPeriodBounds));
-  $: pinnedActiveItems = filteredItems.filter((item) => item.isActive);
-  $: journalItems = filters.activeOnly ? pinnedActiveItems : filteredItems.filter((item) => !item.isActive);
-  $: detail = $visitStore.sessionHistoryDetail;
+  $: header = $sessionsStore.header || null;
+  $: pinnedActiveItems = ($sessionsStore.pinnedActiveSessions || []).map((item) => normalizeVisit(item, 'active'));
+  $: journalItems = ($sessionsStore.items || []).map((item) => normalizeVisit(item, item.is_active ? 'active' : 'history'));
+  $: detail = $sessionsStore.detail;
   $: focusContextText = focusVisitId
-    ? `Открываем сессию ${focusVisitId} в общем журнале.`
+    ? `Opening session ${focusVisitId} in the shared journal.`
     : focusTapId
-      ? `Журнал сфокусирован на кране ${focusTapId}.`
+      ? `Journal is focused on tap ${focusTapId}.`
       : '';
   $: detailNarrativeGroups = detail ? groupedNarrative(detail, formatMaybeDate, describeCompletionSource) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
   $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary, describeCompletionSource, describeFlags) : [];
   $: detailWhatHappened = detail ? buildWhatHappened(detail.summary, describeCompletionSource) : [];
-  $: if (focusVisitId && !focusResolved && !$visitStore.historyLoading && (!$visitStore.loading || activeItems.length > 0 || historyItems.length > 0)) {
+  $: routeReadOnlyReason = $operatorConnectionStore.readOnly
+    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Risky session actions are read-only.')
+    : '';
+  $: if (focusVisitId && !focusResolved && !$sessionsStore.loading && !$sessionsStore.detailLoading) {
     resolveFocusVisit();
   }
 
@@ -129,7 +131,7 @@
   }
 
   function formatMaybeDate(value) {
-    return value ? formatDateTimeRu(value) : '—';
+    return value ? formatDateTimeRu(value) : '-';
   }
 
   async function applyFilters() {
@@ -137,10 +139,7 @@
     if (filters.periodPreset !== 'range') {
       filters = { ...filters, ...getPeriodBounds(filters.periodPreset) };
     }
-    await Promise.all([
-      visitStore.fetchActiveVisits().catch(() => {}),
-      visitStore.fetchSessionHistory(filters).catch(() => {}),
-    ]);
+    await sessionsStore.fetchJournal(filters, { force: true }).catch(() => {});
   }
 
   function resetFilters() {
@@ -153,7 +152,7 @@
   }
 
   async function resolveFocusVisit() {
-    const target = mergedItems.find((item) => String(item.visit_id) === String(focusVisitId));
+    const target = [...pinnedActiveItems, ...journalItems].find((item) => String(item.visit_id) === String(focusVisitId));
     if (target) {
       focusResolved = true;
       await openDetail(target);
@@ -161,23 +160,144 @@
     }
     focusResolved = true;
     selectedVisitId = String(focusVisitId);
-    await visitStore.fetchSessionHistoryDetail(focusVisitId).catch(() => {});
+    await sessionsStore.fetchDetail(focusVisitId).catch(() => {});
   }
 
   async function openDetail(item) {
     focusVisitId = String(item.visit_id);
     selectedVisitId = String(item.visit_id);
     focusResolved = true;
-    await visitStore.fetchSessionHistoryDetail(item.visit_id).catch(() => {});
+    await sessionsStore.fetchDetail(item.visit_id).catch(() => {});
   }
 
   function closeDetail() {
     selectedVisitId = '';
-    visitStore.clearSessionHistoryDetail();
+    sessionsStore.clearDetail();
   }
 
   function updatePeriodPreset(periodPreset) {
     filters = { ...filters, periodPreset, ...getPeriodBounds(periodPreset) };
+  }
+
+  function actionDisabledReason(policy) {
+    if (routeReadOnlyReason) return routeReadOnlyReason;
+    if (!policy?.allowed) return policy?.disabled_reason || 'Action is temporarily unavailable.';
+    return '';
+  }
+
+  async function confirmDangerousAction(policy, title, message) {
+    if (actionDisabledReason(policy)) {
+      uiStore.notifyWarning(actionDisabledReason(policy));
+      return false;
+    }
+
+    if (!policy?.confirm_required) {
+      return true;
+    }
+
+    return uiStore.confirm({
+      title,
+      message,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      danger: true,
+    });
+  }
+
+  function requestRequiredValue(message, defaultValue = '') {
+    const result = window.prompt(message, defaultValue);
+    const normalized = result?.trim();
+    if (!normalized) {
+      uiStore.notifyWarning('Required field must be filled.');
+      return null;
+    }
+    return normalized;
+  }
+
+  async function handleCloseSession() {
+    const policy = detail?.safe_actions?.close;
+    const approved = await confirmDangerousAction(
+      policy,
+      'Close session',
+      'The session will be closed and refreshed in the operator journal.'
+    );
+    if (!approved) return;
+
+    const closedReason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для закрытия сессии', 'operator_close') : 'operator_close';
+    if (!closedReason) return;
+
+    await sessionsStore.closeSession({ visitId: detail.summary.visit_id, closedReason, cardReturned: true });
+    uiStore.notifySuccess('Session closed.');
+  }
+
+  async function handleForceUnlock() {
+    const policy = detail?.safe_actions?.force_unlock;
+    const approved = await confirmDangerousAction(
+      policy,
+      'Force unlock session',
+      'The system will remove the lock and record operator intervention.'
+    );
+    if (!approved) return;
+
+    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для force unlock', 'operator_force_unlock') : 'operator_force_unlock';
+    if (!reason) return;
+    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
+
+    await sessionsStore.forceUnlockSession({ visitId: detail.summary.visit_id, reason, comment });
+    uiStore.notifySuccess('Session unlocked.');
+  }
+
+  async function handleMarkLostCard() {
+    const policy = detail?.safe_actions?.mark_lost_card;
+    const approved = await confirmDangerousAction(
+      policy,
+      'Mark card as lost',
+      'The card will be marked as lost and the operator flow will require reissue.'
+    );
+    if (!approved) return;
+
+    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для lost card', 'operator_marked_lost') : 'operator_marked_lost';
+    if (!reason) return;
+    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
+
+    await sessionsStore.markLostCard({ visitId: detail.summary.visit_id, reason, comment });
+    uiStore.notifySuccess('Card marked as lost.');
+  }
+
+  async function handleReconcile() {
+    const policy = detail?.safe_actions?.reconcile;
+    const approved = await confirmDangerousAction(
+      policy,
+      'Reconcile pour manually',
+      'The system will store a manual reconcile entry for this session.'
+    );
+    if (!approved) return;
+
+    const tapIdRaw = requestRequiredValue('Enter tap id for reconcile', String(detail?.summary?.taps?.[0] || ''));
+    const shortId = requestRequiredValue('Enter short id (6-8 chars)', '');
+    const volumeMlRaw = requestRequiredValue('Enter volume in ml', '250');
+    const amountRaw = requestRequiredValue('Enter amount', '175.00');
+    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для reconcile', 'operator_reconcile') : 'operator_reconcile';
+    if (!tapIdRaw || !shortId || !volumeMlRaw || !amountRaw || !reason) return;
+
+    const tapId = Number(tapIdRaw);
+    const volumeMl = Number(volumeMlRaw);
+    if (!Number.isFinite(tapId) || !Number.isFinite(volumeMl) || tapId <= 0 || volumeMl <= 0) {
+      uiStore.notifyWarning('Tap id and volume must be positive numbers.');
+      return;
+    }
+
+    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
+    await sessionsStore.reconcileSession({
+      visitId: detail.summary.visit_id,
+      tapId,
+      shortId,
+      volumeMl,
+      amount: amountRaw,
+      reason,
+      comment,
+    });
+    uiStore.notifySuccess('Pour reconciled manually.');
   }
 </script>
 
@@ -185,12 +305,34 @@
   <SessionHistoryFiltersPanel
     {filters}
     {completionSourceLabels}
-    loading={$visitStore.historyLoading || $visitStore.loading}
+    loading={$sessionsStore.loading || $sessionsStore.detailLoading}
     onRefresh={applyFilters}
     onApply={applyFilters}
     onReset={resetFilters}
     onPeriodPresetChange={updatePeriodPreset}
   />
+
+  <div class="summary-strip">
+    <div class="summary-cards">
+      <article><span>Total</span><strong>{header?.total_sessions || 0}</strong></article>
+      <article><span>Active</span><strong>{header?.active_sessions || 0}</strong></article>
+      <article><span>With incidents</span><strong>{header?.incident_sessions || 0}</strong></article>
+      <article><span>Unsynced</span><strong>{header?.unsynced_sessions || 0}</strong></article>
+      <article><span>Zero-volume abort</span><strong>{header?.zero_volume_abort_sessions || 0}</strong></article>
+    </div>
+    <DataFreshnessChip
+      label="Sessions"
+      lastFetchedAt={$sessionsStore.lastFetchedAt}
+      staleAfterMs={$sessionsStore.staleTtlMs}
+      mode={$operatorConnectionStore.mode}
+      transport={$operatorConnectionStore.transport}
+      reason={$operatorConnectionStore.reason}
+    />
+  </div>
+
+  {#if routeReadOnlyReason}
+    <div class="degraded-banner">{routeReadOnlyReason}</div>
+  {/if}
 
   {#if focusContextText}
     <div class="focus-banner">{focusContextText}</div>
@@ -218,6 +360,14 @@
       {narrativeKindLabels}
       {formatMaybeDate}
       {syncLabels}
+      actionLoading={$sessionsStore.actionLoading}
+      actionError={$sessionsStore.actionError}
+      readOnlyReason={routeReadOnlyReason}
+      getActionDisabledReason={actionDisabledReason}
+      onCloseSession={handleCloseSession}
+      onForceUnlock={handleForceUnlock}
+      onReconcileSession={handleReconcile}
+      onMarkLostCard={handleMarkLostCard}
       onCloseDetail={closeDetail}
     />
   </div>
@@ -226,7 +376,15 @@
 <style>
   .history-layout { display: grid; gap: 1rem; }
   .content-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(380px, 0.9fr); gap: 1rem; align-items: start; }
-  .focus-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.85rem 1rem; color: var(--state-neutral-text); background: var(--state-neutral-bg); }
+  .summary-strip { display: flex; justify-content: space-between; gap: 1rem; align-items: start; flex-wrap: wrap; }
+  .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; flex: 1 1 520px; }
+  .summary-cards article,
+  .focus-banner,
+  .degraded-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.85rem 1rem; }
+  .summary-cards article { background: #fff; display: grid; gap: 0.25rem; }
+  .summary-cards article span { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+  .degraded-banner { background: var(--state-warning-bg, #fff7ed); border-color: var(--state-warning-border, #fcd34d); color: var(--state-warning-text, #9a3412); }
+  .focus-banner { color: var(--state-neutral-text); background: var(--state-neutral-bg); }
 
   :global(.filters-panel),
   :global(.list-panel),
@@ -255,8 +413,8 @@
   :global(.filters-grid) { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.75rem; }
   :global(.period-grid) { align-items: end; }
   :global(label) { display: grid; gap: 0.35rem; font-size: 0.92rem; }
-  :global(input), :global(select), :global(button) { font: inherit; }
-  :global(input), :global(select) { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; }
+  :global(input), :global(select), :global(button), :global(textarea) { font: inherit; }
+  :global(input), :global(select), :global(textarea) { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; }
   :global(.checkbox) { align-self: end; display: flex; gap: 0.5rem; align-items: center; }
   :global(.session-list), :global(.timeline) { display: grid; gap: 0.75rem; }
   :global(.session-item), :global(.actions button), :global(.drawer-head button), :global(.filters-title button) { border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 0.9rem; text-align: left; }

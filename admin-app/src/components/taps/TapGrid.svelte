@@ -5,6 +5,7 @@
   export let canControl = false;
   export let canDisplayOverride = false;
   export let permissions = {};
+  export let readOnlyReason = '';
 </script>
 
 {#if taps.length > 0}
@@ -16,6 +17,7 @@
           {canControl}
           {canDisplayOverride}
           {permissions}
+          {readOnlyReason}
           on:open-detail
           on:assign
           on:display-settings

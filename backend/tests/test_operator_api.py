@@ -2,6 +2,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import models
+from operator_stream import operator_stream_hub
 
 
 def _auth_headers(client, username: str = "operator") -> dict[str, str]:
@@ -138,6 +139,40 @@ def _seed_operator_fixture(db_session):
     db_session.commit()
 
 
+def _seed_closed_timeout_visit(db_session):
+    now = datetime.now(timezone.utc)
+    guest = models.Guest(
+        last_name="Petrova",
+        first_name="Anna",
+        patronymic="Sergeevna",
+        phone_number="+79990002233",
+        date_of_birth=date(1992, 2, 2),
+        id_document="4510 654321",
+        balance=Decimal("350.00"),
+        is_active=True,
+    )
+    card = models.Card(
+        card_uid="04AB7815CD6B81",
+        guest=guest,
+        status="inactive",
+    )
+    visit = models.Visit(
+        guest=guest,
+        card=card,
+        card_uid=card.card_uid,
+        status="closed",
+        opened_at=now,
+        closed_at=now,
+        closed_reason="timeout_close",
+        active_tap_id=None,
+        lock_set_at=None,
+        card_returned=True,
+    )
+    db_session.add_all([guest, card, visit])
+    db_session.commit()
+    return visit
+
+
 def test_operator_today_returns_projection_bundle(client, db_session):
     _seed_operator_fixture(db_session)
 
@@ -191,3 +226,103 @@ def test_operator_card_lookup_returns_context_summary_and_recent_events(client, 
     assert len(payload["recent_events"]) >= 2
     assert "open-history" in payload["allowed_quick_actions"]
     assert "top-up" not in payload["allowed_quick_actions"]
+
+
+def test_operator_sessions_return_projection_filters_and_detail(client, db_session):
+    _seed_operator_fixture(db_session)
+    closed_visit = _seed_closed_timeout_visit(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    active_only = client.get(
+        "/api/operator/sessions",
+        params={"active_only": "true"},
+        headers=headers,
+    )
+    assert active_only.status_code == 200
+    active_payload = active_only.json()
+    assert active_payload["header"]["active_sessions"] == 1
+    assert len(active_payload["pinned_active_sessions"]) == 1
+    assert len(active_payload["items"]) == 1
+    assert active_payload["items"][0]["visit_id"] == active_payload["pinned_active_sessions"][0]["visit_id"]
+
+    filtered = client.get(
+        "/api/operator/sessions",
+        params={
+            "period_preset": "today",
+            "completion_source": "timeout",
+            "zero_volume_abort_only": "true",
+        },
+        headers=headers,
+    )
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["header"]["zero_volume_abort_sessions"] == 1
+    assert len(filtered_payload["items"]) == 1
+    timeout_item = filtered_payload["items"][0]
+    assert timeout_item["visit_id"] == str(closed_visit.visit_id)
+    assert timeout_item["completion_source"] == "timeout"
+    assert timeout_item["has_zero_volume_abort"] is True
+
+    detail_response = client.get(
+        f"/api/operator/sessions/{active_payload['pinned_active_sessions'][0]['visit_id']}",
+        headers=headers,
+    )
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["summary"]["visit_status"] == "active"
+    assert detail_payload["summary"]["has_unsynced"] is True
+    assert detail_payload["display_context"]["available"] is True
+    assert detail_payload["safe_actions"]["close"]["allowed"] is True
+    assert detail_payload["safe_actions"]["close"]["confirm_required"] is True
+    assert detail_payload["safe_actions"]["force_unlock"]["allowed"] is True
+    assert detail_payload["safe_actions"]["mark_lost_card"]["allowed"] is True
+    assert any(item["kind"] == "open" for item in detail_payload["narrative"])
+    assert any(item["kind"] == "sync_result" for item in detail_payload["narrative"])
+
+
+def test_operator_system_health_returns_mode_queue_and_blocked_actions(client, db_session):
+    _seed_operator_fixture(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    response = client.get("/api/operator/system", headers=headers)
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["mode"] == "controller_only"
+    assert payload["queue_summary"]["pending_items"] == 1
+    assert payload["queue_summary"]["unsynced_sessions"] == 1
+    assert payload["stale_summary"]["stale_device_count"] >= 2
+    assert payload["blocked_actions"]["tap_control"]["allowed"] is False
+    assert payload["blocked_actions"]["session_mutation"]["allowed"] is False
+    assert payload["blocked_actions"]["incident_mutation"]["allowed"] is False
+    assert payload["blocked_actions"]["emergency_stop"]["allowed"] is True
+    assert payload["actionable_next_steps"]
+
+
+def test_operator_stream_ticket_and_websocket_emit_invalidations(client, db_session):
+    _seed_operator_fixture(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    ticket_response = client.post("/api/operator/stream-ticket", headers=headers)
+    assert ticket_response.status_code == 200
+    ticket_payload = ticket_response.json()
+    assert ticket_payload["ticket"]
+    assert ticket_payload["heartbeat_interval_ms"] == 5000
+    assert ticket_payload["websocket_path"] == "/api/operator/stream"
+
+    with client.websocket_connect(f"/api/operator/stream?ticket={ticket_payload['ticket']}") as websocket:
+        hello = websocket.receive_json()
+        assert hello["event_type"] == "hello"
+        assert hello["resource"] == "system"
+
+        operator_stream_hub.emit_invalidation(
+            resource="session",
+            entity_id="visit-123",
+            severity="warning",
+            reason="test_invalidation",
+        )
+        invalidation = websocket.receive_json()
+        assert invalidation["event_type"] == "session.updated"
+        assert invalidation["entity_id"] == "visit-123"
+        assert invalidation["severity"] == "warning"
+        assert invalidation["reason"] == "test_invalidation"

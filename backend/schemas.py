@@ -654,6 +654,58 @@ class SessionHistoryDetail(SessionHistoryListItem):
     narrative: list[SessionNarrativeEvent] = []
     display_context: Optional[SessionDisplayContext] = None
 
+
+class OperatorSessionJournalFilterParams(BaseModel):
+    period_preset: Literal["today", "shift", "range"] = "today"
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    tap_id: Optional[int] = None
+    status: Optional[str] = None
+    card_uid: Optional[str] = None
+    completion_source: Optional[str] = None
+    incident_only: bool = False
+    unsynced_only: bool = False
+    zero_volume_abort_only: bool = False
+    active_only: bool = False
+
+
+class OperatorSessionJournalHeader(BaseModel):
+    total_sessions: int = 0
+    active_sessions: int = 0
+    incident_sessions: int = 0
+    unsynced_sessions: int = 0
+    zero_volume_abort_sessions: int = 0
+
+
+class OperatorSessionJournalItem(SessionHistoryListItem):
+    is_active: bool = False
+    has_zero_volume_abort: bool = False
+    last_operator_action: Optional[SessionOperatorAction] = None
+
+
+class OperatorSessionActionPolicySet(BaseModel):
+    close: "OperatorActionPolicy"
+    force_unlock: "OperatorActionPolicy"
+    reconcile: "OperatorActionPolicy"
+    mark_lost_card: "OperatorActionPolicy"
+
+
+class OperatorSessionJournalModel(BaseModel):
+    generated_at: datetime
+    applied_filters: OperatorSessionJournalFilterParams
+    header: OperatorSessionJournalHeader
+    pinned_active_sessions: list[OperatorSessionJournalItem] = []
+    items: list[OperatorSessionJournalItem] = []
+
+
+class OperatorSessionDetailModel(BaseModel):
+    generated_at: datetime
+    summary: OperatorSessionJournalItem
+    narrative: list[SessionNarrativeEvent] = []
+    display_context: Optional[SessionDisplayContext] = None
+    operator_actions: list[SessionOperatorAction] = []
+    safe_actions: OperatorSessionActionPolicySet
+
 class VisitReportLostCardResponse(BaseModel):
     visit: Visit
     lost_card: LostCard
@@ -970,6 +1022,11 @@ class IncidentSeverityMatrixItem(BaseModel):
 class IncidentMutationCapability(BaseModel):
     enabled: bool
     reason: Optional[str] = None
+    allowed: bool = False
+    confirm_required: bool = False
+    second_approval_required: bool = False
+    reason_code_required: bool = False
+    disabled_reason: Optional[str] = None
 
 
 class IncidentMutationCapabilities(BaseModel):
@@ -1024,6 +1081,7 @@ class SystemSubsystemSummary(BaseModel):
 
 class SystemOperationalSummary(BaseModel):
     emergency_stop: bool
+    value: Optional[str] = None
     overall_state: Literal["ok", "warning", "critical"]
     generated_at: datetime
     open_incident_count: int = 0
@@ -1035,6 +1093,46 @@ class OperatorActionPolicy(BaseModel):
     second_approval_required: bool = False
     reason_code_required: bool = False
     disabled_reason: Optional[str] = None
+
+
+class OperatorSystemQueueSummary(BaseModel):
+    pending_items: int = 0
+    unsynced_sessions: int = 0
+    oldest_pending_age_seconds: Optional[int] = None
+    retry_count: int = 0
+
+
+class OperatorSystemStaleSummary(BaseModel):
+    stale_device_count: int = 0
+    stale_controller_count: int = 0
+    stale_reader_count: int = 0
+    stale_display_count: int = 0
+
+
+class OperatorStreamTicket(BaseModel):
+    ticket: str
+    expires_at: datetime
+    heartbeat_interval_ms: int = 5000
+    websocket_path: str = "/api/operator/stream"
+
+
+class OperatorStreamEvent(BaseModel):
+    event_type: str
+    resource: Optional[str] = None
+    entity_id: Optional[str] = None
+    generated_at: datetime
+    severity: Literal["info", "warning", "critical"] = "info"
+    reason: Optional[str] = None
+    sequence: int = 0
+
+
+class OperatorConnectionStatus(BaseModel):
+    mode: Literal["online", "backend_degraded", "controller_only", "offline"] = "online"
+    transport: Literal["websocket", "short_polling", "reduced_polling"] = "websocket"
+    last_heartbeat_at: Optional[datetime] = None
+    last_snapshot_at: Optional[datetime] = None
+    stale: bool = False
+    reason: Optional[str] = None
 
 
 class OperatorSubsystemStatus(BaseModel):
@@ -1118,6 +1216,15 @@ class OperatorTodayModel(BaseModel):
     priority_cta_source: Optional[str] = None
 
 
+class OperatorSystemHealthModel(SystemOperationalSummary):
+    mode: Literal["online", "backend_degraded", "controller_only", "offline"] = "online"
+    reason: Optional[str] = None
+    queue_summary: Optional[OperatorSystemQueueSummary] = None
+    stale_summary: Optional[OperatorSystemStaleSummary] = None
+    blocked_actions: dict[str, OperatorActionPolicy] = Field(default_factory=dict)
+    actionable_next_steps: list[str] = Field(default_factory=list)
+
+
 class CardGuestContextGuest(BaseModel):
     guest_id: uuid.UUID
     full_name: str
@@ -1166,3 +1273,6 @@ class AuditLog(BaseModel):
     details: Optional[str] = None
     timestamp: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+OperatorSessionActionPolicySet.model_rebuild()

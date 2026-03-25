@@ -8,6 +8,7 @@
 
   export let tap;
   export let permissions = {};
+  export let readOnlyReason = '';
 
   const dispatch = createEventDispatcher();
   const HISTORY_LIMIT = 12;
@@ -64,7 +65,19 @@
     canControl: true,
     canDisplayOverride: true,
   });
-  $: sessionQuickActions = tapQuickActions.filter((action) => ['stop', 'toggle-lock'].includes(action.id));
+  $: sessionQuickActions = tapQuickActions
+    .filter((action) => ['stop', 'toggle-lock'].includes(action.id))
+    .map((action) => {
+      if (!readOnlyReason) {
+        return action;
+      }
+      return {
+        ...action,
+        guarded: true,
+        disabled: true,
+        reason: readOnlyReason,
+      };
+    });
   $: operatorQuickActions = tapQuickActions.filter((action) => ['screen', 'history'].includes(action.id));
   $: serviceActions = [
     {
@@ -373,8 +386,8 @@
                   <button
                     class={action.tone === 'success' ? 'secondary success' : 'secondary'}
                     type="button"
-                    disabled={action.key === 'assign' || action.key === 'unassign' ? kegGuard.disabled : maintenanceGuard.disabled}
-                    title={action.key === 'assign' || action.key === 'unassign' ? kegGuard.reason : maintenanceGuard.reason}
+                    disabled={Boolean(readOnlyReason) || (action.key === 'assign' || action.key === 'unassign' ? kegGuard.disabled : maintenanceGuard.disabled)}
+                    title={readOnlyReason || (action.key === 'assign' || action.key === 'unassign' ? kegGuard.reason : maintenanceGuard.reason)}
                     on:click={() => emit(action.key)}
                   >
                     {action.label}
@@ -385,6 +398,9 @@
             </article>
           {/if}
         </div>
+        {#if readOnlyReason}
+          <p class="action-note">{readOnlyReason}</p>
+        {/if}
       </section>
 
       <section class="drawer-section">

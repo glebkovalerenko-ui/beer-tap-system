@@ -1,13 +1,15 @@
 <script>
   import { onMount } from 'svelte';
-  import { roleStore } from '../stores/roleStore.js';
-  import { systemStore } from '../stores/systemStore.js';
+
+  import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import SystemHealthSummary from '../components/system/SystemHealthSummary.svelte';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
+  import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
+  import { roleStore } from '../stores/roleStore.js';
+  import { systemStore } from '../stores/systemStore.js';
 
   let incidentFocusSource = '';
 
-  
   /** @type {{ canViewHealth: boolean, canUseEngineeringActions: boolean, canManageSystemSettings: boolean }} */
   let systemPermissions = {
     canViewHealth: false,
@@ -35,25 +37,80 @@
 
 {#if !systemPermissions.canViewHealth}
   <section class="ui-card restricted">
-    <h1>Система</h1>
-    <p>Раздел с operational health, устройствами и синхронизацией доступен оператору, старшему смены и инженеру по назначенным правам.</p>
+    <h1>System</h1>
+    <p>This operational health section is available only to roles with system health permissions.</p>
   </section>
 {:else}
   <section class="page">
     <div class="page-header">
-      <h1>{ROUTE_COPY.system.title}</h1>
-      <p>{ROUTE_COPY.system.description} Глубокие инженерные действия и настройки остаются отдельным permission-gated слоем.</p>
-    </div>
-    <div class="ui-card panel">
-      {#if incidentFocusSource}
-        <div class="incident-context">Открыто из инцидента: сначала проверьте источник <strong>{incidentFocusSource}</strong>, затем состояние связанных устройств и очередей обмена.</div>
-      {/if}
-      <div class="hero">
-        <div><span class="eyebrow">Общий статус</span><strong>{$systemStore.health.overall === 'ok' ? 'Работаем штатно' : 'Нужно внимание смены'}</strong></div>
-        <div><span class="eyebrow">Открытые инциденты</span><strong>{$systemStore.openIncidentCount}</strong></div>
-        <div><span class="eyebrow">Экстренная остановка</span><strong>{$systemStore.emergencyStop ? 'Включена' : 'Выключена'}</strong></div>
+      <div>
+        <h1>{ROUTE_COPY.system.title}</h1>
+        <p>{ROUTE_COPY.system.description} Deep engineering actions and settings remain permission-gated.</p>
       </div>
+      <DataFreshnessChip
+        label="System"
+        lastFetchedAt={$systemStore.lastFetchedAt}
+        staleAfterMs={$systemStore.staleTtlMs}
+        mode={$operatorConnectionStore.mode}
+        transport={$operatorConnectionStore.transport}
+        reason={$operatorConnectionStore.reason || $systemStore.reason}
+      />
     </div>
+
+    {#if incidentFocusSource}
+      <div class="ui-card incident-context">Opened from incident context: check source <strong>{incidentFocusSource}</strong> first, then inspect related devices and sync queues.</div>
+    {/if}
+
+    {#if $operatorConnectionStore.readOnly}
+      <section class="ui-card degraded-panel">
+        <strong>Read-only mode</strong>
+        <p>{$operatorConnectionStore.reason || $systemStore.reason || 'Backend currently degraded. Risky actions stay blocked until fresh data returns.'}</p>
+      </section>
+    {/if}
+
+    <div class="hero-grid">
+      <section class="ui-card panel hero-card">
+        <div class="hero">
+          <div><span class="eyebrow">Overall state</span><strong>{$systemStore.health.overall === 'ok' ? 'Operating normally' : 'Needs operator attention'}</strong></div>
+          <div><span class="eyebrow">Mode</span><strong>{$systemStore.mode || 'online'}</strong></div>
+          <div><span class="eyebrow">Open incidents</span><strong>{$systemStore.openIncidentCount}</strong></div>
+          <div><span class="eyebrow">Emergency stop</span><strong>{$systemStore.emergencyStop ? 'Enabled' : 'Disabled'}</strong></div>
+        </div>
+      </section>
+
+      <section class="ui-card panel hero-card">
+        <div class="hero">
+          <div><span class="eyebrow">Queue backlog</span><strong>{$systemStore.queueSummary?.pending_items || 0}</strong></div>
+          <div><span class="eyebrow">Unsynced sessions</span><strong>{$systemStore.queueSummary?.unsynced_sessions || 0}</strong></div>
+          <div><span class="eyebrow">Oldest pending</span><strong>{$systemStore.queueSummary?.oldest_pending_age_seconds != null ? `${Math.round($systemStore.queueSummary.oldest_pending_age_seconds)} s` : '-'}</strong></div>
+          <div><span class="eyebrow">Stale devices</span><strong>{$systemStore.staleSummary?.stale_device_count || 0}</strong></div>
+        </div>
+      </section>
+    </div>
+
+      <section class="ui-card panel">
+      <div class="section-head">
+        <div>
+          <h2>What is blocked right now</h2>
+          <p>This section shows not only health state, but which actions are unsafe until backend freshness returns.</p>
+        </div>
+      </div>
+      <div class="blocked-grid">
+        {#each Object.entries($systemStore.blockedActions || {}) as [key, policy]}
+          <article class="blocked-item">
+            <span>{key}</span>
+            <strong>{policy.allowed ? 'Available' : 'Blocked'}</strong>
+            <p>{policy.disabled_reason || (policy.allowed ? 'This action can be used in the current context.' : 'Wait for a fresh system snapshot before using this action.')}</p>
+          </article>
+        {/each}
+      </div>
+      <ul class="next-steps">
+        {#each $systemStore.actionableNextSteps || [] as step}
+          <li>{step}</li>
+        {/each}
+      </ul>
+    </section>
+
     <SystemHealthSummary
       summary={$systemStore}
       canUseEngineeringActions={systemPermissions.canUseEngineeringActions}
@@ -63,12 +120,22 @@
 {/if}
 
 <style>
-  .restricted,.panel{padding:1rem}
-  .page{display:grid;gap:1rem}
-  .page-header h1,.page-header p{margin:0}
-  .page-header{display:grid;gap:.35rem}
-  .hero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
-  .eyebrow{display:block;color:var(--text-secondary);font-size:.8rem;text-transform:uppercase}
-  .incident-context{margin-bottom:1rem;padding:.85rem 1rem;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e3a8a}
-  @media (max-width: 860px){.hero{grid-template-columns:1fr}}
+  .restricted, .panel { padding: 1rem; }
+  .page { display: grid; gap: 1rem; }
+  .page-header, .section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: start; flex-wrap: wrap; }
+  .page-header h1, .page-header p, .section-head h2, .section-head p { margin: 0; }
+  .page-header { gap: 0.75rem 1rem; }
+  .hero-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .hero { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .eyebrow { display: block; color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; }
+  .incident-context { padding: 0.85rem 1rem; border: 1px solid #bfdbfe; border-radius: 12px; background: #eff6ff; color: #1e3a8a; }
+  .degraded-panel { border: 1px solid #fcd34d; background: #fff7ed; color: #9a3412; padding: 1rem; display: grid; gap: 0.35rem; }
+  .degraded-panel p { margin: 0; }
+  .blocked-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+  .blocked-item { border: 1px solid #e5e7eb; border-radius: 14px; padding: 0.85rem; display: grid; gap: 0.3rem; background: #fff; }
+  .blocked-item p { margin: 0; color: var(--text-secondary); }
+  .next-steps { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
+  @media (max-width: 860px) {
+    .hero-grid, .hero { grid-template-columns: 1fr; }
+  }
 </style>

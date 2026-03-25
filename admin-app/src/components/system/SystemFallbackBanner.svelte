@@ -1,8 +1,11 @@
 <script>
-  export let demoMode = false;
   import { onDestroy, onMount } from 'svelte';
-  import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
 
+  import { nfcReaderStore } from '../../stores/nfcReaderStore.js';
+  import { operatorConnectionStore } from '../../stores/operatorConnectionStore.js';
+  import { systemStore } from '../../stores/systemStore.js';
+
+  export let demoMode = false;
   export let online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   export let nfcStatus = 'ok';
 
@@ -22,29 +25,41 @@
 
   $: nfcStatus = $nfcReaderStore.status;
   $: nfcHasWarning = nfcStatus === 'error' || nfcStatus === 'disconnected' || nfcStatus === 'recovering';
-  $: hasWarning = demoMode || !online || nfcHasWarning;
+  $: operatorBackendWarning = $operatorConnectionStore.mode !== 'online' || $operatorConnectionStore.transport !== 'websocket';
+  $: hasWarning = demoMode || !online || nfcHasWarning || operatorBackendWarning;
 </script>
 
 {#if hasWarning}
-  <section class="banner" class:error={!online || nfcStatus === 'error'}>
+  <section class="banner" class:error={!online || nfcStatus === 'error' || $operatorConnectionStore.mode === 'offline'}>
     {#if demoMode}
-      <strong>Демо-режим:</strong> часть данных может быть тестовой для стабильного показа.
+      <strong>Demo mode:</strong> part of the data may be test data for a stable presentation.
     {/if}
 
     {#if !online}
-      <span>Сеть недоступна. Используйте действия, не требующие онлайн-подтверждения.</span>
+      <span>Network is unavailable. Use only actions that do not require online confirmation.</span>
+    {/if}
+
+    {#if $operatorConnectionStore.mode !== 'online'}
+      <span>
+        Backend: {$operatorConnectionStore.mode === 'offline' ? 'offline' : 'degraded'}.
+        {$operatorConnectionStore.reason || $systemStore.reason || 'Опасные действия временно переведены в read-only.'}
+      </span>
+    {/if}
+
+    {#if $operatorConnectionStore.transport !== 'websocket' && $operatorConnectionStore.mode === 'online'}
+      <span>Realtime переключён на {$operatorConnectionStore.transport === 'short_polling' ? 'short polling' : 'reduced polling'} до восстановления websocket.</span>
     {/if}
 
     {#if nfcStatus === 'disconnected'}
-      <span>NFC-считыватель отключен. Подключите устройство, приложение подхватит его автоматически.</span>
+      <span>NFC reader is disconnected. Reconnect the device and the app will pick it up automatically.</span>
     {/if}
 
     {#if nfcStatus === 'recovering'}
-      <span>NFC восстанавливается после потери подключения. Перезапуск приложения не требуется.</span>
+      <span>NFC is recovering after a disconnect. App restart is not required.</span>
     {/if}
 
     {#if nfcStatus === 'error'}
-      <span>NFC недоступен из-за ошибки runtime. Проверьте лог Admin App и состояние PC/SC.</span>
+      <span>NFC is unavailable because of a runtime error. Check the Admin App logs and PC/SC state.</span>
     {/if}
   </section>
 {/if}
@@ -62,6 +77,7 @@
     gap: 8px 12px;
     font-size: 0.88rem;
   }
+
   .banner.error {
     border-color: #ffc9cf;
     background: #fff2f4;

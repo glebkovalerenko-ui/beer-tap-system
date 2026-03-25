@@ -1,9 +1,11 @@
 <script>
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import { guestStore } from '../stores/guestStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
+  import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import { shiftStore } from '../stores/shiftStore.js';
   import { pourStore } from '../stores/pourStore.js';
@@ -57,6 +59,9 @@
   $: canToggleBlock = workflow.permissions.canToggleBlock;
   $: canReissue = workflow.permissions.canReissue;
   $: hasManagementAccess = canToggleBlock || canReissue;
+  $: routeReadOnlyReason = $operatorConnectionStore.readOnly
+    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Card and guest mutations stay read-only until fresh data returns.')
+    : '';
 
   $: guests = $guestStore.guests || [];
   $: activeVisits = $visitStore.activeVisits || [];
@@ -79,6 +84,14 @@
   $: hasLookup = cardsGuestsModel.hasLookup;
   $: lookupSummaryItems = cardsGuestsModel.lookupSummaryItems;
   $: quickActions = cardsGuestsModel.quickActions;
+
+  function ensureWritable() {
+    if (!routeReadOnlyReason) {
+      return true;
+    }
+    uiStore.notifyWarning(routeReadOnlyReason);
+    return false;
+  }
 
   function selectGuest(guestId) {
     cardsGuestsWorkflowStore.setSelectedGuestId(guestId);
@@ -106,6 +119,9 @@
   }
 
   async function handleRestoreLost(event) {
+    if (!ensureWritable()) {
+      return;
+    }
     if (!canReissue) {
       uiStore.notifyWarning('Снятие отметки lost доступно только ролям с правом на перевыпуск.');
       return;
@@ -149,6 +165,9 @@
   }
 
   async function handleOpenNewVisit(event) {
+    if (!ensureWritable()) {
+      return;
+    }
     if (!canOpenVisit) {
       uiStore.notifyWarning('Открытие нового визита недоступно для текущей роли.');
       return;
@@ -180,6 +199,9 @@
   }
 
   async function handleSaveTopUp(event) {
+    if (!ensureWritable()) {
+      return;
+    }
     topUpError = '';
     try {
       await guestStore.topUpBalance(selectedGuest.guest_id, event.detail);
@@ -191,6 +213,9 @@
   }
 
   async function handleToggleBlock() {
+    if (!ensureWritable()) {
+      return;
+    }
     if (!canToggleBlock) {
       uiStore.notifyWarning('Блокировка гостя недоступна для текущей роли.');
       return;
@@ -214,6 +239,9 @@
   }
 
   async function handleMarkLost() {
+    if (!ensureWritable()) {
+      return;
+    }
     if (!canReissue) {
       uiStore.notifyWarning('Lost / перевыпуск недоступны для текущей роли.');
       return;
@@ -274,6 +302,9 @@
   }
 
   async function submitReissue() {
+    if (!ensureWritable()) {
+      return;
+    }
     const nextUid = reissueUidInput.trim();
     const validation = validateReissueInput({ canReissue, selectedGuest, nextUid });
     if (!validation.ok) {
@@ -310,6 +341,9 @@
   }
 
   async function handleSaveGuest(event) {
+    if (!ensureWritable()) {
+      return;
+    }
     if (!hasManagementAccess) {
       uiStore.notifyWarning('Редактирование гостя недоступно для текущей роли.');
       return;
@@ -347,9 +381,24 @@
         <p>{ROUTE_COPY.cardsGuests.description}</p>
       </div>
       <div class="header-actions">
+        <DataFreshnessChip
+          label="Cards & Guests"
+          lastFetchedAt={$guestStore.lastFetchedAt || $visitStore.lastFetchedAt}
+          staleAfterMs={Math.min($guestStore.staleTtlMs || 30000, $visitStore.staleTtlMs || 15000)}
+          mode={$operatorConnectionStore.mode}
+          transport={$operatorConnectionStore.transport}
+          reason={$operatorConnectionStore.reason}
+        />
         <button on:click={() => ensureCardsGuestsData({ reason: 'manual-refresh', force: true })} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
       </div>
     </header>
+
+    {#if routeReadOnlyReason}
+      <section class="ui-card warning-banner">
+        <strong>Read-only mode.</strong>
+        <span>{routeReadOnlyReason}</span>
+      </section>
+    {/if}
 
     <CardLookupPanel
       title="Проверка карты и помощь гостю"
@@ -518,7 +567,9 @@
   .page-header { display: flex; justify-content: space-between; gap: 1rem; align-items: end; }
   .page-header h1, .page-header p { margin: 0; }
   .page-header p { color: var(--text-secondary); }
+  .header-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
   .operator-panel, .management-modal, .reissue-panel { display: grid; gap: 0.85rem; }
+  .warning-banner { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; padding: 0.9rem 1rem; border: 1px solid #fcd34d; border-radius: 14px; background: #fff7ed; color: #9a3412; }
   .section-top { display: flex; justify-content: space-between; gap: 0.75rem; align-items: start; }
   .section-top h2, .section-top p { margin: 0; }
   .empty-state { min-height: 220px; display: grid; align-content: center; gap: 0.5rem; }

@@ -8,6 +8,7 @@ import schemas
 import security
 from crud import system_crud, incident_crud
 from database import get_db
+from operator_stream import operator_stream_hub
 
 router = APIRouter(
     prefix="/system",
@@ -42,6 +43,10 @@ def set_emergency_stop(
         key=EMERGENCY_STOP_KEY,
         value=state_update.value
     )
+    operator_stream_hub.emit_invalidation(resource="system", severity="critical", reason="emergency_stop_changed")
+    operator_stream_hub.emit_invalidation(resource="today", severity="critical", reason="emergency_stop_changed")
+    operator_stream_hub.emit_invalidation(resource="taps", severity="critical", reason="emergency_stop_changed")
+    operator_stream_hub.emit_invalidation(resource="incident", severity="critical", reason="emergency_stop_changed")
     return incident_crud.get_system_summary(db)
 
 

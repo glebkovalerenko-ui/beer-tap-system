@@ -22,6 +22,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 import models, schemas, security
 from database import DATABASE_URL, engine, get_db
 from crud import pour_crud
+from operator_stream import operator_stream_hub
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 from startup_checks import verify_database_ready
 
@@ -200,6 +201,11 @@ def sync_pours(sync_data: schemas.SyncRequest, request: Request, db: Session = D
             alembic_revision,
             len(response_results),
         )
+        operator_stream_hub.emit_invalidation(resource="today", reason="sync_pours_batch")
+        operator_stream_hub.emit_invalidation(resource="taps", reason="sync_pours_batch")
+        operator_stream_hub.emit_invalidation(resource="session", reason="sync_pours_batch")
+        operator_stream_hub.emit_invalidation(resource="incident", reason="sync_pours_batch")
+        operator_stream_hub.emit_invalidation(resource="system", reason="sync_pours_batch")
     except HTTPException:
         db.rollback()
         raise

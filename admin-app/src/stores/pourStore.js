@@ -26,7 +26,7 @@ function createPourStore() {
   };
   const { subscribe, set, update } = writable(initialState);
 
-  async function fetchPours() {
+  async function fetchOverview({ force = false } = {}) {
     const token = get(sessionStore).token;
     if (!token) {
       console.warn('Опрос наливов не запущен: отсутствует токен авторизации.');
@@ -34,7 +34,7 @@ function createPourStore() {
     }
 
     update((s) => {
-      if (s.pours.length === 0 && s.feedItems.length === 0) {
+      if (force || (s.pours.length === 0 && s.feedItems.length === 0)) {
         return { ...s, loading: true, error: null };
       }
       return s;
@@ -56,7 +56,7 @@ function createPourStore() {
         error: null,
       });
     } catch (error) {
-      const errorMessage = toErrorMessage('pourStore.fetchPours', error);
+      const errorMessage = toErrorMessage('pourStore.fetchOverview', error);
       update((s) => ({ ...s, loading: false, error: errorMessage }));
       stopPolling();
     }
@@ -65,8 +65,8 @@ function createPourStore() {
   function startPolling() {
     if (pollInterval) return;
     console.log('Запуск опроса наливов.');
-    fetchPours();
-    pollInterval = setInterval(fetchPours, POLL_INTERVAL_MS);
+    fetchOverview();
+    pollInterval = setInterval(fetchOverview, POLL_INTERVAL_MS);
   }
 
   function stopPolling() {
@@ -88,6 +88,7 @@ function createPourStore() {
 
   return {
     subscribe,
+    fetchOverview,
   };
 }
 

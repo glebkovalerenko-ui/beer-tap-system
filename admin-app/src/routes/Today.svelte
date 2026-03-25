@@ -1,23 +1,25 @@
 <script>
-  import { incidentStore } from '../stores/incidentStore.js';
-  import { pourStore } from '../stores/pourStore.js';
-  import { systemStore } from '../stores/systemStore.js';
-  import { tapStore } from '../stores/tapStore.js';
-  import { visitStore } from '../stores/visitStore.js';
+  import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
-  import { uiStore } from '../stores/uiStore.js';
-  import { roleStore } from '../stores/roleStore.js';
   import { buildTodayFeedItems } from '../lib/operator/todayFeedModel.js';
   import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
+  import { incidentStore } from '../stores/incidentStore.js';
+  import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
+  import { pourStore } from '../stores/pourStore.js';
+  import { roleStore } from '../stores/roleStore.js';
+  import { systemStore } from '../stores/systemStore.js';
+  import { tapStore } from '../stores/tapStore.js';
+  import { uiStore } from '../stores/uiStore.js';
+  import { visitStore } from '../stores/visitStore.js';
 
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
 
   function openTap(item) {
     navigateWithFocus({ target: 'tap', tapId: item.tap_id, source: item.tap_name || item.title });
-    uiStore.notifySuccess(`Переход к крану ${item.tap_name || item.title || item.tap_id || ''}`.trim());
+    uiStore.notifySuccess(`Opened tap ${item.tap_name || item.title || item.tap_id || ''}`.trim());
   }
 
   function openSession(item) {
@@ -67,7 +69,6 @@
     permissions: $roleStore.permissions || {},
     dismissedAttentionKeys,
   });
-  $: criticalIncidents = todayModel.criticalIncidents;
   $: todaySummaryWarning = todayModel.todaySummaryWarning;
   $: attentionItems = todayModel.attentionItems;
   $: operatorActionItems = todayModel.operatorActionItems;
@@ -78,21 +79,32 @@
   $: sessionsToday = Number($pourStore.todaySummary?.sessions_count || 0);
   $: todaySummary = $pourStore.todaySummary || null;
   $: canViewIncidents = Boolean($roleStore.permissions?.incidents_view);
-  $: incidentsAccessHint = 'Нет доступа к инцидентам. Нужна роль с правом incidents_view.';
+  $: routeReadOnlyReason = $operatorConnectionStore.readOnly
+    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Navigation stays available, risky actions are read-only.')
+    : '';
+  $: incidentsAccessHint = 'No access to incidents. incidents_view permission is required.';
   $: priorityCta = todayModel.priorityCta;
 </script>
 
 <section class="today-page">
   <section class="hero ui-card">
     <div class="hero-copy">
-      <span class="eyebrow">Операционный фокус</span>
+      <span class="eyebrow">Operator focus</span>
       <h1>{ROUTE_COPY.today.title}</h1>
       <p>{ROUTE_COPY.today.description}</p>
     </div>
     <div class="hero-actions">
+      <DataFreshnessChip
+        label="Today"
+        lastFetchedAt={$pourStore.lastFetchedAt}
+        staleAfterMs={$pourStore.staleTtlMs}
+        mode={$operatorConnectionStore.mode}
+        transport={$operatorConnectionStore.transport}
+        reason={$operatorConnectionStore.reason}
+      />
       <button class="cta-button primary" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
       {#if canViewIncidents}
-        <a class="cta-button incidents-entry" href="#/incidents">Инциденты</a>
+        <a class="cta-button incidents-entry" href="#/incidents">Incidents</a>
       {:else}
         <button
           class="cta-button incidents-entry"
@@ -101,10 +113,10 @@
           title={incidentsAccessHint}
           aria-label={incidentsAccessHint}
         >
-          Инциденты
+          Incidents
         </button>
       {/if}
-      <a class="cta-button secondary" href="#/taps">Все краны</a>
+      <a class="cta-button secondary" href="#/taps">All taps</a>
     </div>
     <div class="stats" data-muted={deEmphasizeSecondaryStats}>
       {#each heroStats as item}
@@ -116,9 +128,16 @@
     </div>
   </section>
 
+  {#if routeReadOnlyReason}
+    <div class="summary-warning" role="status">
+      <strong>Read-only mode.</strong>
+      <span>{routeReadOnlyReason}</span>
+    </div>
+  {/if}
+
   {#if todaySummaryWarning}
     <div class="summary-warning" role="status">
-      <strong>Сводка KPI неполная.</strong>
+      <strong>KPI summary is incomplete.</strong>
       <span>{todaySummaryWarning}</span>
     </div>
   {/if}
@@ -127,19 +146,19 @@
     <aside class="ui-card panel attention-panel priority-panel">
       <div class="section-head">
         <div>
-          <h2>Что требует действия сейчас</h2>
-          <p>Один главный шаг для оператора сверху, ниже — короткий список вторичных задач без конкуренции с обзорной лентой.</p>
+          <h2>What needs action right now</h2>
+          <p>One primary operator step sits on top, followed by a short secondary queue without competing with the overview feed.</p>
         </div>
         <span class="count">{attentionItems.length}</span>
       </div>
 
       <section class="next-actions">
         <div class="next-actions-head">
-          <h3>Приоритетное действие</h3>
+          <h3>Primary action</h3>
           <span>{primaryActionItem ? 1 : 0}</span>
         </div>
         {#if !primaryActionItem}
-          <p>Критичных действий сейчас нет — можно работать по обычному регламенту смены.</p>
+          <p>There are no critical actions right now, so the shift can continue in normal mode.</p>
         {:else}
           <button class="next-action primary" data-severity={primaryActionItem.severity} on:click={() => openActionTarget(primaryActionItem)}>
             <span>{primaryActionItem.title}</span>
@@ -152,7 +171,7 @@
       {#if secondaryActionItems.length > 0}
         <section class="secondary-actions">
           <div class="next-actions-head compact">
-            <h3>Следом проверить</h3>
+            <h3>Check next</h3>
             <span>{secondaryActionItems.length}</span>
           </div>
           <div class="secondary-actions-list">
@@ -170,7 +189,7 @@
       {/if}
 
       {#if attentionItems.length === 0}
-        <p>Сейчас нет задач, требующих немедленного внимания.</p>
+        <p>There are no tasks requiring immediate attention right now.</p>
       {:else}
         <div class="attention-list">
           {#each attentionItems as item}
@@ -182,7 +201,7 @@
               </div>
               <div class="attention-actions">
                 <button on:click={() => openActionTarget(item)}>{item.actionLabel}</button>
-                <button class="subtle" on:click={() => dismissAttention(item)}>Скрыть</button>
+                <button class="subtle" on:click={() => dismissAttention(item)}>Hide</button>
               </div>
             </article>
           {/each}
@@ -193,20 +212,20 @@
     <section class="ui-card panel feed-panel">
       <div class="section-head">
         <div>
-          <h2>Обзорная лента событий</h2>
-          <p>{sessionsToday} сессий за {todaySummary?.period === 'shift' ? 'смену' : 'день'} · {$tapStore.summary?.pouringCount || 0} кранов льют прямо сейчас</p>
+          <h2>Overview event feed</h2>
+          <p>{sessionsToday} sessions for the {todaySummary?.period === 'shift' ? 'shift' : 'day'} - {$tapStore.summary?.pouringCount || 0} taps are pouring right now</p>
         </div>
       </div>
 
       {#if $pourStore.loading && visibleFeedItems.length === 0}
-        <p>Загрузка ленты событий...</p>
+        <p>Loading event feed...</p>
       {:else if $pourStore.error}
-        <p class="error">Ошибка загрузки ленты: {$pourStore.error}</p>
+        <p class="error">Feed load error: {$pourStore.error}</p>
       {:else}
         <EventFeed
           items={visibleFeedItems}
-          title="Обзорная лента событий"
-          emptyMessage="Нет событий, требующих показа в ленте."
+          title="Overview event feed"
+          emptyMessage="There are no events that need to be shown in the feed."
           onOpenTap={openTap}
           onOpenSession={openSession}
           onDismiss={dismissEvent}

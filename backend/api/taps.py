@@ -5,6 +5,7 @@ import uuid
 import schemas, security
 from crud import display_crud, tap_crud
 from database import get_db
+from operator_stream import operator_stream_hub
 
 router = APIRouter(
     prefix="/taps",
@@ -50,7 +51,11 @@ def update_tap(
     """
     Обновляет информацию о кране (например, его отображаемое имя или статус).
     """
-    return tap_crud.update_tap(db=db, tap_id=tap_id, tap_update=tap_update)
+    tap = tap_crud.update_tap(db=db, tap_id=tap_id, tap_update=tap_update)
+    operator_stream_hub.emit_invalidation(resource="taps", entity_id=str(tap_id), reason="tap_updated")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(tap_id), reason="tap_updated")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=str(tap_id), reason="tap_updated")
+    return tap
 
 @router.delete("/{tap_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Удалить кран")
 def delete_tap(
@@ -86,7 +91,11 @@ def assign_keg(
     - Статус крана -> 'active'.
     - Статус кеги -> 'in_use'.
     """
-    return tap_crud.assign_keg_to_tap(db=db, tap_id=tap_id, keg_id=assignment.keg_id)
+    tap = tap_crud.assign_keg_to_tap(db=db, tap_id=tap_id, keg_id=assignment.keg_id)
+    operator_stream_hub.emit_invalidation(resource="taps", entity_id=str(tap_id), reason="tap_assign_keg")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(tap_id), reason="tap_assign_keg")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=str(tap_id), reason="tap_assign_keg")
+    return tap
 
 @router.delete("/{tap_id}/keg", response_model=schemas.Tap, summary="Снять кегу с крана")
 def unassign_keg(
@@ -101,7 +110,11 @@ def unassign_keg(
     - Статус крана -> 'locked'.
     - Статус кеги -> 'full' (если она не была пустой).
     """
-    return tap_crud.unassign_keg_from_tap(db=db, tap_id=tap_id)
+    tap = tap_crud.unassign_keg_from_tap(db=db, tap_id=tap_id)
+    operator_stream_hub.emit_invalidation(resource="taps", entity_id=str(tap_id), reason="tap_unassign_keg")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(tap_id), reason="tap_unassign_keg")
+    operator_stream_hub.emit_invalidation(resource="system", entity_id=str(tap_id), reason="tap_unassign_keg")
+    return tap
 
 
 @router.get("/{tap_id}/display-config", response_model=schemas.TapDisplayConfig, summary="Get tap display config")
@@ -117,4 +130,5 @@ def update_tap_display_config(
     db: Session = Depends(get_db),
 ):
     config = display_crud.upsert_tap_display_config(db=db, tap_id=tap_id, payload=tap_display_config)
+    operator_stream_hub.emit_invalidation(resource="taps", entity_id=str(tap_id), reason="tap_display_config_updated")
     return schemas.TapDisplayConfig.model_validate(config)

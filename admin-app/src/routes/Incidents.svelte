@@ -1,6 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
+  import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import Modal from '../components/common/Modal.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
@@ -12,6 +13,7 @@
   import { ensureIncidentsData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
+  import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import { tapStore } from '../stores/tapStore.js';
@@ -177,8 +179,10 @@
   $: incidentActionCapabilities = incidentCapabilitiesModel.capabilities;
   /** @type {Record<string, string|null>} */
   $: incidentActionCapabilityReasons = incidentCapabilitiesModel.reasons;
-  $: incidentActionReadOnly = $incidentStore.readOnly;
-  $: incidentActionReadOnlyReason = $incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.';
+  $: incidentActionReadOnly = $incidentStore.readOnly || $operatorConnectionStore.readOnly;
+  $: incidentActionReadOnlyReason = $operatorConnectionStore.readOnly
+    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Incident actions stay read-only until fresh data returns.')
+    : ($incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.');
   $: incidentActionPlan = getActionPlan('incident');
   $: actionFormCopy = buildIncidentActionCopy(actionForm.action);
 
@@ -239,10 +243,20 @@
         <h1>{ROUTE_COPY.incidents.title}</h1>
         <p>{incidentActionReadOnly ? 'Очередь инцидентов доступна для разбора, но действия по ним сейчас временно недоступны.' : ROUTE_COPY.incidents.description}</p>
       </div>
-      <div class="header-stats">
-        <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
-        <article><span>Открытые</span><strong>{enrichedItems.filter((item) => item.status !== 'closed').length}</strong></article>
-        <article><span>{INCIDENT_COPY.systemLabel}</span><strong>{$systemStore.overallState}</strong></article>
+      <div class="header-meta">
+        <div class="header-stats">
+          <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
+          <article><span>Открытые</span><strong>{enrichedItems.filter((item) => item.status !== 'closed').length}</strong></article>
+          <article><span>{INCIDENT_COPY.systemLabel}</span><strong>{$systemStore.overallState}</strong></article>
+        </div>
+        <DataFreshnessChip
+          label="Incidents"
+          lastFetchedAt={$incidentStore.lastFetchedAt}
+          staleAfterMs={$incidentStore.staleTtlMs}
+          mode={$operatorConnectionStore.mode}
+          transport={$operatorConnectionStore.transport}
+          reason={$operatorConnectionStore.reason}
+        />
       </div>
     </div>
 
@@ -556,7 +570,8 @@
   .page-header, .filters-actions, .detail-head, .section-head, .timeline li { display: flex; gap: 1rem; justify-content: space-between; }
   .page-header { align-items: flex-start; flex-wrap: wrap; }
   .page-header h1, .page-header p, .detail-head h2, .detail-head p, .detail-section h3, .timeline p { margin: 0; }
-  .header-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .header-meta, .header-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .header-meta { align-items: flex-start; justify-content: flex-end; }
   .header-stats article, .meta-grid article, .accountability-strip article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.85rem 1rem; background: #fff; min-width: 120px; display: grid; gap: 0.3rem; }
   .filters-grid, .meta-grid, .form-grid { display: grid; gap: 0.75rem; }
   .filters-grid { grid-template-columns: repeat(6, minmax(120px, 1fr)); }

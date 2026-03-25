@@ -6,6 +6,7 @@
   import { systemStore } from './stores/systemStore.js';
   import { roleStore } from './stores/roleStore.js';
   import { demoModeStore } from './stores/demoModeStore.js';
+  import { operatorConnectionStore } from './stores/operatorConnectionStore.js';
   import { ensureOperatorShellData, OPERATOR_SHELL_REFETCH_POLICY, OPERATOR_SHELL_SHARED_DATA } from './stores/operatorShellOrchestrator.js';
   import { initializeBackendBaseUrl } from './lib/config.js';
 
@@ -118,8 +119,14 @@
 
   let shellDataLoadAttempted = false;
 
+  function syncActiveRoute() {
+    operatorConnectionStore.setActiveRoute(window.location.hash.replace(/^#/, '') || '/today');
+  }
+
   onMount(() => {
     let disposed = false;
+    syncActiveRoute();
+    window.addEventListener('hashchange', syncActiveRoute);
 
     (async () => {
       await initializeBackendBaseUrl();
@@ -132,6 +139,7 @@
 
     return () => {
       disposed = true;
+      window.removeEventListener('hashchange', syncActiveRoute);
     };
   });
 
