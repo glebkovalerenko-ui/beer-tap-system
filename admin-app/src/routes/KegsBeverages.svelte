@@ -41,12 +41,22 @@
 
   $: hasBeverages = $beverageStore.beverages.length > 0;
   $: hasKegs = $kegStore.kegs.length > 0;
+  $: canViewInventory = $roleStore.permissions.inventory_view
+    || $roleStore.permissions.kegs_manage
+    || $roleStore.permissions.beverages_catalog_manage
+    || $roleStore.permissions.settings_manage;
+  $: canManageKegs = $roleStore.permissions.kegs_manage || $roleStore.permissions.settings_manage;
+  $: canManageBeveragesCatalog = $roleStore.permissions.beverages_catalog_manage || $roleStore.permissions.settings_manage;
 
   function switchMode(mode) {
     activeMode = mode;
   }
 
   function handleOpenCreateModal() {
+    if (!canManageKegs) {
+      uiStore.notifyWarning('Недостаточно прав для подключения/изменения кег.');
+      return;
+    }
     const current = get(beverageStore);
     if (!current?.beverages?.length) {
       uiStore.notifyWarning('Сначала добавьте напиток в справочник, затем создайте кегу.');
@@ -66,6 +76,10 @@
   }
 
   async function handleSaveKeg(event) {
+    if (!canManageKegs) {
+      uiStore.notifyWarning('Недостаточно прав для изменения кег.');
+      return;
+    }
     const payload = event.detail;
     const isEditing = Boolean(kegToEdit);
     kegFormError = '';
@@ -87,6 +101,10 @@
   }
 
   async function handleDeleteKeg(event) {
+    if (!canManageKegs) {
+      uiStore.notifyWarning('Недостаточно прав для удаления кег.');
+      return;
+    }
     const { keg } = event.detail;
     const isConfirmed = await uiStore.confirm({
       title: 'Удалить кегу?',
@@ -116,7 +134,7 @@
   }
 </script>
 
-{#if !$roleStore.permissions.settings_manage}
+{#if !canViewInventory}
   <section class="ui-card restricted">
     <h1>Кеги и напитки</h1>
     <p>Текущая роль не предусматривает доступ к управлению инвентарём.</p>
@@ -125,9 +143,15 @@
   <div class="page-header">
     <div>
       <h1>Кеги и напитки</h1>
-      <p>Разделённые рабочие режимы для каталога напитков и операционного списка кег без одновременного показа двух больших форм.</p>
+      <p>Разделённые режимы: просмотр инвентаря, операционные действия по кегам и управление каталогом напитков по разным правам.</p>
     </div>
   </div>
+
+  <section class="permission-hints">
+    <span class:enabled={canViewInventory}>Просмотр</span>
+    <span class:enabled={canManageKegs}>Подключение/отключение кег</span>
+    <span class:enabled={canManageBeveragesCatalog}>Редактирование каталога</span>
+  </section>
 
   <section class="mode-switch-card">
     <div class="mode-switch-copy">
@@ -176,7 +200,7 @@
         редактируйте каталог, брендовые подписи, описание, цену и визуальные параметры Tap Display без отвлекающих операционных форм по кегам.
       </div>
 
-      <BeverageManager />
+      <BeverageManager canManage={canManageBeveragesCatalog} />
     </section>
   {:else}
     <section class="mode-panel kegs-section" aria-labelledby="kegs-mode-title">
@@ -190,9 +214,10 @@
             Открыть связанный напиток
           </button>
           <button
-            class:disabled={!hasBeverages}
-            aria-disabled={!hasBeverages}
-            title={!hasBeverages ? 'Сначала добавьте напиток' : 'Добавить кегу'}
+            disabled={!canManageKegs || !hasBeverages}
+            class:disabled={!canManageKegs || !hasBeverages}
+            aria-disabled={!canManageKegs || !hasBeverages}
+            title={!canManageKegs ? 'Недостаточно прав для добавления кеги' : !hasBeverages ? 'Сначала добавьте напиток' : 'Добавить кегу'}
             on:click={handleOpenCreateModal}
           >
             + Добавить кегу
@@ -216,7 +241,12 @@
       {:else}
         <KegList
           kegs={$kegStore.kegs}
+          canManageKegs={canManageKegs}
           on:edit={(event) => {
+            if (!canManageKegs) {
+              uiStore.notifyWarning('Недостаточно прав для изменения кег.');
+              return;
+            }
             kegToEdit = event.detail.keg;
             kegFormError = '';
             activeMode = VIEW_MODES.KEGS;
@@ -269,6 +299,26 @@
   .mode-switch-copy p {
     margin: 0.3rem 0 0;
     color: var(--text-secondary, #64748b);
+  }
+
+  .permission-hints {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+
+  .permission-hints span {
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    background: #e2e8f0;
+    color: #475569;
+  }
+
+  .permission-hints span.enabled {
+    background: #dcfce7;
+    color: #166534;
   }
 
   .mode-switch-card,

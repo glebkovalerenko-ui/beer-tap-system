@@ -74,7 +74,12 @@
       href: '#/kegs-beverages',
       label: 'Кеги и напитки',
       description: 'Рабочая подготовка ассортимента и линии налива.',
-      visible: (permissions) => permissions.settings_manage,
+      visible: (permissions) => (
+        permissions.inventory_view
+        || permissions.kegs_manage
+        || permissions.beverages_catalog_manage
+        || permissions.settings_manage
+      ),
     },
     {
       href: '#/incidents',
