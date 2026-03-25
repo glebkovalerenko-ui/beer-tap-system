@@ -33,6 +33,8 @@ test('buildTodayRouteModel deduplicates action items and builds fallback CTA', (
 
   assert.equal(model.operatorActionItems.length, 1);
   assert.equal(model.operatorActionItems[0].key, 'next-sync-1');
+  assert.equal(model.sessionsToday, 2);
+  assert.equal(model.todaySummaryPeriod, 'day');
 
   const fallback = buildTodayRouteModel({
     incidents: [],
@@ -47,4 +49,6 @@ test('buildTodayRouteModel deduplicates action items and builds fallback CTA', (
 
   assert.equal(fallback.priorityCta.target, 'system');
   assert.equal(fallback.priorityCta.href, '/system');
+  assert.equal(fallback.sessionsToday, 0);
+  assert.equal(fallback.todaySummaryPeriod, 'day');
 });
