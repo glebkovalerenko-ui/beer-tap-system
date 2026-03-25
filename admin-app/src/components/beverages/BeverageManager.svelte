@@ -5,6 +5,7 @@
   import { normalizeError } from "../../lib/errorUtils.js";
 
   const DEFAULT_ACCENT_COLOR = "#C79A3B";
+  export let canManage = true;
 
   const createEmptyForm = () => ({
     name: "",
@@ -48,6 +49,9 @@
   }
 
   function startCreateMode() {
+    if (!canManage) {
+      return;
+    }
     selectedBeverageId = null;
     formError = "";
     resetForm();
@@ -104,6 +108,9 @@
   }
 
   async function handleSubmit() {
+    if (!canManage) {
+      return;
+    }
     const payload = buildPayload();
     formError = "";
 
@@ -144,7 +151,7 @@
       <h3>Справочник напитков</h3>
       <p>Выберите напиток, чтобы настроить его карточку для Tap Display.</p>
     </div>
-    <button type="button" class="secondary-action" on:click={startCreateMode}>
+    <button type="button" class="secondary-action" on:click={startCreateMode} disabled={!canManage}>
       Новый напиток
     </button>
   </div>
@@ -180,6 +187,10 @@
     {/if}
   </div>
 
+  {#if !canManage}
+    <p class="placeholder-text read-only-note">Текущая роль может только просматривать каталог напитков.</p>
+  {/if}
+
   <form class="beverage-form" on:submit|preventDefault={handleSubmit}>
     <div class="form-header">
       <div>
@@ -193,7 +204,7 @@
         </p>
       </div>
       {#if selectedBeverage}
-        <button type="button" class="secondary-action" on:click={startCreateMode}>
+        <button type="button" class="secondary-action" on:click={startCreateMode} disabled={!canManage}>
           Новый напиток
         </button>
       {/if}
@@ -210,7 +221,7 @@
             placeholder="Например, Heineken"
             bind:value={formData.name}
             required
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
 
@@ -221,7 +232,7 @@
             type="text"
             placeholder="Например, BrewDog"
             bind:value={formData.display_brand_name}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
 
@@ -232,7 +243,7 @@
             type="text"
             placeholder="Например, Балтика"
             bind:value={formData.brewery}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
 
@@ -243,7 +254,7 @@
             type="text"
             placeholder="Например, IPA"
             bind:value={formData.style}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
 
@@ -256,7 +267,7 @@
             bind:value={formData.abv}
             pattern="^\d*\.?\d*$"
             title="Например, 5.0 или 4.5"
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
 
@@ -270,7 +281,7 @@
             required
             pattern="^\d*\.?\d*$"
             title="Например, 450.00 или 500"
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           />
         </label>
       </div>
@@ -287,7 +298,7 @@
             maxlength="160"
             placeholder="Например, Легкий лагер с мягкой хмелевой горчинкой."
             bind:value={formData.description_short}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
           ></textarea>
         </label>
 
@@ -300,15 +311,15 @@
               type="color"
               value={getAccentPreviewColor()}
               on:input={(event) => updateAccentColor(event.currentTarget.value)}
-              disabled={$beverageStore.loading}
+              disabled={$beverageStore.loading || !canManage}
             />
             <input
               type="text"
               placeholder="#C79A3B"
               bind:value={formData.accent_color}
-              disabled={$beverageStore.loading}
+              disabled={$beverageStore.loading || !canManage}
             />
-            <button type="button" class="clear-action" on:click={clearAccentColor} disabled={$beverageStore.loading}>
+            <button type="button" class="clear-action" on:click={clearAccentColor} disabled={$beverageStore.loading || !canManage}>
               Сбросить
             </button>
           </div>
@@ -317,7 +328,7 @@
         <label>
           <span>Тема текста</span>
           <small>Если не уверены, оставьте «По умолчанию».</small>
-          <select bind:value={formData.text_theme} disabled={$beverageStore.loading}>
+          <select bind:value={formData.text_theme} disabled={$beverageStore.loading || !canManage}>
             <option value="">По умолчанию</option>
             <option value="dark">Темная</option>
             <option value="light">Светлая</option>
@@ -327,7 +338,7 @@
         <label>
           <span>Как показывать цену</span>
           <small>Это режим по умолчанию для напитка; при необходимости его можно переопределить на уровне крана.</small>
-          <select bind:value={formData.price_display_mode_default} disabled={$beverageStore.loading}>
+          <select bind:value={formData.price_display_mode_default} disabled={$beverageStore.loading || !canManage}>
             <option value="per_100ml">₽ / 100 мл</option>
             <option value="per_liter">₽ / л</option>
             <option value="auto">Авто</option>
@@ -340,7 +351,7 @@
             title="Фон Tap Display"
             description="Большое фоновое изображение для основного экрана напитка."
             selectedAssetId={formData.background_asset_id}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
             emptyLabel="Фон не выбран"
             on:change={(event) => {
               formData = {
@@ -355,7 +366,7 @@
             title="Логотип напитка"
             description="Небольшой логотип или знак бренда поверх основного фона."
             selectedAssetId={formData.logo_asset_id}
-            disabled={$beverageStore.loading}
+            disabled={$beverageStore.loading || !canManage}
             emptyLabel="Логотип не выбран"
             on:change={(event) => {
               formData = {
@@ -368,7 +379,7 @@
       </div>
     </fieldset>
 
-    <button type="submit" disabled={$beverageStore.loading}>
+    <button type="submit" disabled={$beverageStore.loading || !canManage}>
       {$beverageStore.loading ? "Сохранение..." : submitLabel}
     </button>
 

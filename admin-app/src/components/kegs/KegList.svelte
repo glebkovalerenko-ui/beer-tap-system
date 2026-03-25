@@ -10,6 +10,7 @@
 
   /** @type {import('../../../../src-tauri/src/api_client').Keg[]} */
   export let kegs = [];
+  export let canManageKegs = true;
 
   const dispatch = createEventDispatcher();
 </script>
@@ -43,8 +44,22 @@
             <td>
               <div class="action-buttons">
                 <!-- --- ИЗМЕНЕНИЕ: "Оживляем" кнопки --- -->
-                <button class="btn-sm btn-edit" on:click={() => dispatch('edit', { keg })}>Редакт.</button>
-                <button class="btn-sm btn-delete" on:click={() => dispatch('delete', { keg })}>Удалить</button>
+                <button
+                  class="btn-sm btn-edit"
+                  on:click={() => dispatch('edit', { keg })}
+                  disabled={!canManageKegs}
+                  title={!canManageKegs ? 'Недостаточно прав для изменения кеги.' : 'Редактировать кегу'}
+                >
+                  Редакт.
+                </button>
+                <button
+                  class="btn-sm btn-delete"
+                  on:click={() => dispatch('delete', { keg })}
+                  disabled={!canManageKegs}
+                  title={!canManageKegs ? 'Недостаточно прав для удаления кеги.' : 'Удалить кегу'}
+                >
+                  Удалить
+                </button>
               </div>
             </td>
           </tr>
@@ -110,6 +125,10 @@
     border-radius: 4px;
     border: 1px solid transparent;
     cursor: pointer;
+  }
+  .btn-sm:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
   .btn-edit {
     border-color: #007bff;
