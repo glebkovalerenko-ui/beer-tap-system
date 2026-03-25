@@ -13,57 +13,82 @@
   export let onOpenSession = () => {};
   export let onDismiss = () => {};
 
+  function eventKey(item, index) {
+    return item?.item_id || item?.id || `${item?.item_type || 'event'}-${item?.eventAt || item?.timestamp || item?.poured_at || index}`;
+  }
+
   function tapLabel(item) {
-    return item.tap_name || `Кран #${item.tap_id}`;
+    return item?.tap_name || `Кран #${item?.tap_id ?? '—'}`;
   }
 
   function titleFor(item) {
-    if (item.item_type === 'pour') {
-      if (item.guest) {
+    if (item?.headline) return item.headline;
+
+    if (item?.item_type === 'pour') {
+      if (item?.guest) {
         return `${item.guest.first_name} ${item.guest.last_name}`;
       }
       return tapLabel(item);
     }
 
-    if (item.session_state === 'authorized_session') {
-      return `${tapLabel(item)} | активный налив`;
+    if (item?.session_state === 'authorized_session') {
+      return `${tapLabel(item)} · активный налив`;
     }
-    if (item.card_present) {
-      return `${tapLabel(item)} | пролив при закрытом клапане`;
+    if (item?.card_present) {
+      return `${tapLabel(item)} · пролив при закрытом клапане`;
     }
-    return `${tapLabel(item)} | пролив без карты`;
+    return `${tapLabel(item)} · пролив без карты`;
   }
 
   function statusFor(item) {
-    if (item.item_type === 'pour') {
-      return item.status === 'rejected' ? 'отклонён' : 'завершён';
+    if (item?.badgeLabel) return item.badgeLabel;
+    if (item?.item_type === 'pour') {
+      return item?.status === 'rejected' ? 'отклонён' : 'завершён';
     }
-    if (item.event_status === 'stopped') {
+    if (item?.event_status === 'stopped') {
       return 'остановлен';
     }
     return 'идёт';
   }
 
-  function detailsFor(item) {
-    if (item.item_type === 'pour') {
-      const beverage = item.beverage_name || 'напиток';
-      return `налито ${formatVolumeRu(item.volume_ml)} ${beverage}${item.duration_ms != null ? `, длительность ${formatDurationRu(item.duration_ms)}` : ''}`;
+  function detailFor(item) {
+    if (item?.detail) return item.detail;
+
+    if (item?.item_type === 'pour') {
+      const beverage = item?.beverage_name || 'напиток';
+      return `налито ${formatVolumeRu(item?.volume_ml)} ${beverage}${item?.duration_ms != null ? `, длительность ${formatDurationRu(item.duration_ms)}` : ''}`;
     }
 
-    const parts = [`${statusFor(item)} ${formatVolumeRu(item.volume_ml)}`];
-    if (item.duration_ms != null) {
+    const parts = [`${statusFor(item)} ${formatVolumeRu(item?.volume_ml)}`];
+    if (item?.duration_ms != null) {
       parts.push(`длительность ${formatDurationRu(item.duration_ms)}`);
     }
-    if (item.reason === 'flow_detected_when_valve_closed_without_active_session') {
+    if (item?.reason === 'flow_detected_when_valve_closed_without_active_session') {
       parts.push('клапан закрыт, активной сессии нет');
-    } else if (item.reason === 'authorized_pour_in_progress') {
+    } else if (item?.reason === 'authorized_pour_in_progress') {
       parts.push('данные поступают с контроллера');
     }
     return parts.join(', ');
   }
 
+  function metricFor(item) {
+    if (item?.metric) return item.metric;
+    if (item?.item_type === 'pour' && item?.amount_charged != null) {
+      return `-${formatRubAmount(item.amount_charged)}`;
+    }
+    return null;
+  }
+
+  function severityFor(item) {
+    return item?.severity || (item?.item_type === 'flow_event' && item?.event_status !== 'stopped' ? 'info' : 'neutral');
+  }
+
   function sessionLabel(item) {
-    return item.visit_id ? `Сессия #${item.visit_id}` : 'Открыть сессию';
+    return item?.visit_id ? `Сессия #${item.visit_id}` : 'Открыть сессию';
+  }
+
+  function timeFor(item) {
+    return formatTimeRu(item?.eventAt || item?.ended_at || item?.timestamp || item?.poured_at);
   }
 </script>
 
@@ -74,18 +99,24 @@
   <div class="feed-body">
     {#if items.length > 0}
       <ul>
-        {#each items as item (item.item_id)}
-          <li class:live={item.item_type === 'flow_event' && item.event_status !== 'stopped'}>
-            <div class="time">{formatTimeRu(item.ended_at || item.timestamp || item.poured_at)}</div>
+        {#each items as item, index (eventKey(item, index))}
+          <li class={`feed-item severity-${severityFor(item)}`}>
+            <div class="time">{timeFor(item)}</div>
             <div class="info">
+              <div class="headline-row">
+                <span class={`severity-chip severity-${severityFor(item)}`}>{item.severityLabel || statusFor(item)}</span>
+                {#if item.category}
+                  <span class="category-chip">{item.category}</span>
+                {/if}
+              </div>
               <span class="guest-name">{titleFor(item)}</span>
-              <span class="details">{detailsFor(item)}</span>
+              <span class="details">{detailFor(item)}</span>
             </div>
             <div class="meta">
-              {#if item.item_type === 'pour' && item.amount_charged != null}
-                <div class="amount">-{formatRubAmount(item.amount_charged)}</div>
+              {#if metricFor(item)}
+                <div class={`metric severity-${severityFor(item)}`}>{metricFor(item)}</div>
               {:else}
-                <div class="badge">{statusFor(item)}</div>
+                <div class={`badge severity-${severityFor(item)}`}>{statusFor(item)}</div>
               {/if}
               <div class="actions">
                 <button class="ghost-action" on:click={() => onOpenTap(item)}>Открыть кран</button>
@@ -103,27 +134,186 @@
 </div>
 
 <style>
-  .event-feed { border: 1px solid #eee; border-radius: 8px; background-color: #fff; height: 100%; display: flex; flex-direction: column; }
-  .header { padding: 0.75rem 1rem; border-bottom: 1px solid #eee; }
-  .header h4 { margin: 0; font-size: 1.1rem; }
-  .feed-body { padding: 0.5rem; overflow-y: auto; flex-grow: 1; }
-  ul { list-style-type: none; padding: 0; margin: 0; }
-  li { display: grid; grid-template-columns: 72px minmax(0,1fr) auto; gap: 1rem; align-items: start; padding: 0.75rem 0.5rem; border-bottom: 1px solid #f5f5f5; }
-  li.live { background: rgba(198, 31, 53, 0.06); }
-  li:last-child { border-bottom: none; }
-  .time { font-weight: 500; color: #333; font-size: 0.9rem; }
-  .info { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
-  .guest-name { font-weight: 500; }
-  .details { font-size: 0.85rem; color: #666; }
-  .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; }
-  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
-  .amount { font-weight: bold; color: #dc3545; font-size: 1rem; }
-  .badge { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #9a1c2f; }
-  .ghost-action { border: 1px solid var(--border-color, #d7dbe7); background: transparent; border-radius: 999px; padding: 0.35rem 0.7rem; font-size: 0.8rem; cursor: pointer; }
-  .ghost-action.subtle { color: var(--text-secondary, #6b7280); }
-  .no-pours-message { text-align: center; color: #888; padding: 2rem; }
+  .event-feed {
+    border: 1px solid var(--border-soft, #dfe6f2);
+    border-radius: 14px;
+    background-color: #fff;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-soft, #dfe6f2);
+  }
+
+  .header h4 {
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .feed-body {
+    padding: 0.5rem;
+    overflow-y: auto;
+    flex-grow: 1;
+  }
+
+  ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .feed-item {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: start;
+    padding: 0.85rem 0.6rem;
+    border-bottom: 1px solid #f1f5f9;
+    border-radius: 12px;
+  }
+
+  .feed-item:last-child {
+    border-bottom: none;
+  }
+
+  .feed-item.severity-critical {
+    background: var(--state-critical-bg);
+  }
+
+  .feed-item.severity-warning {
+    background: var(--state-warning-bg);
+  }
+
+  .feed-item.severity-info {
+    background: rgba(239, 246, 255, 0.92);
+  }
+
+  .time {
+    font-weight: 600;
+    color: #334155;
+    font-size: 0.9rem;
+  }
+
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .headline-row {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .severity-chip,
+  .category-chip,
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.28rem 0.65rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .severity-chip.severity-critical,
+  .badge.severity-critical,
+  .metric.severity-critical {
+    background: var(--state-critical-bg);
+    color: var(--state-critical-text);
+  }
+
+  .severity-chip.severity-warning,
+  .badge.severity-warning,
+  .metric.severity-warning {
+    background: var(--state-warning-bg);
+    color: var(--state-warning-text);
+  }
+
+  .severity-chip.severity-info,
+  .badge.severity-info,
+  .metric.severity-info {
+    background: var(--state-neutral-bg);
+    color: var(--state-neutral-text);
+  }
+
+  .severity-chip.severity-neutral,
+  .badge.severity-neutral,
+  .metric.severity-neutral {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .category-chip {
+    background: #f8fafc;
+    color: #475569;
+  }
+
+  .guest-name {
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .details {
+    font-size: 0.88rem;
+    color: #64748b;
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  .metric {
+    font-weight: 700;
+    font-size: 0.96rem;
+    border-radius: 999px;
+    padding: 0.32rem 0.75rem;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .ghost-action {
+    border: 1px solid var(--border-color, #d7dbe7);
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .ghost-action.subtle {
+    color: var(--text-secondary, #6b7280);
+  }
+
+  .no-pours-message {
+    text-align: center;
+    color: #888;
+    padding: 2rem;
+  }
+
   @media (max-width: 900px) {
-    li { grid-template-columns: 1fr; }
-    .meta, .actions { align-items: flex-start; justify-content: flex-start; }
+    .feed-item {
+      grid-template-columns: 1fr;
+    }
+
+    .meta,
+    .actions {
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
   }
 </style>

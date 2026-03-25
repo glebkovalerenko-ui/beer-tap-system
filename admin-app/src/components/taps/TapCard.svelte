@@ -246,6 +246,13 @@
   .system-pill.ok { background: var(--state-success-bg); color: var(--state-success-text); border-color: var(--state-success-border); }
   .system-pill.warning { background: var(--state-warning-bg); color: var(--state-warning-text); border-color: var(--state-warning-border); }
   .system-pill.busy { background: var(--state-neutral-bg); color: var(--state-neutral-text); border-color: var(--state-neutral-border); }
+  .system-pill.critical,
+  .system-pill.error,
+  .system-pill.offline { background: var(--state-critical-bg); color: var(--state-critical-text); border-color: var(--state-critical-border); }
+  .system-pill.degraded,
+  .system-pill.unknown { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
+  .system-pill.info,
+  .system-pill.live { background: var(--state-neutral-bg); color: var(--state-neutral-text); border-color: var(--state-neutral-border); }
   .session-summary { border: 1px solid #f1f5f9; border-radius: 14px; padding: 0.8rem; background: rgba(255,255,255,0.85); display: grid; gap: 0.45rem; }
   .session-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; color: var(--text-secondary, #64748b); font-size: 0.84rem; }
   .footer-meta { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.82rem; }

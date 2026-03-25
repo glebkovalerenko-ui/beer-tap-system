@@ -61,12 +61,12 @@
 }
 
 [data-state='pouring'] {
-  --tap-status-card-border: var(--state-critical-border);
-  --tap-status-card-shadow: 0 0 0 1px rgba(248, 113, 113, 0.12);
-  --tap-status-hero-bg: linear-gradient(180deg, rgba(254, 242, 242, 0.98), rgba(255, 255, 255, 0.94));
-  --tap-status-hero-border: var(--state-critical-border);
-  --tap-status-badge-bg: var(--state-critical-bg);
-  --tap-status-badge-text: var(--state-critical-text);
+  --tap-status-card-border: var(--state-neutral-border);
+  --tap-status-card-shadow: 0 0 0 1px rgba(45, 108, 223, 0.12);
+  --tap-status-hero-bg: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.94));
+  --tap-status-hero-border: var(--state-neutral-border);
+  --tap-status-badge-bg: var(--state-neutral-bg);
+  --tap-status-badge-text: var(--state-neutral-text);
   --tap-status-icon-bg: rgba(255,255,255,0.78);
 }
 
@@ -110,17 +110,17 @@
 }
 
 [data-state='no_keg'] {
-  --tap-status-card-border: #d8b4fe;
-  --tap-status-card-bg: linear-gradient(180deg, rgba(252, 245, 255, 0.98), rgba(248, 250, 252, 0.95));
-  --tap-status-hero-bg: linear-gradient(180deg, rgba(245, 243, 255, 0.98), rgba(255, 255, 255, 0.94));
-  --tap-status-hero-border: #d8b4fe;
-  --tap-status-badge-bg: #f3e8ff;
-  --tap-status-badge-border: #d8b4fe;
-  --tap-status-badge-text: #7c3aed;
+  --tap-status-card-border: var(--state-warning-border);
+  --tap-status-card-bg: linear-gradient(180deg, rgba(255, 250, 235, 0.98), rgba(248, 250, 252, 0.95));
+  --tap-status-hero-bg: linear-gradient(180deg, rgba(255, 247, 230, 0.98), rgba(255, 255, 255, 0.94));
+  --tap-status-hero-border: var(--state-warning-border);
+  --tap-status-badge-bg: var(--state-warning-bg);
+  --tap-status-badge-border: var(--state-warning-border);
+  --tap-status-badge-text: var(--state-warning-text);
   --tap-status-badge-radius: 999px;
   --tap-status-badge-padding: 0.45rem 0.75rem;
-  --tap-status-icon-bg: #faf5ff;
-  --tap-status-icon-border: #c084fc;
+  --tap-status-icon-bg: #fff7e6;
+  --tap-status-icon-border: #f59e0b;
   --tap-status-icon-radius: 999px;
 }
 

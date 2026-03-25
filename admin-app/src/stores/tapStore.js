@@ -4,6 +4,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { displayAdminGetJson, displayAdminPutJson } from '../lib/displayAdminApi.js';
 import { logError, normalizeError } from '../lib/errorUtils.js';
 import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
+import {
+  TAP_OPERATOR_STATE_META as TAP_OPERATOR_STATE_META_MODEL,
+  TAP_OPERATOR_STATES as TAP_OPERATOR_STATES_MODEL,
+  deriveOperatorState as deriveOperatorStateModel,
+  eventPriority as eventPriorityModel,
+  eventTone as eventToneModel,
+  labelFromState as labelFromStateModel,
+} from '../lib/operator/tapStateModel.js';
 import { sessionStore } from './sessionStore.js';
 
 /** @typedef {import('../../../src-tauri/src/api_client').Tap} Tap */
@@ -367,7 +375,7 @@ function describeOperatorEvent(item, activeSession) {
 function buildOperatorHistory(recentEvents, activeSession) {
   return recentEvents.map((item, index) => {
     const summary = describeOperatorEvent(item, activeSession);
-    const priority = eventPriority(item);
+    const priority = eventPriorityModel(item);
     const visitId = item?.visit_id || item?.session_id || activeSession?.visit_id || null;
 
     return {
@@ -375,7 +383,7 @@ function buildOperatorHistory(recentEvents, activeSession) {
       title: summary.title,
       description: summary.description,
       priority,
-      tone: eventTone(priority),
+      tone: eventToneModel(priority),
       priorityLabel: humanizeCode(priority) || 'Low',
       happenedAt: item?.ended_at || item?.timestamp || item?.created_at || item?.started_at || null,
       volumeMl: toNumber(item?.volume_ml),
@@ -510,7 +518,7 @@ function buildTapView(rawTap, context = {}) {
 
   const heartbeatAt = rawTap.last_heartbeat_at || rawTap.updated_at || activeSession?.lock_set_at || null;
   const heartbeatMinutes = minutesSince(heartbeatAt);
-  const operatorState = deriveOperatorState(rawTap, activeSession, recentEvents);
+  const operatorState = deriveOperatorStateModel(rawTap, activeSession, recentEvents);
   const productState = operatorState.state;
   const syncState = rawTap.sync_state || (rawTap.status === 'processing_sync' ? 'syncing' : activeSession ? 'live' : 'idle');
   const currentPourVolumeMl = toNumber(rawTap.current_pour_volume_ml ?? recentEvents[0]?.volume_ml);
@@ -522,9 +530,9 @@ function buildTapView(rawTap, context = {}) {
     active_session: activeSession,
     operations: {
       productState,
-      productStateLabel: labelFromState(productState),
+      productStateLabel: labelFromStateModel(productState),
       operatorState: productState,
-      operatorStateMeta: TAP_OPERATOR_STATE_META[productState] || TAP_OPERATOR_STATE_META[TAP_OPERATOR_STATES.NEEDS_HELP],
+      operatorStateMeta: TAP_OPERATOR_STATE_META_MODEL[productState] || TAP_OPERATOR_STATE_META_MODEL[TAP_OPERATOR_STATES_MODEL.NEEDS_HELP],
       operatorStateReason: operatorState.reason,
       operatorStateTelemetry: operatorState.telemetry,
       beverageName: keg?.beverage?.name || rawTap.beverage_name || 'Напиток не назначен',

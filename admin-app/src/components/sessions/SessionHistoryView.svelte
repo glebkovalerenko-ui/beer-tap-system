@@ -73,6 +73,7 @@
   $: detailNarrativeGroups = detail ? groupedNarrative(detail, formatMaybeDate, describeCompletionSource) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
   $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary, describeCompletionSource, describeFlags) : [];
+  $: detailWhatHappened = detail ? buildWhatHappened(detail.summary, describeCompletionSource) : [];
   $: if (focusVisitId && !focusResolved && !$visitStore.historyLoading && (!$visitStore.loading || activeItems.length > 0 || historyItems.length > 0)) {
     resolveFocusVisit();
   }
@@ -213,9 +214,9 @@
       {detailNarrativeGroups}
       {detailDisplayContext}
       {detailOperatorActions}
+      {detailWhatHappened}
       {narrativeKindLabels}
       {formatMaybeDate}
-      {buildWhatHappened}
       onCloseDetail={closeDetail}
     />
   </div>

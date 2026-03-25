@@ -67,6 +67,7 @@
   $: recentEvents = cardsGuestsModel.recentEvents;
   $: lookupGuestName = cardsGuestsModel.lookupGuestName;
   $: hasLookup = cardsGuestsModel.hasLookup;
+  $: lookupSummaryItems = cardsGuestsModel.lookupSummaryItems;
   $: quickActions = cardsGuestsModel.quickActions;
 
   function selectGuest(guestId) {
@@ -346,6 +347,7 @@
       result={selectedLookup}
       searchQuery={phoneQuery}
       searchResults={quickLookupResults}
+      operatorSummaryItems={lookupSummaryItems}
       searchPlaceholder="Номер телефона, UID или идентификатор"
       searchResultLabel="Поиск по номеру / идентификатору"
       error={lookupError}
@@ -371,8 +373,8 @@
     <section class="ui-card operator-panel">
       <div class="section-top">
         <div>
-          <h2>Operator layer</h2>
-          <p>Lookup-result остаётся главным экраном. Здесь показывается только короткий рабочий контекст без master-data и списка всех карт.</p>
+          <h2>Контекст гостя</h2>
+          <p>Lookup остаётся главным экраном. Здесь показывается только короткий рабочий контекст без master-data и списка всех карт.</p>
         </div>
         {#if pendingScenario}
           <span class="scenario-badge">{pendingScenario}</span>
@@ -405,7 +407,7 @@
       {:else}
         <div class="empty-state">
           <h3>Lookup — первый и обязательный шаг</h3>
-          <p>После идентификации здесь появится краткий операторский summary: статус карты, баланс, активный визит, последний кран, события и быстрые действия.</p>
+          <p>После идентификации здесь появится краткая операторская сводка: статус карты, баланс, активный визит, последний кран, события и быстрые действия.</p>
         </div>
       {/if}
 
@@ -418,7 +420,7 @@
       <section class="ui-card reissue-panel">
         <div class="section-top">
           <div>
-            <h2>Management layer: Lost / перевыпуск</h2>
+            <h2>Перевыпуск и lost-карты</h2>
             <p>Этот путь открывается только после lookup и не конкурирует с операторским summary.</p>
           </div>
         </div>
@@ -467,7 +469,7 @@
       <section class="management-modal">
         <div class="section-top">
           <div>
-            <h2>Management path</h2>
+            <h2>Расширенное управление</h2>
             <p>Редактирование профиля, master-data и вторичные поля вынесены из operator layer в отдельный глубокий режим.</p>
           </div>
         </div>

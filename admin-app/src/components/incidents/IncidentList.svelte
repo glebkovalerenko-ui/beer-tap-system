@@ -77,7 +77,19 @@
         {:else}
           <div class="incident-cards">
             {#each group.items as item (item.incident_id)}
-              <article class:selected={selectedIncidentId === item.incident_id} class="incident-card">
+              <div
+                class:selected={selectedIncidentId === item.incident_id}
+                class="incident-card"
+                role="button"
+                tabindex="0"
+                on:click={() => emit('select', item)}
+                on:keydown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    emit('select', item);
+                  }
+                }}
+              >
                 <div class="card-head">
                   <div>
                     <div class="eyebrow">#{item.incident_id}</div>
@@ -106,6 +118,14 @@
                   {/if}
                   {#if readOnly}
                     <span class="signal-badge warning">{INCIDENT_COPY.readOnly}</span>
+                  {/if}
+                </div>
+
+                <div class="operator-next-step">
+                  <strong>Следующий шаг</strong>
+                  <p>{item.accountability.nextStep}</p>
+                  {#if item.impact?.[0]}
+                    <small>Риск: {item.impact[0]}</small>
                   {/if}
                 </div>
 
@@ -160,7 +180,7 @@
                     <small class="action-reason">{actionCapabilityReasons.note || actionCapabilityReasons.close}</small>
                   {/if}
                 </div>
-              </article>
+              </div>
             {/each}
           </div>
         {/if}
@@ -177,6 +197,7 @@
   .group-head h2, .group-head p, .card-head p { margin: 0; }
   .incident-card { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: #fff; display: grid; gap: 0.9rem; cursor: pointer; }
   .incident-card.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; background: #f8fbff; }
+  .incident-card:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   .card-head p, .eyebrow, .empty, .small { color: var(--text-secondary, #64748b); }
   .severity, .priority { align-self: flex-start; border-radius: 999px; padding: 0.35rem 0.7rem; font-weight: 700; }
   .severity-s1 { background: #fee2e2; color: #991b1b; }
@@ -188,12 +209,15 @@
   .priority.high { background: #fef3c7; color: #92400e; }
   .priority.critical { background: #fee2e2; color: #b91c1c; }
   .card-meta, .state-row { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.92rem; }
+  .operator-next-step { display: grid; gap: 0.25rem; padding: 0.8rem; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
+  .operator-next-step strong, .operator-next-step p, .operator-next-step small { margin: 0; }
+  .operator-next-step p, .operator-next-step small { color: var(--text-secondary, #64748b); }
   .card-links, .card-actions { flex-wrap: wrap; }
   .action-reason { flex-basis: 100%; color: #9a3412; }
   .card-links .link, .card-actions button { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; background: #fff; font: inherit; font-weight: 700; }
   .card-links .link { color: #1d4ed8; }
   .card-actions .primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-  .card-actions .warning { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
+  .card-actions :global(.warning) { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
   .card-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
   .status-badge, .ownership-badge, .signal-badge { border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.84rem; font-weight: 700; }
   .status-badge.new { background: #eff6ff; color: #1d4ed8; }

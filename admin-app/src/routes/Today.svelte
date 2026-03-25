@@ -8,6 +8,7 @@
   import { navigateWithFocus } from '../lib/actionRouting.js';
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
+  import { buildTodayFeedItems } from '../lib/operator/todayFeedModel.js';
   import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
 
   let dismissedEventIds = new Set();
@@ -37,7 +38,9 @@
   }
 
   function dismissEvent(item) {
-    dismissedEventIds = new Set([...dismissedEventIds, item.item_id]);
+    const key = item.dismissKey || item.item_id || item.id;
+    if (!key) return;
+    dismissedEventIds = new Set([...dismissedEventIds, key]);
   }
 
   function dismissAttention(item) {
@@ -49,7 +52,10 @@
     feedItems: $pourStore.feedItems || [],
   });
 
-  $: visibleFeedItems = ($pourStore.feedItems || []).filter((item) => !dismissedEventIds.has(item.item_id)).slice(0, 12);
+  $: visibleFeedItems = buildTodayFeedItems($pourStore.feedItems || [], {
+    dismissedEventIds,
+    limit: 12,
+  });
   $: todayModel = buildTodayRouteModel({
     incidents: $incidentStore.items || [],
     tapSummary: $tapStore.summary || {},

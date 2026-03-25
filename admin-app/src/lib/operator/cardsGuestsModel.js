@@ -1,6 +1,7 @@
 import { buildPhoneCandidates, buildQuickLookupResults, fullName, hasLookupTarget } from '../cardsGuests/scenarios/lookup.js';
 import { buildQuickActions } from '../cardsGuests/scenarios/quick_actions.js';
 import { buildRecentEvents } from '../cardsGuests/scenarios/recent_events.js';
+import { formatRubAmount } from '../formatters.js';
 
 export const SCENARIO_ACTION_HANDLERS = {
   'top-up': 'open-top-up',
@@ -52,7 +53,9 @@ export function buildCardsGuestsViewModel({
     : [];
 
   const lastTapLabel = recentGuestPours[0]?.tap?.display_name
-    || (recentGuestPours[0]?.tap_id ? `Кран #${recentGuestPours[0].tap_id}` : '—');
+    || (recentGuestPours[0]?.tap_id
+      ? `Кран #${recentGuestPours[0].tap_id}`
+      : (selectedVisit?.active_tap_id ? `Кран #${selectedVisit.active_tap_id}` : '—'));
 
   const recentEvents = buildRecentEvents({
     guest: selectedGuest,
@@ -66,6 +69,47 @@ export function buildCardsGuestsViewModel({
     : (selectedLookup?.guest?.full_name || 'Гость не определён');
 
   const hasLookup = hasLookupTarget(selectedLookup);
+  const lookupBalance = selectedGuest?.balance
+    ?? selectedLookup?.guest?.balance
+    ?? selectedLookup?.active_visit?.balance
+    ?? null;
+  const lookupSummaryItems = hasLookup
+    ? [
+      {
+        key: 'balance',
+        label: 'Баланс',
+        value: lookupBalance != null ? formatRubAmount(lookupBalance) : '—',
+        tone: lookupBalance != null && lookupBalance <= 0 ? 'warning' : 'neutral',
+      },
+      {
+        key: 'last-tap',
+        label: 'Последний кран',
+        value: lastTapLabel || '—',
+        tone: selectedVisit?.active_tap_id ? 'info' : 'neutral',
+      },
+      {
+        key: 'recent-events',
+        label: 'Последние события',
+        value: recentEvents.length ? `${recentEvents.length} событий` : 'Нет событий',
+        tone: recentEvents.length ? 'info' : 'neutral',
+      },
+      {
+        key: 'card-state',
+        label: 'Статус карты',
+        value: selectedLookup?.is_lost
+          ? 'Lost / нужен перевыпуск'
+          : selectedLookup?.active_visit
+            ? 'Есть активный визит'
+            : selectedLookup?.guest
+              ? 'Карта привязана'
+              : selectedLookup?.card
+                ? 'Карта без гостя'
+                : 'Карта не найдена',
+        tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
+      },
+    ]
+    : [];
+
   const quickActions = buildQuickActions({
     lookup: selectedLookup,
     guest: selectedGuest,
@@ -87,6 +131,7 @@ export function buildCardsGuestsViewModel({
     recentEvents,
     lookupGuestName,
     hasLookup,
+    lookupSummaryItems,
     quickActions,
   };
 }

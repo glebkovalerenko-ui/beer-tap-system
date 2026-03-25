@@ -21,6 +21,7 @@
   export let searchPlaceholder = 'Номер телефона / идентификатор';
   export let searchResults = [];
   export let searchResultLabel = 'Совпадения';
+  export let operatorSummaryItems = [];
 
   const dispatch = createEventDispatcher();
 
@@ -155,6 +156,17 @@
           </div>
         </div>
 
+        {#if operatorSummaryItems.length > 0}
+          <div class="operator-summary-grid">
+            {#each operatorSummaryItems as item (item.key)}
+              <article class={`operator-summary-card tone-${item.tone || 'neutral'}`}>
+                <span class="eyebrow">{item.label}</span>
+                <strong>{item.value}</strong>
+              </article>
+            {/each}
+          </div>
+        {/if}
+
         {#if result.is_lost}
           <div class="lookup-meta danger">
             <div><strong>Дата отметки:</strong> {formatDateTimeRu(result.lost_card?.reported_at)}</div>
@@ -255,6 +267,29 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 0.75rem;
+  }
+  .operator-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+  .operator-summary-card {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.75rem;
+    border-radius: 12px;
+    border: 1px solid #dbe4f0;
+    background: #fff;
+  }
+  .operator-summary-card.tone-warning {
+    border-color: var(--state-warning-border, #facc15);
+    background: var(--state-warning-bg, #fff7e6);
+    color: var(--state-warning-text, #9a6700);
+  }
+  .operator-summary-card.tone-info {
+    border-color: var(--state-neutral-border, #bfdbfe);
+    background: var(--state-neutral-bg, #eef2ff);
+    color: var(--state-neutral-text, #1e3a8a);
   }
   .eyebrow { display: block; font-size: 0.75rem; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
   .lookup-status { margin: 0; font-weight: 700; }

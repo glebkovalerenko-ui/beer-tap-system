@@ -64,6 +64,7 @@ Controller code lives in `rpi-controller/`. It authorizes pours through the back
 - `docs/dev/SYNCTHING_DEV_RUNBOOK.md`
 - `docs/dev/ADMIN_APP_BACKEND_URL.md`
 - `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`
+- `docs/admin-app/07-operator-core-phase-1-result.md`
 
 ## Stage boundary
 

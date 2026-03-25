@@ -5,9 +5,9 @@
   export let detailNarrativeGroups;
   export let detailDisplayContext;
   export let detailOperatorActions;
+  export let detailWhatHappened = [];
   export let narrativeKindLabels;
   export let formatMaybeDate;
-  export let buildWhatHappened;
   export let onCloseDetail = () => {};
 </script>
 
@@ -24,7 +24,7 @@
 
     <section class="summary-section">
       <h3>Что произошло</h3>
-      {#each buildWhatHappened(detail.summary) as sentence}
+      {#each detailWhatHappened as sentence}
         <p>{sentence}</p>
       {/each}
     </section>
