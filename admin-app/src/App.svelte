@@ -3,11 +3,10 @@
   import Router from 'svelte-spa-router';
 
   import { sessionStore } from './stores/sessionStore.js';
-  import { guestStore } from './stores/guestStore.js';
   import { systemStore } from './stores/systemStore.js';
   import { roleStore } from './stores/roleStore.js';
   import { demoModeStore } from './stores/demoModeStore.js';
-  import { shiftStore } from './stores/shiftStore.js';
+  import { ensureOperatorShellData, OPERATOR_SHELL_REFETCH_POLICY, OPERATOR_SHELL_SHARED_DATA } from './stores/operatorShellOrchestrator.js';
   import { initializeBackendBaseUrl } from './lib/config.js';
 
   import Today from './routes/Today.svelte';
@@ -116,25 +115,7 @@
     },
   ];
 
-  let shiftLoadAttempted = false;
-
-  $: if ($sessionStore.token && !shiftLoadAttempted) {
-    shiftLoadAttempted = true;
-    shiftStore.fetchCurrent().catch((error) => {
-      const message = error?.message || error?.toString?.() || '';
-      if (message.includes('Требуется повторный вход') || message.includes('Could not validate credentials')) {
-        sessionStore.logout();
-        return;
-      }
-
-      console.error('[App] Не удалось загрузить текущую смену', error);
-    });
-  }
-
-  $: if (!$sessionStore.token && shiftLoadAttempted) {
-    shiftStore.reset();
-    shiftLoadAttempted = false;
-  }
+  let shellDataLoadAttempted = false;
 
   onMount(() => {
     let disposed = false;
@@ -146,9 +127,6 @@
       }
 
       systemStore.startPolling();
-      if ($guestStore.guests.length === 0 && !$guestStore.loading) {
-        guestStore.fetchGuests();
-      }
     })();
 
     return () => {
@@ -163,6 +141,22 @@
   onDestroy(() => {
     systemStore.stopPolling();
   });
+
+  $: if ($sessionStore.token && !shellDataLoadAttempted) {
+    shellDataLoadAttempted = true;
+    ensureOperatorShellData({ reason: OPERATOR_SHELL_REFETCH_POLICY.defaultReason }).catch((error) => {
+      const message = error?.message || error?.toString?.() || '';
+      if (message.includes('Требуется повторный вход') || message.includes('Could not validate credentials')) {
+        sessionStore.logout();
+        return;
+      }
+      console.error('[App] Не удалось прогреть operator-shell shared data', OPERATOR_SHELL_SHARED_DATA, error);
+    });
+  }
+
+  $: if (!$sessionStore.token && shellDataLoadAttempted) {
+    shellDataLoadAttempted = false;
+  }
 </script>
 
 {#if $sessionStore.token}

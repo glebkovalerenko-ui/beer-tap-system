@@ -11,12 +11,10 @@
   import { kegStore } from '../stores/kegStore.js';
   import { pourStore } from '../stores/pourStore.js';
   import { roleStore } from '../stores/roleStore.js';
-  import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { visitStore } from '../stores/visitStore.js';
 
-  let initialLoadAttempted = false;
   let isAssignModalOpen = false;
   /** @type {any} */
   let tapToAssign = null;
@@ -35,14 +33,6 @@
   /** @typedef {CustomEvent<{ tap: any }>} TapDetailEvent */
   /** @typedef {CustomEvent<{ kegId: string|number }>} AssignSaveEvent */
 
-  $: if ($sessionStore.token && !initialLoadAttempted) {
-    tapStore.fetchTaps();
-    kegStore.fetchKegs();
-    beverageStore.fetchBeverages();
-    visitStore.fetchActiveVisits().catch(() => {});
-    initialLoadAttempted = true;
-  }
-
   $: tapStore.setOperationalContext({
     activeVisits: $visitStore.activeVisits,
     feedItems: $pourStore.feedItems,
@@ -53,6 +43,13 @@
   }
 
   onMount(() => {
+    if (($kegStore.kegs || []).length === 0 && !$kegStore.loading) {
+      kegStore.fetchKegs();
+    }
+    if (($beverageStore.beverages || []).length === 0 && !$beverageStore.loading) {
+      beverageStore.fetchBeverages();
+    }
+
     const focusTapId = sessionStorage.getItem('incidents.focusTapId');
     if (focusTapId) {
       sessionStorage.removeItem('incidents.focusTapId');

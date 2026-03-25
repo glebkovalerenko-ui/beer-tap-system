@@ -8,6 +8,7 @@
   import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
   import { buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
+  import { ensureIncidentsData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
@@ -47,7 +48,6 @@
     closed: 'Закрыт',
   };
 
-  let hasLoadedContext = false;
   let filters = { ...DEFAULT_FILTERS };
   /** @type {any} */
   let selectedIncidentId = null;
@@ -63,12 +63,8 @@
 
   onMount(() => {
     const token = get(sessionStore).token;
-    if (token && !hasLoadedContext) {
-      incidentStore.fetchIncidents();
-      tapStore.fetchTaps();
-      visitStore.fetchActiveVisits().catch(() => {});
-      systemStore.fetchSystemStatus().catch(() => {});
-      hasLoadedContext = true;
+    if (token) {
+      ensureIncidentsData({ reason: 'route-enter' });
     }
 
     const focusedIncidentId = sessionStorage.getItem('incidents.focusIncidentId');
@@ -218,6 +214,7 @@
     try {
       const request = resolveIncidentActionRequest({ action: actionForm.action, item, form: actionForm });
       await incidentStore[request.method](request.payload);
+      await ensureIncidentsData({ reason: 'incident-action', force: true });
 
       uiStore.notifySuccess('Действие по инциденту зафиксировано.');
       if (selectedIncidentId !== item.incident_id) {
@@ -308,7 +305,7 @@
       </div>
       <div class="filters-actions">
         <button class="secondary" on:click={resetFilters}>Сбросить</button>
-        <button on:click={() => incidentStore.fetchIncidents()} disabled={$incidentStore.loading}>{INCIDENT_COPY.refreshQueue}</button>
+        <button on:click={() => ensureIncidentsData({ reason: 'manual-refresh', force: true })} disabled={$incidentStore.loading}>{INCIDENT_COPY.refreshQueue}</button>
       </div>
     </section>
 
