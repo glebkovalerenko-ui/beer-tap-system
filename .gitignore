@@ -12,6 +12,9 @@ env/
 # Файл с секретными данными
 .env
 
+# Runtime media uploads must not live in the synced/git-managed repo tree
+backend/storage/
+
 # Игнорировать папки с данными баз данных и другими временными файлами
 db_data/
 postgres_data/

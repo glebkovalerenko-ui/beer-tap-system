@@ -21,6 +21,7 @@ target/
 admin-app/src-tauri/target/
 admin-app/build/
 (?d)backend/.pytest_cache/
+(?d)backend/storage/
 rpi-controller/.venv/
 rpi-controller/__pycache__/
 rpi-controller/local_journal.db

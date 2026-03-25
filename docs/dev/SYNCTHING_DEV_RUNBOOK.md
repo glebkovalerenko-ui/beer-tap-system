@@ -25,6 +25,7 @@ All backend Docker commands must run from that path so `./backend:/app` points a
 - Linux side: `Receive Only`
 - ignore file: `.stignore`
 - do not sync secrets, local caches, or build output
+- do not sync runtime backend uploads such as `backend/storage/`; backend media assets must live outside the shared working tree
 
 ## Linux start
 
@@ -63,7 +64,9 @@ curl -fsS http://localhost:8000/api/system/status
 ## Notes
 
 - backend code is bind-mounted from `/home/cybeer/beer-tap-system/backend`
+- backend media assets are stored in Docker volume `backend_media_assets` mounted at `/srv/beer-media-assets`, not inside the synced repo checkout
 - `uvicorn --reload` inside the container is the current backend auto-reload mechanism
 - if dependency or Dockerfile inputs change, run `docker compose up -d --build`
 - do not run `docker compose down -v` unless you intentionally want to destroy PostgreSQL data
 - if Linux shows local Syncthing drift, prefer `Revert Local Changes` because Linux is the receive-only side
+- if Windows is the source of truth, keep SyncTrayzor/Syncthing running on the workstation; a stopped Windows sender means Linux will stay on the last received snapshot
