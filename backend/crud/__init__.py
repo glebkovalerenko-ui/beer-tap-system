@@ -10,3 +10,4 @@ from . import visit_crud
 from . import shift_crud
 from . import shift_report_crud
 from . import lost_card_crud
+from . import operator_crud

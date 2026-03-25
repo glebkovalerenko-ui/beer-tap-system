@@ -82,7 +82,7 @@ function createLostCardStore() {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null }));
       try {
-        const result = await invoke('resolve_card', { token, cardUid });
+        const result = await invoke('lookup_operator_card_context', { token, query: cardUid });
         update((s) => ({ ...s, loading: false }));
         return result;
       } catch (error) {

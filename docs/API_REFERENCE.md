@@ -100,6 +100,82 @@ Operational notes:
 - guest-bound card with no active visit;
 - unknown card handling.
 
+## 5A. Operator projections
+
+### `GET /api/operator/today`
+
+Purpose:
+
+- operator-first route projection for the `Today` screen;
+- bundles current shift, KPI, flow summary, system health, incidents, live feed, and actionable attention items.
+
+Expected top-level fields:
+
+- `generated_at`
+- `current_shift`
+- `today_summary`
+- `flow_summary`
+- `feed_items`
+- `system_health`
+- `incidents`
+- `attention_items`
+- `priority_cta_source`
+
+### `GET /api/operator/taps`
+
+Purpose:
+
+- operator workspace projection for the tap grid;
+- enriches each tap with subsystem status, active-session context, sync state, recent events, and action-policy metadata.
+
+Expected per-tap fields include:
+
+- `tap_id`
+- `display_name`
+- `status`
+- `keg`
+- `display_enabled`
+- `controller_status`
+- `display_status`
+- `reader_status`
+- `sync_state`
+- `last_heartbeat_at`
+- `active_session`
+- `recent_events`
+- `safe_actions`
+
+### `GET /api/operator/taps/{tap_id}`
+
+Purpose:
+
+- operator drawer/detail projection for a single tap.
+
+Notes:
+
+- extends the tap workspace card with `history_items`;
+- used by the tap drawer to refresh one selected tap without reloading the whole workspace.
+
+### `GET /api/operator/cards/lookup?query=...`
+
+Purpose:
+
+- operator-first lookup contract for `Cards & Guests`;
+- returns the card/guest/visit decision context already shaped for the operator workflow.
+
+Expected top-level fields:
+
+- `card_uid`
+- `is_lost`
+- `lost_card`
+- `active_visit`
+- `guest`
+- `card`
+- `recommended_action`
+- `recent_events`
+- `last_tap_label`
+- `lookup_summary_items`
+- `allowed_quick_actions`
+
 ### Visits
 
 - `POST /api/visits/open`

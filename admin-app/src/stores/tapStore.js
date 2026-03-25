@@ -622,7 +622,7 @@ function createTapStore() {
 
       update((state) => ({ ...state, loading: true, isLoading: true, error: null }));
       try {
-        tapsInFlight = invoke('get_taps', { token });
+        tapsInFlight = invoke('get_operator_taps', { token });
         const taps = await tapsInFlight;
         commit(refreshDerived({ ...currentState, rawTaps: taps, loading: false, isLoading: false, lastFetchedAt: Date.now(), error: null }));
         return taps;
@@ -645,15 +645,41 @@ function createTapStore() {
       }));
     },
 
+    fetchTapDetail: async (tapId, { updateStore = true } = {}) => {
+      const token = ensureToken();
+
+      try {
+        const tapDetail = await invoke('get_operator_tap_detail', { token, tapId });
+        if (updateStore) {
+          update((state) => {
+            const existingIndex = state.rawTaps.findIndex((tap) => tap.tap_id === tapId);
+            const rawTaps = existingIndex === -1
+              ? [...state.rawTaps, tapDetail]
+              : state.rawTaps.map((tap) => (tap.tap_id === tapId ? tapDetail : tap));
+            return refreshDerived({ ...state, rawTaps });
+          });
+        }
+        return tapDetail;
+      } catch (error) {
+        throw new Error(toErrorMessage('tapStore.fetchTapDetail', error));
+      }
+    },
+
     assignKegToTap: async (tapId, kegId) => {
       const token = ensureToken();
 
       try {
-        const updatedTap = await invoke('assign_keg_to_tap', { token, tapId, kegId });
+        await invoke('assign_keg_to_tap', { token, tapId, kegId });
+        let updatedTap = await invoke('get_taps', { token }).then((items) => items.find((tap) => tap.tap_id === tapId));
+        try {
+          updatedTap = await invoke('get_operator_tap_detail', { token, tapId });
+        } catch {
+          // Fall back to the legacy tap payload if projection detail is temporarily unavailable.
+        }
 
         update((state) => refreshDerived({
           ...state,
-          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? updatedTap : tap)),
+          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? (updatedTap || tap) : tap)),
         }));
 
         return updatedTap;
@@ -667,10 +693,16 @@ function createTapStore() {
       const token = ensureToken();
 
       try {
-        const updatedTap = await invoke('unassign_keg_from_tap', { token, tapId });
+        await invoke('unassign_keg_from_tap', { token, tapId });
+        let updatedTap = await invoke('get_taps', { token }).then((items) => items.find((tap) => tap.tap_id === tapId));
+        try {
+          updatedTap = await invoke('get_operator_tap_detail', { token, tapId });
+        } catch {
+          // Fall back to the legacy tap payload if projection detail is temporarily unavailable.
+        }
         update((state) => refreshDerived({
           ...state,
-          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? updatedTap : tap)),
+          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? (updatedTap || tap) : tap)),
         }));
         return updatedTap;
       } catch (error) {
@@ -684,10 +716,16 @@ function createTapStore() {
 
       try {
         const payload = { status };
-        const updatedTap = await invoke('update_tap', { token, tapId, payload });
+        await invoke('update_tap', { token, tapId, payload });
+        let updatedTap = await invoke('get_taps', { token }).then((items) => items.find((tap) => tap.tap_id === tapId));
+        try {
+          updatedTap = await invoke('get_operator_tap_detail', { token, tapId });
+        } catch {
+          // Fall back to the legacy tap payload if projection detail is temporarily unavailable.
+        }
         update((state) => refreshDerived({
           ...state,
-          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? updatedTap : tap)),
+          rawTaps: state.rawTaps.map((tap) => (tap.tap_id === tapId ? (updatedTap || tap) : tap)),
         }));
         return updatedTap;
       } catch (error) {

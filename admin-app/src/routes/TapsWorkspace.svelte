@@ -74,9 +74,17 @@
   });
 
   /** @param {any} tap */
-  function selectTap(tap) {
+  async function selectTap(tap) {
     selectedTap = tap;
     isTapDrawerOpen = true;
+    try {
+      const tapDetail = await tapStore.fetchTapDetail(tap.tap_id, { updateStore: true });
+      if (selectedTap?.tap_id === tap.tap_id) {
+        selectedTap = tapDetail;
+      }
+    } catch {
+      // Keep the already opened drawer with the best available card data.
+    }
   }
 
   /** @param {CustomEvent<TapHistoryPayload>} event */

@@ -369,6 +369,33 @@ async fn get_taps(token: String) -> Result<Vec<api_client::Tap>, AppError> {
 }
 
 #[tauri::command]
+async fn get_operator_today(token: String) -> Result<serde_json::Value, AppError> {
+    info!("[COMMAND]     operator today API...");
+    api_client::get_operator_today(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_taps(token: String) -> Result<Vec<serde_json::Value>, AppError> {
+    info!("[COMMAND]     operator taps API...");
+    api_client::get_operator_taps(&token)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn get_operator_tap_detail(
+    token: String,
+    tap_id: i32,
+) -> Result<serde_json::Value, AppError> {
+    info!("[COMMAND]     operator tap detail API for {}", tap_id);
+    api_client::get_operator_tap_detail(&token, tap_id)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn get_pours(token: String, limit: u32) -> Result<Vec<api_client::PourResponse>, AppError> {
     info!("[COMMAND]     API...");
     api_client::get_pours(&token, limit)
@@ -805,6 +832,16 @@ async fn resolve_card(
         .map_err(AppError::from)
 }
 
+#[tauri::command]
+async fn lookup_operator_card_context(
+    token: String,
+    query: String,
+) -> Result<serde_json::Value, AppError> {
+    api_client::lookup_operator_card_context(&token, &query)
+        .await
+        .map_err(AppError::from)
+}
+
 // =============================================================================
 //
 // =============================================================================
@@ -853,6 +890,9 @@ fn main() {
             update_keg,
             delete_keg,
             get_taps,
+            get_operator_today,
+            get_operator_taps,
+            get_operator_tap_detail,
             get_pours,
             get_live_pour_feed,
             get_flow_summary,
@@ -892,7 +932,8 @@ fn main() {
             report_lost_card_from_visit,
             list_lost_cards,
             restore_lost_card,
-            resolve_card
+            resolve_card,
+            lookup_operator_card_context
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

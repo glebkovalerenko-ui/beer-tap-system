@@ -23,6 +23,7 @@
 
 ## Stage closing reports
 
+- `docs/admin-app/09-operator-projections-phase-2-result.md`: implemented result of the operator projection layer for `Today`, `Taps`, and `Cards & Guests`.
 - `docs/reports/RUS_LOCALIZATION_PHASE1_IMPLEMENTATION.md`: report for Phase 1 Russian display-layer localization.
 - `docs/reports/SYNCTHING_BACKEND_DESYNC_RCA_AND_FIX_2026-03-25.md`: RCA and fix for stale hub backend, stopped Windows sender, and runtime-media drift in Syncthing.
 - `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`: closing verdict before the next implementation phase.

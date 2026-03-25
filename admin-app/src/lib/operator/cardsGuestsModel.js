@@ -52,17 +52,20 @@ export function buildCardsGuestsViewModel({
     ? safePours.filter((item) => item?.guest?.guest_id === selectedGuest.guest_id).slice(0, 6)
     : [];
 
-  const lastTapLabel = recentGuestPours[0]?.tap?.display_name
+  const lastTapLabel = selectedLookup?.last_tap_label
+    || recentGuestPours[0]?.tap?.display_name
     || (recentGuestPours[0]?.tap_id
       ? `Кран #${recentGuestPours[0].tap_id}`
       : (selectedVisit?.active_tap_id ? `Кран #${selectedVisit.active_tap_id}` : '—'));
 
-  const recentEvents = buildRecentEvents({
-    guest: selectedGuest,
-    visit: selectedVisit,
-    lookup: selectedLookup,
-    pours: recentGuestPours,
-  });
+  const recentEvents = Array.isArray(selectedLookup?.recent_events) && selectedLookup.recent_events.length > 0
+    ? selectedLookup.recent_events
+    : buildRecentEvents({
+      guest: selectedGuest,
+      visit: selectedVisit,
+      lookup: selectedLookup,
+      pours: recentGuestPours,
+    });
 
   const lookupGuestName = selectedGuest
     ? fullName(selectedGuest)
@@ -71,6 +74,7 @@ export function buildCardsGuestsViewModel({
   const hasLookup = hasLookupTarget(selectedLookup);
   const lookupBalance = selectedGuest?.balance
     ?? selectedLookup?.guest?.balance
+    ?? (selectedLookup?.guest?.balance_cents != null ? selectedLookup.guest.balance_cents / 100 : null)
     ?? selectedLookup?.active_visit?.balance
     ?? null;
   const lookupVisitId = selectedVisit?.visit_id
@@ -78,7 +82,9 @@ export function buildCardsGuestsViewModel({
     || selectedLookup?.lost_card?.visit_id
     || null;
   const lookupSummaryItems = hasLookup
-    ? [
+    ? (Array.isArray(selectedLookup?.lookup_summary_items) && selectedLookup.lookup_summary_items.length > 0
+      ? selectedLookup.lookup_summary_items
+      : [
       {
         key: 'card-state',
         label: 'Статус карты',
@@ -117,7 +123,7 @@ export function buildCardsGuestsViewModel({
         value: recentEvents.length ? `${recentEvents.length} событий` : 'Нет событий',
         tone: recentEvents.length ? 'info' : 'neutral',
       },
-    ]
+    ])
     : [];
 
   const quickActions = buildQuickActions({

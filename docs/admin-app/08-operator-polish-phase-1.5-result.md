@@ -215,3 +215,7 @@ The next practical track after Phase 1.5 is not another shell rewrite. It is foc
 - extend operator acceptance checks to more role permutations
 - tighten action confirmations for the remaining dangerous workflows
 - continue management-layer work without polluting the operator-first routes
+
+Status update:
+
+- The next repository-level implementation step was completed on 2026-03-25 and is documented in `docs/admin-app/09-operator-projections-phase-2-result.md`.

@@ -6,6 +6,7 @@
 use once_cell::sync::Lazy;
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::RwLock;
 
 use crate::server_config::DEFAULT_SERVER_BASE_URL;
@@ -1024,6 +1025,36 @@ pub async fn get_taps(token: &str) -> Result<Vec<Tap>, String> {
     }
 }
 
+pub async fn get_operator_today(token: &str) -> Result<Value, String> {
+    let url = build_api_url("operator/today");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_taps(token: &str) -> Result<Vec<Value>, String> {
+    let url = build_api_url("operator/taps");
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Vec<Value>>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn get_operator_tap_detail(token: &str, tap_id: i32) -> Result<Value, String> {
+    let url = build_api_url(&format!("operator/taps/{}", tap_id));
+    let response = send(CLIENT.get(&url).bearer_auth(token), &url).await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 // --- Pour Functions ---
 /// Получение списка последних наливов.
 pub async fn get_pours(token: &str, limit: u32) -> Result<Vec<PourResponse>, String> {
@@ -1567,6 +1598,20 @@ pub async fn resolve_card(token: &str, card_uid: &str) -> Result<CardResolveResp
             .json::<CardResolveResponse>()
             .await
             .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn lookup_operator_card_context(token: &str, query: &str) -> Result<Value, String> {
+    let url = build_api_url("operator/cards/lookup");
+    let response = send(
+        CLIENT.get(&url).query(&[("query", query)]).bearer_auth(token),
+        &url,
+    )
+    .await?;
+    if response.status().is_success() {
+        response.json::<Value>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

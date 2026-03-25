@@ -1029,6 +1029,130 @@ class SystemOperationalSummary(BaseModel):
     open_incident_count: int = 0
     subsystems: list[SystemSubsystemSummary] = []
 
+class OperatorActionPolicy(BaseModel):
+    allowed: bool = True
+    confirm_required: bool = False
+    second_approval_required: bool = False
+    reason_code_required: bool = False
+    disabled_reason: Optional[str] = None
+
+
+class OperatorSubsystemStatus(BaseModel):
+    state: str
+    label: str
+    detail: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class TapActionPolicySet(BaseModel):
+    open: OperatorActionPolicy
+    stop: OperatorActionPolicy
+    block: OperatorActionPolicy
+    screen: OperatorActionPolicy
+    keg: OperatorActionPolicy
+    history: OperatorActionPolicy
+
+
+class CardGuestSummaryItem(BaseModel):
+    key: str
+    label: str
+    value: str
+    tone: Literal["neutral", "info", "warning", "critical"] = "neutral"
+
+
+class CardGuestEventItem(BaseModel):
+    title: str
+    description: str
+    timestamp: datetime
+
+
+class OperatorAttentionItem(BaseModel):
+    key: str
+    kind: str
+    severity: Literal["info", "warning", "critical"] = "info"
+    title: str
+    description: str
+    action_label: str
+    target: Literal["tap", "session", "incident", "system"] = "tap"
+    href: str = "/today"
+    tap_id: Optional[int] = None
+    visit_id: Optional[uuid.UUID] = None
+    incident_id: Optional[str] = None
+    category: Optional[str] = None
+    system_source: Optional[str] = None
+
+
+class TapWorkspaceCard(BaseModel):
+    tap_id: int
+    display_name: str
+    status: str
+    keg_id: Optional[uuid.UUID] = None
+    keg: Optional[Keg] = None
+    display_enabled: bool = True
+    controller_status: OperatorSubsystemStatus
+    display_status: OperatorSubsystemStatus
+    reader_status: OperatorSubsystemStatus
+    sync_state: Literal["idle", "live", "syncing"]
+    last_heartbeat_at: Optional[datetime] = None
+    active_session: Optional[VisitActiveListItem] = None
+    recent_events: list[LivePourFeedItem] = []
+    current_pour_volume_ml: Optional[int] = None
+    current_pour_amount: Optional[Decimal] = None
+    live_status: Optional[str] = None
+    safe_actions: TapActionPolicySet
+
+
+class TapDrawerModel(TapWorkspaceCard):
+    history_items: list[LivePourFeedItem] = []
+
+
+class OperatorTodayModel(BaseModel):
+    generated_at: datetime
+    current_shift: ShiftCurrentResponse
+    today_summary: TodaySummaryResponse
+    flow_summary: FlowSummaryResponse
+    feed_items: list[LivePourFeedItem] = []
+    system_health: SystemOperationalSummary
+    incidents: list[IncidentListItem] = []
+    attention_items: list[OperatorAttentionItem] = []
+    priority_cta_source: Optional[str] = None
+
+
+class CardGuestContextGuest(BaseModel):
+    guest_id: uuid.UUID
+    full_name: str
+    phone_number: str
+    balance_cents: int
+    balance: Optional[Decimal] = None
+
+
+class CardGuestContextActiveVisit(BaseModel):
+    visit_id: uuid.UUID
+    guest_id: uuid.UUID
+    guest_full_name: str
+    phone_number: str
+    status: str
+    card_uid: Optional[str] = None
+    active_tap_id: Optional[int] = None
+    opened_at: datetime
+    balance: Optional[Decimal] = None
+    tap_label: Optional[str] = None
+
+
+class CardGuestContextModel(BaseModel):
+    card_uid: str
+    is_lost: bool
+    lost_card: Optional[CardResolveLostCard] = None
+    active_visit: Optional[CardGuestContextActiveVisit] = None
+    guest: Optional[CardGuestContextGuest] = None
+    card: Optional[CardResolveCard] = None
+    recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
+    recent_events: list[CardGuestEventItem] = []
+    last_tap_label: Optional[str] = None
+    lookup_summary_items: list[CardGuestSummaryItem] = []
+    allowed_quick_actions: list[str] = []
+
+
 class SystemStateUpdate(BaseModel):
     value: str = Field(..., json_schema_extra={'example': "true"}, description="Новое значение для флага (e.g., 'true' or 'false')")
 
