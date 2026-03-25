@@ -48,6 +48,18 @@
 
   const LOW_KEG_THRESHOLD = 0.15;
   const HEARTBEAT_STALE_MINUTES = 5;
+  const ATTENTION_SEVERITY_WEIGHT = { S1: 0, S2: 1, S3: 2, S4: 3 };
+  const ATTENTION_SLA_MINUTES = { S1: 15, S2: 60, S3: 180, S4: 480 };
+
+  function slaCountdown(deadlineAt) {
+    if (!deadlineAt) return 'SLA —';
+    const diffMs = new Date(deadlineAt).getTime() - now.getTime();
+    const totalMinutes = Math.floor(Math.abs(diffMs) / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    return diffMs >= 0 ? `до breach ${formatted}` : `breach +${formatted}`;
+  }
 
   function toNumber(value) {
     const parsed = Number.parseFloat(String(value ?? '0').replace(',', '.'));
@@ -311,6 +323,9 @@
       description: `Нет heartbeat ${minutesSince(tap.last_heartbeat_at || tap.updated_at)} мин`,
       category: 'stale device heartbeat',
       severity: 'warning',
+      severityCode: 'S2',
+      created_at: new Date().toISOString(),
+      sla_deadline_at: new Date(Date.now() + ATTENTION_SLA_MINUTES.S2 * 60000).toISOString(),
       href: '#/system',
       primaryCta: 'Открыть систему',
       secondaryCta: 'Скрыть',
@@ -324,6 +339,9 @@
       description: 'Кран без назначенной кеги и не готов к продаже.',
       category: 'taps without keg',
       severity: 'warning',
+      severityCode: 'S2',
+      created_at: new Date().toISOString(),
+      sla_deadline_at: new Date(Date.now() + ATTENTION_SLA_MINUTES.S2 * 60000).toISOString(),
       href: '#/taps',
       primaryCta: 'Открыть кран',
       secondaryCta: 'Скрыть',
@@ -336,6 +354,9 @@
           description: $nfcReaderStore.message || $nfcReaderStore.error || 'Считыватель требует проверки.',
           category: 'offline controllers/readers/displays',
           severity: $nfcReaderStore.status === 'error' ? 'critical' : 'warning',
+          severityCode: $nfcReaderStore.status === 'error' ? 'S1' : 'S2',
+          created_at: new Date().toISOString(),
+          sla_deadline_at: new Date(Date.now() + ($nfcReaderStore.status === 'error' ? ATTENTION_SLA_MINUTES.S1 : ATTENTION_SLA_MINUTES.S2) * 60000).toISOString(),
           href: '#/system',
           primaryCta: 'Открыть систему',
           secondaryCta: 'Подтвердить',
@@ -350,6 +371,9 @@
         description: 'Сессия льёт и ждёт синхронизацию с контроллером.',
         category: 'stuck sync',
         severity: 'warning',
+        severityCode: 'S3',
+        created_at: item.timestamp,
+        sla_deadline_at: new Date(new Date(item.timestamp).getTime() + ATTENTION_SLA_MINUTES.S3 * 60000).toISOString(),
         href: '#/sessions',
         primaryCta: 'Открыть сессию',
         secondaryCta: 'Подтвердить',
@@ -363,6 +387,9 @@
         description: 'Зафиксирован пролив вне продажи или при закрытом клапане.',
         category: 'non-sale flow',
         severity: 'critical',
+        severityCode: 'S1',
+        created_at: item.timestamp,
+        sla_deadline_at: new Date(new Date(item.timestamp).getTime() + ATTENTION_SLA_MINUTES.S1 * 60000).toISOString(),
         href: '#/sessions',
         primaryCta: 'Открыть сессию',
         secondaryCta: 'Подтвердить',
@@ -372,8 +399,9 @@
   ]
     .filter((item) => !dismissedAlertKeys.has(item.key))
     .sort((left, right) => {
-      const weight = { critical: 0, warning: 1, info: 2 };
-      return (weight[left.severity] ?? 3) - (weight[right.severity] ?? 3);
+      const severityDiff = (ATTENTION_SEVERITY_WEIGHT[left.severityCode] ?? 9) - (ATTENTION_SEVERITY_WEIGHT[right.severityCode] ?? 9);
+      if (severityDiff !== 0) return severityDiff;
+      return minutesSince(left.created_at) - minutesSince(right.created_at);
     });
 
   $: todayKpis = [
@@ -571,8 +599,10 @@
           <article class="alert-row" data-severity={item.severity}>
             <div class="alert-copy">
               <div class="alert-headline">
+                <span class={`severity-badge ${String(item.severityCode || 'S4').toLowerCase()}`}>{item.severityCode || 'S4'}</span>
                 <span class="alert-category">{item.category}</span>
                 <span class="alert-meta">{item.meta}</span>
+                <span class="alert-meta">{slaCountdown(item.sla_deadline_at)}</span>
               </div>
               <strong>{item.title}</strong>
               <p>{item.description}</p>
@@ -886,6 +916,11 @@
   }
   .alert-row[data-severity='critical'] { border-color: #fecaca; background: #fff7f7; }
   .alert-row[data-severity='warning'] { border-color: #fde68a; background: #fffdf5; }
+  .severity-badge { border-radius: 999px; padding: 0.1rem 0.5rem; font-size: 0.78rem; font-weight: 700; }
+  .severity-badge.s1 { background: #fee2e2; color: #991b1b; }
+  .severity-badge.s2 { background: #ffedd5; color: #9a3412; }
+  .severity-badge.s3 { background: #fef9c3; color: #854d0e; }
+  .severity-badge.s4 { background: #e2e8f0; color: #334155; }
   .alert-copy strong { display: block; margin-top: 0.25rem; }
   .alert-copy p { margin: 0.35rem 0 0; color: var(--text-secondary); }
   .alert-headline {

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -8,6 +8,38 @@ from sqlalchemy.orm import Session, joinedload
 import models
 
 EMERGENCY_STOP_KEY = "emergency_stop_enabled"
+
+SEVERITY_MATRIX = {
+    "S1": {
+        "examples": ["emergency_stop", "closed_valve_flow", "non_sale_flow"],
+        "acknowledge_target_minutes": 5,
+        "closure_target_minutes": 30,
+        "mandatory_actions": ["acknowledge", "note", "escalation"],
+        "close_roles": ["shift_lead", "engineer_owner"],
+    },
+    "S2": {
+        "examples": ["tap_without_keg", "report_lost_card"],
+        "acknowledge_target_minutes": 15,
+        "closure_target_minutes": 120,
+        "mandatory_actions": ["acknowledge", "note"],
+        "close_roles": ["shift_lead", "engineer_owner"],
+    },
+    "S3": {
+        "examples": ["visit_force_unlock", "offline_sync_issue"],
+        "acknowledge_target_minutes": 30,
+        "closure_target_minutes": 240,
+        "mandatory_actions": ["acknowledge", "note"],
+        "close_roles": ["operator", "shift_lead", "engineer_owner"],
+    },
+    "S4": {
+        "examples": ["reconcile_pour", "low_impact_operational_anomaly"],
+        "acknowledge_target_minutes": 60,
+        "closure_target_minutes": 480,
+        "mandatory_actions": ["acknowledge", "note"],
+        "close_roles": ["operator", "shift_lead", "engineer_owner"],
+    },
+}
+
 
 
 def _utcnow() -> datetime:
@@ -96,6 +128,58 @@ def _get_or_create_incident_state(db: Session, incident: dict) -> models.Inciden
     db.add(state)
     db.flush()
     return state
+
+
+def severity_matrix_rows() -> list[dict]:
+    return [{"severity": key, **value} for key, value in SEVERITY_MATRIX.items()]
+
+
+def _severity_for_incident(incident: dict) -> str:
+    incident_type = str(incident.get("type") or "")
+    source = str(incident.get("source") or "")
+    priority = str(incident.get("priority") or "")
+
+    if incident_type in {"emergency_stop", "closed_valve_flow", "non_sale_flow"} or priority == "critical":
+        return "S1"
+    if incident_type in {"tap_without_keg", "report_lost_card"}:
+        return "S2"
+    if incident_type in {"visit_force_unlock"} or source == "audit_log":
+        return "S3"
+    return "S4"
+
+
+def _apply_severity_and_sla(base: dict) -> dict:
+    severity = _severity_for_incident(base)
+    matrix = SEVERITY_MATRIX[severity]
+    created_at = _as_utc(base.get("created_at"))
+    now = _utcnow()
+
+    acknowledge_deadline_at = None
+    if created_at:
+        acknowledge_deadline_at = created_at + timedelta(minutes=matrix["acknowledge_target_minutes"])
+        closure_deadline_at = created_at + timedelta(minutes=matrix["closure_target_minutes"])
+    else:
+        closure_deadline_at = None
+
+    if base.get("status") == "closed":
+        sla_at_risk = False
+    else:
+        sla_at_risk = bool(acknowledge_deadline_at and now >= acknowledge_deadline_at) or bool(closure_deadline_at and now >= closure_deadline_at)
+
+    base["severity"] = severity
+    base["acknowledge_target_minutes"] = matrix["acknowledge_target_minutes"]
+    base["closure_target_minutes"] = matrix["closure_target_minutes"]
+    base["acknowledge_deadline_at"] = acknowledge_deadline_at
+    base["closure_deadline_at"] = closure_deadline_at
+    base["sla_at_risk"] = sla_at_risk
+    base["role_gate_close"] = matrix["close_roles"]
+    return base
+
+
+def can_role_close_incident(incident: dict, role: str | None) -> bool:
+    severity = incident.get("severity") or _severity_for_incident(incident)
+    close_roles = SEVERITY_MATRIX.get(severity, SEVERITY_MATRIX["S4"])["close_roles"]
+    return (role or "operator") in close_roles
 
 
 def _apply_overlay(base: dict, state: Optional[models.IncidentState]) -> dict:
@@ -203,7 +287,7 @@ def list_incidents(db: Session, limit: int = 100) -> list[dict]:
     if incident_ids:
         overlays = {row.incident_id: row for row in db.query(models.IncidentState).filter(models.IncidentState.incident_id.in_(incident_ids)).all()}
 
-    incidents = [_apply_overlay(item, overlays.get(item["incident_id"])) for item in incidents]
+    incidents = [_apply_severity_and_sla(_apply_overlay(item, overlays.get(item["incident_id"]))) for item in incidents]
     incidents.sort(key=lambda item: _as_utc(item["created_at"]) or _utcnow(), reverse=True)
     return incidents[:limit]
 
