@@ -1,12 +1,15 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import GuardedActionButton from '../common/GuardedActionButton.svelte';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
+  import { getCriticalActionGuard } from '../../lib/criticalActionMatrix.js';
   import { TAP_COPY } from '../../lib/operatorLabels.js';
 
   export let tap;
   export let canDisplayOverride = false;
   export let canControl = false;
   export let canMaintain = false;
+  export let permissions = {};
 
   const dispatch = createEventDispatcher();
   const HISTORY_LIMIT = 12;
@@ -54,26 +57,31 @@
   $: titleId = 'tap-drawer-title';
   $: descriptionId = 'tap-drawer-description';
   $: canShowServiceReady = tap?.status === 'cleaning' || tap?.status === 'empty' || isLocked;
+  $: stopGuard = getCriticalActionGuard('stop_pour', permissions, { extraAllowed: Boolean(session) });
+  $: lockGuard = getCriticalActionGuard('block_unblock_tap', permissions);
+  $: displayGuard = getCriticalActionGuard('display_override', permissions);
+  $: maintenanceGuard = getCriticalActionGuard('maintenance_toggle', permissions);
+  $: kegGuard = getCriticalActionGuard('keg_connect_disconnect', permissions);
   $: serviceActions = [
     {
       key: 'cleaning',
       label: 'Промывка',
       tone: 'secondary',
-      visible: canMaintain,
+      visible: maintenanceGuard.visible,
       description: 'Переводит кран в сервисный режим для промывки линии.',
     },
     {
       key: 'mark-ready',
       label: 'Перевести в готовность',
       tone: 'success',
-      visible: canMaintain && canShowServiceReady,
+      visible: maintenanceGuard.visible && canShowServiceReady,
       description: 'Возвращает кран в рабочий статус после обслуживания или блокировки.',
     },
     {
       key: tap?.keg_id ? 'unassign' : 'assign',
       label: tap?.keg_id ? 'Снять кегу' : 'Назначить кегу',
       tone: 'secondary',
-      visible: canControl,
+      visible: kegGuard.visible,
       description: tap?.keg_id ? 'Отключает текущую кегу от линии.' : 'Открывает назначение новой кеги на кран.',
     },
   ].filter((action) => action.visible);
@@ -315,17 +323,11 @@
               </div>
             </div>
             <div class="action-list">
-              {#if canControl && session}
-                <button class="primary danger" type="button" on:click={() => emit('stop-pour')}>Остановить налив</button>
-              {/if}
-              {#if canControl}
-                <button class="secondary" type="button" aria-label={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
-                  {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
-                </button>
-              {/if}
-              {#if canDisplayOverride}
-                <button class="secondary" type="button" aria-label={`Открыть настройки экрана для ${tap.display_name}`} on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</button>
-              {/if}
+              <GuardedActionButton className="primary danger" visible={stopGuard.visible} disabled={stopGuard.disabled} reason={stopGuard.reason} on:click={() => emit('stop-pour')}>Остановить налив</GuardedActionButton>
+              <GuardedActionButton className="secondary" visible={lockGuard.visible} disabled={lockGuard.disabled} reason={lockGuard.reason} ariaLabel={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
+                {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
+              </GuardedActionButton>
+              <GuardedActionButton className="secondary" visible={displayGuard.visible} disabled={displayGuard.disabled} reason={displayGuard.reason} ariaLabel={`Открыть настройки экрана для ${tap.display_name}`} on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</GuardedActionButton>
               <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
             </div>
           </article>
@@ -343,6 +345,8 @@
                   <button
                     class={action.tone === 'success' ? 'secondary success' : 'secondary'}
                     type="button"
+                    disabled={action.key === 'assign' || action.key === 'unassign' ? kegGuard.disabled : maintenanceGuard.disabled}
+                    title={action.key === 'assign' || action.key === 'unassign' ? kegGuard.reason : maintenanceGuard.reason}
                     on:click={() => emit(action.key)}
                   >
                     {action.label}

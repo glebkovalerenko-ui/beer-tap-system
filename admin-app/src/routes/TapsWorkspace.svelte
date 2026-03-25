@@ -238,6 +238,7 @@
         taps={taps}
         canControl={permissions.taps_control}
         canDisplayOverride={permissions.display_override}
+        {permissions}
         on:open-detail={(event) => selectTap(event.detail.tap)}
         on:assign={handleOpenAssignModal}
         on:display-settings={handleOpenTapDisplaySettings}
@@ -281,6 +282,7 @@
       canDisplayOverride={permissions.display_override}
       canControl={permissions.taps_control}
       canMaintain={permissions.maintenance_actions}
+      {permissions}
       on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
       on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}

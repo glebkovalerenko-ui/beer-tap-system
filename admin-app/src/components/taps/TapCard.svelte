@@ -1,12 +1,15 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
+  import GuardedActionButton from '../common/GuardedActionButton.svelte';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
+  import { getCriticalActionGuard } from '../../lib/criticalActionMatrix.js';
   import { TAP_COPY } from '../../lib/operatorLabels.js';
 
   export let tap;
   export let canControl = false;
   export let canDisplayOverride = false;
+  export let permissions = {};
 
   const dispatch = createEventDispatcher();
 
@@ -33,6 +36,11 @@
     : canShowKegAction
       ? { label: 'Кега', ariaLabel: `Открыть карточку крана ${tap.display_name} для действий с кегой`, event: 'open-detail' }
       : null;
+  $: stopGuard = getCriticalActionGuard('stop_pour', permissions, { extraAllowed: Boolean(session) });
+  $: lockGuard = getCriticalActionGuard('block_unblock_tap', permissions, { extraAllowed: Boolean(tap.keg_id) });
+  $: displayGuard = getCriticalActionGuard('display_override', permissions);
+  $: kegGuard = getCriticalActionGuard('keg_connect_disconnect', permissions);
+
   $: actionCount = [
     true,
     canShowStop,
@@ -146,23 +154,30 @@
   <div class="card-actions" class:multi-line={actionCount > 2}>
     <button class="cta primary" type="button" aria-label={`Открыть карточку крана ${tap.display_name}`} on:click={() => emit('open-detail')}>Открыть</button>
 
-    {#if canShowStop}
-      <button class="cta danger" type="button" aria-label={`Остановить налив на ${tap.display_name}`} on:click={() => emit('stop-pour')}>Стоп</button>
-    {/if}
+    <GuardedActionButton className="cta danger" visible={stopGuard.visible} disabled={stopGuard.disabled} reason={stopGuard.reason} ariaLabel={`Остановить налив на ${tap.display_name}`} on:click={() => emit('stop-pour')}>Стоп</GuardedActionButton>
 
-    {#if canShowLockToggle}
-      <button class="cta" type="button" aria-label={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
-        {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
-      </button>
-    {/if}
+    <GuardedActionButton className="cta" visible={lockGuard.visible} disabled={lockGuard.disabled} reason={lockGuard.reason} ariaLabel={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
+      {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
+    </GuardedActionButton>
 
-    {#if secondaryAction}
-      <button
-        class="cta"
-        type="button"
-        aria-label={secondaryAction.ariaLabel}
+    {#if secondaryAction?.event === 'display-settings'}
+      <GuardedActionButton
+        className="cta"
+        visible={displayGuard.visible}
+        disabled={displayGuard.disabled}
+        reason={displayGuard.reason}
+        ariaLabel={secondaryAction.ariaLabel}
         on:click={() => emit(secondaryAction.event)}
-      >{secondaryAction.label}</button>
+      >{secondaryAction.label}</GuardedActionButton>
+    {:else if secondaryAction?.event === 'open-detail'}
+      <GuardedActionButton
+        className="cta"
+        visible={kegGuard.visible}
+        disabled={kegGuard.disabled}
+        reason={kegGuard.reason}
+        ariaLabel={secondaryAction.ariaLabel}
+        on:click={() => emit(secondaryAction.event)}
+      >{secondaryAction.label}</GuardedActionButton>
     {/if}
 
     {#if canShowHistory}

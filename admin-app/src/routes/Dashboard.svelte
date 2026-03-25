@@ -22,7 +22,9 @@
   import InvestorValuePanel from '../components/system/InvestorValuePanel.svelte';
   import Modal from '../components/common/Modal.svelte';
   import ShiftReportView from '../components/reports/ShiftReportView.svelte';
+  import GuardedActionButton from '../components/common/GuardedActionButton.svelte';
   import { formatDateTimeRu, formatMinorUnitsRub, formatTimeRu, formatVolumeRu } from '../lib/formatters.js';
+  import { getCriticalActionGuard } from '../lib/criticalActionMatrix.js';
 
   let initialLoadAttempted = false;
   let showConfirmModal = false;
@@ -129,6 +131,8 @@
 
   $: currentShiftId = $shiftStore.shift?.id || null;
   $: canCreateOrShowCurrentZ = !$shiftStore.isOpen && $shiftStore.shift?.status === 'closed' && !!currentShiftId;
+
+  $: emergencyGuard = getCriticalActionGuard('maintenance_toggle', $roleStore.permissions, { extraAllowed: !$systemStore.loading, extraDeniedReason: 'Подождите завершения текущей операции.' });
 
   $: {
     if ($sessionStore.token && !initialLoadAttempted) {
@@ -449,23 +453,23 @@
     <h1>{systemMode ? 'System' : 'Today'}</h1>
     <p class="page-subtitle">{systemMode ? 'Настройки смены, отчёты, API и инженерный контроль рабочего места.' : 'Сначала — situational awareness, затем следующий шаг для оператора.'}</p>
   </div>
-  {#if $roleStore.permissions.maintenance_actions}
-    <button
-      class="emergency-button"
-      class:active={$systemStore.emergencyStop}
-      on:click={() => (showConfirmModal = true)}
-      disabled={$systemStore.loading}
-    >
-      {#if $systemStore.loading}
-        Обработка...
-      {:else if $systemStore.emergencyStop}
-        Отключить экстренную остановку
-      {:else}
-        Активировать экстренную остановку
-      {/if}
-    </button>
-  {:else}
-    <p class="emergency-note">Роль не позволяет управлять экстренной остановкой.</p>
+  <GuardedActionButton
+    className={`emergency-button ${$systemStore.emergencyStop ? "active" : ""}`}
+    visible={emergencyGuard.visible}
+    disabled={emergencyGuard.disabled}
+    reason={emergencyGuard.reason}
+    on:click={() => (showConfirmModal = true)}
+  >
+    {#if $systemStore.loading}
+      Обработка...
+    {:else if $systemStore.emergencyStop}
+      Отключить экстренную остановку
+    {:else}
+      Активировать экстренную остановку
+    {/if}
+  </GuardedActionButton>
+  {#if emergencyGuard.disabled}
+    <p class="emergency-note">{emergencyGuard.reason}</p>
   {/if}
 </div>
 

@@ -4,6 +4,7 @@
   export let taps = [];
   export let canControl = false;
   export let canDisplayOverride = false;
+  export let permissions = {};
 </script>
 
 {#if taps.length > 0}
@@ -14,6 +15,7 @@
           {tap}
           {canControl}
           {canDisplayOverride}
+          {permissions}
           on:open-detail
           on:assign
           on:display-settings
