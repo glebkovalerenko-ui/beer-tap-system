@@ -28,6 +28,17 @@
     return 'closed';
   }
 
+
+  function formatCountdown(deadlineAt) {
+    if (!deadlineAt) return 'SLA —';
+    const diffMs = new Date(deadlineAt).getTime() - Date.now();
+    const totalMinutes = Math.floor(Math.abs(diffMs) / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    return diffMs >= 0 ? `до breach ${formatted}` : `breach +${formatted}`;
+  }
+
   function onMainAction(item) {
     const type = actionType(item);
     if (type === 'claim') {
@@ -65,14 +76,16 @@
                     <strong>{item.typeLabel}</strong>
                     <p>{item.summary}</p>
                   </div>
-                  <div class={`priority ${item.priority}`}>
-                    {item.priorityLabel}
+                  <div class="badges-col">
+                    <div class={`severity severity-${String(item.severity || 'S4').toLowerCase()}`}>{item.severity || 'S4'}</div>
+                    <div class={`priority ${item.priority}`}>{item.priorityLabel}</div>
                   </div>
                 </div>
 
                 <div class="card-meta">
                   <span><strong>Кран:</strong> {item.tapLabel}</span>
                   <span><strong>Создан:</strong> {formatDateTimeRu(item.created_at)}</span>
+                  <span><strong>SLA:</strong> {formatCountdown(item.acknowledge_deadline_at)}</span>
                   <span><strong>Ответственный:</strong> {item.accountability.ownerLabel}</span>
                   <span><strong>Источник:</strong> {item.sourceLabel}</span>
                 </div>
@@ -153,12 +166,17 @@
 <style>
   .incident-list, .incident-group, .incident-cards { display: grid; gap: 1rem; }
   .group-head, .card-head, .card-meta, .card-links, .card-actions, .state-row { display: flex; gap: 0.75rem; }
+  .badges-col { display: grid; gap: 0.4rem; justify-items: end; }
   .group-head, .card-head { justify-content: space-between; }
   .group-head h2, .group-head p, .card-head p { margin: 0; }
   .incident-card { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: #fff; display: grid; gap: 0.9rem; cursor: pointer; }
   .incident-card.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; background: #f8fbff; }
   .card-head p, .eyebrow, .empty, .small { color: var(--text-secondary, #64748b); }
-  .priority { align-self: flex-start; border-radius: 999px; padding: 0.35rem 0.7rem; font-weight: 700; }
+  .severity, .priority { align-self: flex-start; border-radius: 999px; padding: 0.35rem 0.7rem; font-weight: 700; }
+  .severity-s1 { background: #fee2e2; color: #991b1b; }
+  .severity-s2 { background: #ffedd5; color: #9a3412; }
+  .severity-s3 { background: #fef9c3; color: #854d0e; }
+  .severity-s4 { background: #e2e8f0; color: #334155; }
   .priority.low { background: #e2e8f0; }
   .priority.medium { background: #dbeafe; color: #1d4ed8; }
   .priority.high { background: #fef3c7; color: #92400e; }

@@ -23,6 +23,7 @@
     tap: 'all',
     time: 'all',
     query: '',
+    slaRisk: 'all',
   };
 
   const SECTION_LABELS = {
@@ -92,6 +93,7 @@
     const text = String(value).replaceAll('_', ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
+
 
   /** @type {import('../lib/incidentsViewModel.js').IncidentViewModel[]} */
   let enrichedItems = [];
@@ -294,6 +296,13 @@
             <option value="24h">Последние 24 часа</option>
             <option value="7d">Последние 7 дней</option>
             <option value="30d">Последние 30 дней</option>
+          </select>
+        </label>
+        <label>
+          <span>SLA</span>
+          <select bind:value={filters.slaRisk}>
+            <option value="all">Все</option>
+            <option value="at_risk">SLA at risk</option>
           </select>
         </label>
       </div>

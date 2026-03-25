@@ -17,7 +17,11 @@
  *  last_action?: string,
  *  note_action?: string,
  *  last_action_at?: string,
- *  closed_at?: string
+ *  closed_at?: string,
+ *  severity?: 'S1'|'S2'|'S3'|'S4'|string,
+ *  acknowledge_deadline_at?: string,
+ *  closure_deadline_at?: string,
+ *  sla_at_risk?: boolean
  * }} IncidentLike
  */
 
@@ -52,6 +56,23 @@
  */
 
 export const SECTION_ORDER = ['new', 'in_progress', 'closed'];
+
+
+const SEVERITY_WEIGHT = { S1: 0, S2: 1, S3: 2, S4: 3 };
+
+/** @param {IncidentLike} item */
+function incidentAgeMinutes(item) {
+  const createdAt = new Date(item.created_at || 0).getTime();
+  if (Number.isNaN(createdAt)) return 0;
+  return Math.max(0, Math.floor((Date.now() - createdAt) / 60000));
+}
+
+/** @param {IncidentLike} left @param {IncidentLike} right */
+function compareBySeverityAndAge(left, right) {
+  const severityDiff = (SEVERITY_WEIGHT[left.severity] ?? 9) - (SEVERITY_WEIGHT[right.severity] ?? 9);
+  if (severityDiff !== 0) return severityDiff;
+  return incidentAgeMinutes(right) - incidentAgeMinutes(left);
+}
 
 /** @param {string|number|null|undefined} value */
 function titleCase(value) {
@@ -287,6 +308,8 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       priorityLabel: priorityLabels[String(incident.priority)] || titleCase(incident.priority),
       statusLabel: statusLabels[String(incident.status)] || titleCase(incident.status),
       operatorInitials: initials(accountability.owner),
+      incidentAgeMinutes: incidentAgeMinutes(incident),
+      isSlaAtRisk: Boolean(incident.sla_at_risk),
       accountability,
       summary: buildNarrative(incident, tapMatch, sessionMatch, accountability)[0],
       narrative: buildNarrative(incident, tapMatch, sessionMatch, accountability),
@@ -311,7 +334,7 @@ export function buildFilterOptions(enrichedItems) {
   };
 }
 
-/** @param {IncidentViewModel[]} enrichedItems @param {{priority:string,status:string,type:string,tap:string,time:string,query:string}} filters */
+/** @param {IncidentViewModel[]} enrichedItems @param {{priority:string,status:string,type:string,tap:string,time:string,query:string,slaRisk:string}} filters */
 export function filterIncidents(enrichedItems, filters) {
   return enrichedItems.filter((item) => {
     const query = filters.query.trim().toLowerCase();
@@ -320,7 +343,8 @@ export function filterIncidents(enrichedItems, filters) {
       && (filters.type === 'all' || item.type === filters.type)
       && (filters.tap === 'all' || item.tapLabel === filters.tap)
       && timeMatches(item.created_at, filters.time)
-      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary].join(' ').toLowerCase().includes(query));
+      && (filters.slaRisk !== 'at_risk' || item.isSlaAtRisk)
+      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary, item.severity].join(' ').toLowerCase().includes(query));
   });
 }
 
@@ -329,6 +353,6 @@ export function groupIncidentsByStatus(filteredItems, sectionLabels) {
   return SECTION_ORDER.map((status) => ({
     key: status,
     label: sectionLabels[status],
-    items: filteredItems.filter((item) => item.status === status),
+    items: filteredItems.filter((item) => item.status === status).sort(compareBySeverityAndAge),
   }));
 }

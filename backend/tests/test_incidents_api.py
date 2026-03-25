@@ -49,6 +49,7 @@ def test_incidents_and_system_summary(client, db_session):
     payload = incidents.json()
     assert payload['mutation_capabilities']['claim']['enabled'] is True
     assert payload['mutation_capabilities']['escalate']['enabled'] is True
+    assert any(row['severity'] == 'S1' for row in payload['severity_matrix'])
     assert any(item['type'] == 'emergency_stop' for item in payload['items'])
     assert any(item['type'] == 'closed_valve_flow' for item in payload['items'])
 
@@ -110,6 +111,8 @@ def test_incident_mutation_endpoints_persist_overlay_and_audit(client, db_sessio
     assert payload['status'] == 'closed'
     assert payload['closed_at'] is not None
     assert payload['closure_summary'] == 'Заменили датчик потока'
+    assert payload['severity'] == 'S1'
+    assert 'shift_lead' in payload['role_gate_close']
 
     db_session.expire_all()
     overlay = db_session.query(models.IncidentState).filter(models.IncidentState.incident_id == incident_id).one()
@@ -119,7 +122,10 @@ def test_incident_mutation_endpoints_persist_overlay_and_audit(client, db_sessio
     assert overlay.closure_summary == 'Заменили датчик потока'
     assert overlay.closed_at is not None
 
-    audit_actions = [row.action for row in db_session.query(models.AuditLog).filter(models.AuditLog.target_id == incident_id).all()]
+    audit_logs = db_session.query(models.AuditLog).filter(models.AuditLog.target_id == incident_id).all()
+    audit_actions = [row.action for row in audit_logs]
+    assert all(row.actor_id for row in audit_logs)
+    assert all(row.timestamp is not None for row in audit_logs)
     assert 'incident_claim' in audit_actions
     assert 'incident_note' in audit_actions
     assert 'incident_escalate' in audit_actions

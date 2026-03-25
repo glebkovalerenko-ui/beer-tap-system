@@ -935,6 +935,7 @@ class SystemStateItem(BaseModel):
 class IncidentListItem(BaseModel):
     incident_id: str
     priority: Literal["low", "medium", "high", "critical"]
+    severity: Literal["S1", "S2", "S3", "S4"] = "S3"
     created_at: datetime
     tap: Optional[str] = None
     type: str
@@ -949,6 +950,21 @@ class IncidentListItem(BaseModel):
     escalation_reason: Optional[str] = None
     closed_at: Optional[datetime] = None
     closure_summary: Optional[str] = None
+    acknowledge_target_minutes: int = 15
+    closure_target_minutes: int = 120
+    acknowledge_deadline_at: Optional[datetime] = None
+    closure_deadline_at: Optional[datetime] = None
+    sla_at_risk: bool = False
+    role_gate_close: list[str] = []
+
+
+class IncidentSeverityMatrixItem(BaseModel):
+    severity: Literal["S1", "S2", "S3", "S4"]
+    examples: list[str] = []
+    acknowledge_target_minutes: int
+    closure_target_minutes: int
+    mandatory_actions: list[str] = []
+    close_roles: list[str] = []
 
 
 class IncidentMutationCapability(BaseModel):
@@ -966,6 +982,7 @@ class IncidentMutationCapabilities(BaseModel):
 class IncidentListResponse(BaseModel):
     items: list[IncidentListItem]
     mutation_capabilities: IncidentMutationCapabilities
+    severity_matrix: list[IncidentSeverityMatrixItem] = []
 
 
 class IncidentClaimPayload(BaseModel):

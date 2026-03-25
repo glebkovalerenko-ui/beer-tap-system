@@ -1,7 +1,7 @@
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 import schemas
@@ -76,6 +76,7 @@ def read_incidents(
     return schemas.IncidentListResponse(
         items=incident_crud.list_incidents(db, limit=limit),
         mutation_capabilities=_incident_capabilities(current_user),
+        severity_matrix=incident_crud.severity_matrix_rows(),
     )
 
 
@@ -124,4 +125,9 @@ def close_incident(
     db: Session = Depends(get_db),
 ):
     actor_id = (current_user or {}).get("username")
+    role = (current_user or {}).get("role") or "operator"
+    incident = incident_crud.get_incident(db, incident_id)
+    if not incident_crud.can_role_close_incident(incident, role):
+        allowed = ", ".join(incident.get("role_gate_close") or [])
+        raise HTTPException(status_code=403, detail=f"Close недоступен для роли {role}. Разрешено: {allowed}")
     return incident_crud.close_incident(db, incident_id=incident_id, resolution_summary=payload.resolution_summary.strip(), note=payload.note.strip() if payload.note else None, actor_id=str(actor_id) if actor_id else None)
