@@ -6,6 +6,7 @@
   import TapDisplaySettingsModal from '../components/taps/TapDisplaySettingsModal.svelte';
   import { buildTapGuestDisplaySnapshot } from '../lib/formatters.js';
   import { getPendingDisplayConfigTaps, runtimeClass } from '../lib/tapScreenHelpers.js';
+  import { TAP_SCREENS_COPY } from '../lib/operatorLabels.js';
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
@@ -86,7 +87,7 @@
       } catch (error) {
         displayConfigErrors = {
           ...displayConfigErrors,
-          [tap.tap_id]: String((typeof error === 'object' && error && 'message' in error ? error.message : '') || 'Не удалось загрузить guest-facing override.'),
+          [tap.tap_id]: String((typeof error === 'object' && error && 'message' in error ? error.message : '') || TAP_SCREENS_COPY.guestFacingOverrideLoadError),
         };
       }
     }));
@@ -95,7 +96,7 @@
   /** @param {any} tap */
   function openDisplaySettings(tap) {
     if (!permissions.display_override) {
-      uiStore.notifyWarning('Настройки экрана доступны только management / engineering ролям.');
+      uiStore.notifyWarning(TAP_SCREENS_COPY.managementOnlySettings);
       return;
     }
     focusedTap = tap;
@@ -136,7 +137,7 @@
   <div class="page-header">
     <div>
       <h1>Экраны кранов</h1>
-      <p>Ниже видно, какой сценарий, брендирование и runtime-состояние сейчас видит гость на каждом tap display.</p>
+      <p>{TAP_SCREENS_COPY.introText}</p>
     </div>
   </div>
 
@@ -144,7 +145,7 @@
     <div class="section-header">
       <div>
         <h2>Что сейчас показывает каждый кран</h2>
-        <p class="section-hint">Карточка сразу собирает summary из tap.operations, override экрана и beverage/display полей — без открытия модалки.</p>
+        <p class="section-hint">{TAP_SCREENS_COPY.sectionHint}</p>
       </div>
     </div>
 
@@ -161,17 +162,17 @@
           <article class="display-card ui-card">
             <div class="display-card__head">
               <div>
-                <div class="eyebrow">Tap #{tap.tap_id}</div>
+                <div class="eyebrow">{TAP_SCREENS_COPY.tapLabel} #{tap.tap_id}</div>
                 <h3>{tap.display_name}</h3>
                 <p>{tap.operations?.beverageName || 'Напиток не назначен'}</p>
               </div>
               <button class="secondary-action" on:click={() => openDisplaySettings(tap)}>Настройки экрана</button>
             </div>
 
-            <section class="preview-card" aria-label={`Guest preview ${tap.display_name}`}>
+            <section class="preview-card" aria-label={TAP_SCREENS_COPY.previewAria(tap.display_name)}>
               <div class="preview-topline">
                 <span class:ok={snapshot.enabled} class:off={!snapshot.enabled} class="status-pill">
-                  {snapshot.enabled ? 'Tap display включён' : 'Tap display выключен'}
+                  {snapshot.enabled ? TAP_SCREENS_COPY.displayEnabled : TAP_SCREENS_COPY.displayDisabled}
                 </span>
                 <span class={`runtime-pill ${runtimeClass(snapshot.runtimeTone)}`}>
                   {snapshot.runtimeSummary}
@@ -180,7 +181,7 @@
 
               <div class="preview-copy">
                 <div>
-                  <span class="preview-label">Текущий guest-facing сценарий</span>
+                  <span class="preview-label">{TAP_SCREENS_COPY.guestScenario}</span>
                   <strong>{snapshot.scenarioLabel}</strong>
                 </div>
                 <div>
@@ -196,26 +197,26 @@
               </div>
 
               <div class="branding-summary">
-                <span class="preview-label">Branding summary</span>
+                <span class="preview-label">{TAP_SCREENS_COPY.brandingSummary}</span>
                 <p>{snapshot.brandingSummary}</p>
               </div>
             </section>
 
             <dl class="meta-grid">
               <div><dt>Сценарий крана</dt><dd>{tap.operations?.productStateLabel || 'Нет данных'}</dd></div>
-              <div><dt>Display runtime</dt><dd>{tap.operations?.displayStatus?.label || 'Нет данных'}</dd></div>
-              <div><dt>Controller</dt><dd>{tap.operations?.controllerStatus?.label || 'Нет данных'}</dd></div>
-              <div><dt>Operator note</dt><dd>{tap.operations?.operatorStateReason || tap.operations?.liveStatus || 'Нет данных'}</dd></div>
+              <div><dt>{TAP_SCREENS_COPY.displayRuntime}</dt><dd>{tap.operations?.displayStatus?.label || 'Нет данных'}</dd></div>
+              <div><dt>{TAP_SCREENS_COPY.controller}</dt><dd>{tap.operations?.controllerStatus?.label || 'Нет данных'}</dd></div>
+              <div><dt>{TAP_SCREENS_COPY.operatorNote}</dt><dd>{tap.operations?.operatorStateReason || tap.operations?.liveStatus || 'Нет данных'}</dd></div>
             </dl>
 
             <div class="operator-summary">
-              <span class="preview-label">Operator-readable summary</span>
+              <span class="preview-label">{TAP_SCREENS_COPY.operatorSummary}</span>
               <ul>
                 {#each snapshot.operatorSummary as line}
                   <li>{line}</li>
                 {/each}
                 {#if displayConfigErrors[tap.tap_id]}
-                  <li class="warning-text">Override summary недоступен: {displayConfigErrors[tap.tap_id]}</li>
+                  <li class="warning-text">{TAP_SCREENS_COPY.overrideSummaryUnavailable}: {displayConfigErrors[tap.tap_id]}</li>
                 {/if}
               </ul>
             </div>

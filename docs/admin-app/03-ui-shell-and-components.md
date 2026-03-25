@@ -18,22 +18,22 @@
 Top bar фиксирован и виден на всех рабочих экранах.
 
 ### Left cluster
-- Product/Location label (точка продаж)
-- Current workflow title (например, “Пополнение баланса”)
+- Ярлык продукта/локации (точка продаж)
+- Заголовок текущего сценария (например, «Пополнение баланса»)
 
 ### Center cluster
-- **Guest context chip**:
+- **Контекст гостя**:
   - Имя гостя
   - Short card UID
   - Статус гостя (active/blocked)
 - Если контекста нет: neutral chip `Гость не выбран`
 
 ### Right cluster (operational status)
-- **Shift status pill**: Open / Closed / Attention
-- **Network status pill**: Online / Degraded / Offline
-- **NFC status pill**: Reader OK / Reader Error
-- **Unsynced queue badge**: `Sync queue: N` (если есть)
-- Operator menu (имя + роль + logout)
+- **Пилла смены**: Открыта / Закрыта / Требует внимания
+- **Пилла сети**: Онлайн / Нестабильно / Офлайн
+- **Пилла NFC**: Считыватель готов / Считыватель с ошибкой
+- **Бейдж очереди синхронизации**: `Очередь синхронизации: N` (если есть)
+- Меню оператора (имя + роль + «Выйти»)
 
 ## 1.2 Main workspace layout
 
@@ -268,3 +268,13 @@ Top bar фиксирован и виден на всех рабочих экра
 - [x] Зафиксированы компоненты и их usage rules.
 - [x] Учтены ограничения touch-first и error-proof UX.
 - [x] Подготовлен маппинг компонентов на core flows для реализации.
+
+
+## 7) UX copy dictionary (Shell + Tap Screens)
+
+Чтобы не возвращались англоязычные вкрапления в операторских экранах, тексты shell и экранов кранов централизованы в `admin-app/src/lib/operatorLabels.js`:
+
+- `SHELL_COPY` — верхняя панель, подписи контекста гостя/оператора, синхронизация и tooltip-подсказки.
+- `TAP_SCREENS_COPY` — подписи гостевого предпросмотра, состояния экрана/контроллера, комментариев оператора, сводок и сообщений ошибок.
+
+Правило: для новых экранов и aria/title/tooltip использовать словарь из `operatorLabels.js`, а не хардкодить строки в компонентах.

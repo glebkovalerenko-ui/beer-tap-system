@@ -5,6 +5,7 @@
   import { systemStore } from '../../stores/systemStore.js';
   import { tapStore } from '../../stores/tapStore.js';
   import { formatHealthPill, healthTone } from '../../lib/healthStatus.js';
+  import { SHELL_COPY } from '../../lib/operatorLabels.js';
 
   export let showHealth = true;
   export let showOperational = true;
@@ -32,24 +33,24 @@
 
     if (unsynced > 0) {
       return {
-        text: `Sync: ${unsynced} несинхр.`,
+        text: SHELL_COPY.syncUnsynced(unsynced),
         tone: 'warn',
-        title: 'Есть локальные проливы, ожидающие синхронизацию с backend.',
+        title: SHELL_COPY.syncUnsyncedTitle,
       };
     }
 
     if (offline > 0) {
       return {
-        text: `Sync queue: ${offline} offline`,
+        text: SHELL_COPY.syncOfflineQueue(offline),
         tone: 'warn',
-        title: 'Есть устройства с локальными/offline проблемами, влияющими на оперативную синхронизацию.',
+        title: SHELL_COPY.syncOfflineTitle,
       };
     }
 
     return {
-      text: 'Sync: чисто',
+      text: SHELL_COPY.syncClean,
       tone: 'ok',
-      title: 'Несинхронизированных проливов и offline-хвостов не обнаружено.',
+      title: SHELL_COPY.syncCleanTitle,
     };
   }
 
@@ -93,7 +94,7 @@
   {/if}
 
   {#if showHealth}
-    <div class="pills primary" aria-label="Health ключевых подсистем">
+    <div class="pills primary" aria-label="Статус ключевых подсистем">
       {#each primaryHealthPills as item (item.key)}
         <span class="pill" class:ok={healthTone(item.state) === 'ok'} class:warn={warningStates.includes(item.state)} class:error={errorStates.includes(item.state)} title={item.detail}>
           {formatHealthPill(item)}

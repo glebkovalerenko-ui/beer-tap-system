@@ -1,3 +1,5 @@
+import { TAP_SCREENS_COPY } from './operatorLabels.js';
+
 const MONEY_FORMATTER = new Intl.NumberFormat('ru-RU', {
   style: 'currency',
   currency: 'RUB',
@@ -290,10 +292,10 @@ export function buildTapGuestDisplaySnapshot(tap, displayConfig = null) {
       present: Boolean(beverage?.logo_asset_id),
       source: beverage?.logo_asset_id ? 'Логотип напитка доступен' : 'Логотип не задан',
     },
-    runtimeSummary: operations.displayStatus?.label || operations.liveStatus || 'Нет данных о runtime',
+    runtimeSummary: operations.displayStatus?.label || operations.liveStatus || 'Нет данных о состоянии экрана',
     runtimeTone: operations.displayStatus?.state || 'unknown',
     operatorSummary: [
-      displayEnabled ? 'Tap display включён' : 'Tap display выключен',
+      displayEnabled ? TAP_SCREENS_COPY.displayEnabled : TAP_SCREENS_COPY.displayDisabled,
       operations.productStateLabel ? `Состояние крана: ${operations.productStateLabel}` : null,
       operations.operatorStateReason || null,
       operations.liveStatus || null,
