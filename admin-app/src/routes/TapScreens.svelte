@@ -7,6 +7,7 @@
   import { buildTapGuestDisplaySnapshot } from '../lib/formatters.js';
   import { getPendingDisplayConfigTaps, runtimeClass } from '../lib/tapScreenHelpers.js';
   import { TAP_SCREENS_COPY } from '../lib/operatorLabels.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { tapStore } from '../stores/tapStore.js';
@@ -136,8 +137,8 @@
 {:else}
   <div class="page-header">
     <div>
-      <h1>Экраны кранов</h1>
-      <p>{TAP_SCREENS_COPY.introText}</p>
+      <h1>{ROUTE_COPY.tapScreens.title}</h1>
+      <p>{ROUTE_COPY.tapScreens.description}</p>
     </div>
   </div>
 

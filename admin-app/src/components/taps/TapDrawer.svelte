@@ -4,11 +4,9 @@
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
   import { getCriticalActionGuard } from '../../lib/criticalActionMatrix.js';
   import { TAP_COPY } from '../../lib/operatorLabels.js';
+  import { buildTapQuickActions } from '../../lib/operator/tapQuickActions.js';
 
   export let tap;
-  export let canDisplayOverride = false;
-  export let canControl = false;
-  export let canMaintain = false;
   export let permissions = {};
 
   const dispatch = createEventDispatcher();
@@ -57,11 +55,17 @@
   $: titleId = 'tap-drawer-title';
   $: descriptionId = 'tap-drawer-description';
   $: canShowServiceReady = tap?.status === 'cleaning' || tap?.status === 'empty' || isLocked;
-  $: stopGuard = getCriticalActionGuard('stop_pour', permissions, { extraAllowed: Boolean(session) });
-  $: lockGuard = getCriticalActionGuard('block_unblock_tap', permissions);
-  $: displayGuard = getCriticalActionGuard('display_override', permissions);
   $: maintenanceGuard = getCriticalActionGuard('maintenance_toggle', permissions);
   $: kegGuard = getCriticalActionGuard('keg_connect_disconnect', permissions);
+  $: tapQuickActions = buildTapQuickActions({
+    tap,
+    session,
+    permissions,
+    canControl: true,
+    canDisplayOverride: true,
+  });
+  $: sessionQuickActions = tapQuickActions.filter((action) => ['stop', 'toggle-lock'].includes(action.id));
+  $: operatorQuickActions = tapQuickActions.filter((action) => ['screen', 'history'].includes(action.id));
   $: serviceActions = [
     {
       key: 'cleaning',
@@ -277,6 +281,22 @@
                 </div>
                 <div><dt>{TAP_COPY.activeSessionCard}</dt><dd>{activeVisitCardLabel(session)}</dd></div>
               </dl>
+
+              <div class="session-actions">
+                {#each sessionQuickActions as action (action.id)}
+                  <GuardedActionButton
+                    className={action.tone === 'danger' ? 'primary danger' : 'secondary'}
+                    visible={true}
+                    disabled={action.disabled}
+                    reason={action.reason}
+                    ariaLabel={action.ariaLabel}
+                    on:click={() => emit(action.event)}
+                  >{action.title}</GuardedActionButton>
+                {/each}
+                <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)} disabled={!session}>
+                  Открыть сессию
+                </button>
+              </div>
             </div>
 
           </div>
@@ -319,16 +339,24 @@
             <div class="section-head compact">
               <div>
                 <h4>{TAP_COPY.operatorActionsTitle}</h4>
-                <p>Команды для текущей смены и реакции на ситуацию по крану.</p>
+                <p>Переходы и действия, которые оператор использует без сервисного режима.</p>
               </div>
             </div>
             <div class="action-list">
-              <GuardedActionButton className="primary danger" visible={stopGuard.visible} disabled={stopGuard.disabled} reason={stopGuard.reason} on:click={() => emit('stop-pour')}>Остановить налив</GuardedActionButton>
-              <GuardedActionButton className="secondary" visible={lockGuard.visible} disabled={lockGuard.disabled} reason={lockGuard.reason} ariaLabel={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
-                {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
-              </GuardedActionButton>
-              <GuardedActionButton className="secondary" visible={displayGuard.visible} disabled={displayGuard.disabled} reason={displayGuard.reason} ariaLabel={`Открыть настройки экрана для ${tap.display_name}`} on:click={() => dispatch('display-settings', { tap })}>Настройки экрана</GuardedActionButton>
-              <button class="secondary" type="button" on:click={() => openLinkedSession(session?.visitId)}>{TAP_COPY.openSession}</button>
+              {#each operatorQuickActions as action (action.id)}
+                {#if action.guarded}
+                  <GuardedActionButton
+                    className="secondary"
+                    visible={true}
+                    disabled={action.disabled}
+                    reason={action.reason}
+                    ariaLabel={action.ariaLabel}
+                    on:click={() => emit(action.event)}
+                  >{action.title}</GuardedActionButton>
+                {:else}
+                  <button class="secondary" type="button" on:click={() => emit(action.event)}>{action.title}</button>
+                {/if}
+              {/each}
             </div>
           </article>
 
@@ -422,7 +450,8 @@
   .event-meta,
   .events-list li,
   .info-grid,
-  .session-panel {
+  .session-panel,
+  .session-actions {
     display: flex;
     gap: 1rem;
   }
@@ -575,6 +604,10 @@
   .action-list {
     display: grid;
     gap: 0.65rem;
+  }
+  .session-actions {
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
   }
   .action-note {
     margin: -0.3rem 0 0;

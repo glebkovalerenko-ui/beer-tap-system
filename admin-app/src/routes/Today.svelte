@@ -10,6 +10,7 @@
   import { roleStore } from '../stores/roleStore.js';
   import { buildTodayFeedItems } from '../lib/operator/todayFeedModel.js';
   import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
@@ -85,8 +86,8 @@
   <section class="hero ui-card">
     <div class="hero-copy">
       <span class="eyebrow">Операционный фокус</span>
-      <h1>Сегодня</h1>
-      <p>Что сломано сейчас, что делать первым и куда перейти в 1 клик. Общий контекст смены остаётся в верхней панели.</p>
+      <h1>{ROUTE_COPY.today.title}</h1>
+      <p>{ROUTE_COPY.today.description}</p>
     </div>
     <div class="hero-actions">
       <button class="cta-button primary" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>

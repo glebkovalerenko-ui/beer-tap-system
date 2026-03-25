@@ -1,12 +1,13 @@
 <script>
   import SessionHistoryView from '../components/sessions/SessionHistoryView.svelte';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 </script>
 
 <section class="session-shell">
   <header class="session-header">
     <div>
-      <h1>Сессии</h1>
-      <p>Единый экран для активных визитов, истории, фильтров и detail panel без переключения между режимами.</p>
+      <h1>{ROUTE_COPY.sessions.title}</h1>
+      <p>{ROUTE_COPY.sessions.description}</p>
     </div>
   </header>
 

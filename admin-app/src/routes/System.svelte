@@ -3,6 +3,7 @@
   import { roleStore } from '../stores/roleStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import SystemHealthSummary from '../components/system/SystemHealthSummary.svelte';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 
   let incidentFocusSource = '';
 
@@ -40,8 +41,8 @@
 {:else}
   <section class="page">
     <div class="page-header">
-      <h1>Система</h1>
-      <p>Базовый health overview открыт для смены в режиме чтения: здесь проверяют статус сервисов, устройств и очередей обмена. Инженерные действия и глубокие настройки показываются только при отдельных правах.</p>
+      <h1>{ROUTE_COPY.system.title}</h1>
+      <p>{ROUTE_COPY.system.description} Глубокие инженерные действия и настройки остаются отдельным permission-gated слоем.</p>
     </div>
     <div class="ui-card panel">
       {#if incidentFocusSource}

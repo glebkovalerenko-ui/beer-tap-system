@@ -64,11 +64,11 @@
     <p class="empty">{INCIDENT_COPY.noIncidentsFiltered}</p>
   {:else}
     {#each groupedItems as group (group.key)}
-      <section class="incident-group">
+      <section class="incident-group" data-status={group.key}>
         <div class="group-head">
           <div>
             <h2>{group.label}</h2>
-            <p>{group.items.length} шт.</p>
+            <p>{group.key === 'closed' ? 'Закрытые инциденты доступны для справки и разбора.' : `${group.items.length} шт.`}</p>
           </div>
         </div>
 
@@ -195,6 +195,9 @@
   .badges-col { display: grid; gap: 0.4rem; justify-items: end; }
   .group-head, .card-head { justify-content: space-between; }
   .group-head h2, .group-head p, .card-head p { margin: 0; }
+  .incident-group[data-status='closed'] { opacity: 0.82; }
+  .incident-group[data-status='closed'] .group-head { color: #64748b; }
+  .incident-group[data-status='closed'] .incident-card { background: #fcfdff; border-color: #d8e0ea; }
   .incident-card { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: #fff; display: grid; gap: 0.9rem; cursor: pointer; }
   .incident-card.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; background: #f8fbff; }
   .incident-card:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }

@@ -552,6 +552,5 @@
   .inline-link { padding:.4rem .65rem; }
   .alert { padding:.85rem 1rem; border:1px solid #fecaca; border-radius:12px; background:#fef2f2; color:#991b1b; }
   .deep-details summary { cursor:pointer; font-weight:700; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
   @media (max-width: 860px){ .problem-device-list li { display:grid; } }
 </style>

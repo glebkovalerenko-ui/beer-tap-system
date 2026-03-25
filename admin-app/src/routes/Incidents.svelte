@@ -6,8 +6,9 @@
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
   import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
-  import { buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
+  import { buildIncidentActionCopy, buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { ensureIncidentsData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
@@ -179,6 +180,7 @@
   $: incidentActionReadOnly = $incidentStore.readOnly;
   $: incidentActionReadOnlyReason = $incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.';
   $: incidentActionPlan = getActionPlan('incident');
+  $: actionFormCopy = buildIncidentActionCopy(actionForm.action);
 
   /** @param {any} event */
   function openActionForm(event, suggestedAction = 'note') {
@@ -234,8 +236,8 @@
   <section class="page">
     <div class="page-header">
       <div>
-        <h1>Инциденты</h1>
-        <p>{incidentActionReadOnly ? 'Оператор видит очередь инцидентов и причины недоступности mutation-действий в текущем окружении.' : 'Оператор видит подтверждённый статус инцидента, ответственного и может фиксировать действия прямо из очереди.'}</p>
+        <h1>{ROUTE_COPY.incidents.title}</h1>
+        <p>{incidentActionReadOnly ? 'Очередь инцидентов доступна для разбора, но действия по ним сейчас временно недоступны.' : ROUTE_COPY.incidents.description}</p>
       </div>
       <div class="header-stats">
         <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
@@ -353,7 +355,7 @@
             <article>
               <span>Последнее действие</span>
               <strong>{selectedIncident.accountability.lastActionLabel}</strong>
-              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Источник: лента инцидентов системы' : 'Источник: временная локальная запись'}</small>
+              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Данные подтверждены системой.' : 'Изменение ещё ожидает подтверждения системы.'}</small>
             </article>
             <article>
               <span>Закрыт в</span>
@@ -481,8 +483,8 @@
   {#if isActionModalOpen && actionModalIncident}
     <Modal on:close={closeActionForm}>
       <div slot="header">
-        <h2>{INCIDENT_COPY.actionFormTitle} · #{actionModalIncident.incident_id}</h2>
-        <p class="modal-subtitle">Форма записывает реальное действие по инциденту в систему и ждёт подтверждения перед обновлением карточки.</p>
+        <h2>{actionFormCopy.heading} · #{actionModalIncident.incident_id}</h2>
+        <p class="modal-subtitle">{actionFormCopy.intro}</p>
       </div>
 
       <div class="incident-action-form">
@@ -509,21 +511,23 @@
         </section>
 
         <section class="detail-section compact-panel">
-          <h3>{INCIDENT_COPY.operatorNote}</h3>
-          <textarea bind:value={actionForm.note} rows="5" placeholder="Что сделал оператор, что проверил, какие данные увидел" disabled={incidentActionReadOnly}></textarea>
+          <h3>{actionFormCopy.noteLabel}</h3>
+          <textarea bind:value={actionForm.note} rows="5" placeholder={actionFormCopy.notePlaceholder} disabled={incidentActionReadOnly}></textarea>
         </section>
 
         {#if actionForm.action === 'escalate'}
           <section class="detail-section compact-panel">
-            <h3>{INCIDENT_COPY.escalationHandoff}</h3>
-            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder="Кому передаёте инцидент, почему нужен дополнительный разбор и какой сигнал это подтвердил" disabled={incidentActionReadOnly}></textarea>
+            <h3>{actionFormCopy.secondaryLabel}</h3>
+            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder={actionFormCopy.secondaryPlaceholder} disabled={incidentActionReadOnly}></textarea>
+            <p class="muted">{actionFormCopy.secondaryHelp}</p>
           </section>
         {/if}
 
         {#if actionForm.action === 'close'}
           <section class="detail-section compact-panel">
-            <h3>{INCIDENT_COPY.closureSummary}</h3>
-            <textarea bind:value={actionForm.resolutionSummary} rows="4" placeholder="Как устранено, чем подтверждено, когда можно считать кейс закрытым" disabled={incidentActionReadOnly}></textarea>
+            <h3>{actionFormCopy.secondaryLabel}</h3>
+            <textarea bind:value={actionForm.resolutionSummary} rows="4" placeholder={actionFormCopy.secondaryPlaceholder} disabled={incidentActionReadOnly}></textarea>
+            <p class="muted">{actionFormCopy.secondaryHelp}</p>
           </section>
         {/if}
 

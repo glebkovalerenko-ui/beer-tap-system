@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from './incidentModel.js';
+import { buildIncidentActionCopy, buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from './incidentModel.js';
 
 test('buildIncidentCapabilities maps enabled flags and reasons', () => {
   const model = buildIncidentCapabilities({
@@ -41,4 +41,13 @@ test('resolveIncidentActionRequest routes to proper store method', () => {
   const note = resolveIncidentActionRequest({ ...base, action: 'note' });
   assert.equal(note.method, 'addIncidentNote');
   assert.deepEqual(note.payload, { incidentId: 77, note: 'hi' });
+});
+
+test('buildIncidentActionCopy keeps operator-facing action copy', () => {
+  const closeCopy = buildIncidentActionCopy('close');
+  const noteCopy = buildIncidentActionCopy('note');
+
+  assert.match(closeCopy.heading, /Закрыть инцидент/);
+  assert.match(closeCopy.secondaryLabel, /Итог решения/);
+  assert.match(noteCopy.noteLabel, /Заметка оператора/);
 });

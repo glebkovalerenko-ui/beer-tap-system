@@ -29,6 +29,8 @@ test('buildCardsGuestsViewModel selects guest by selectedLookup fallback and lim
   assert.match(model.lookupSummaryItems.find((item) => item.key === 'balance')?.value || '', /420/);
   assert.equal(model.lookupSummaryItems.find((item) => item.key === 'last-tap')?.value, 'A');
   assert.equal(model.lookupSummaryItems.find((item) => item.key === 'recent-events')?.value, '4 событий');
+  assert.deepEqual(model.lookupSummaryItems.map((item) => item.key), ['card-state', 'balance', 'active-visit', 'last-tap', 'recent-events']);
+  assert.deepEqual(model.quickActions.map((item) => item.id), ['top-up', 'toggle-block', 'reissue', 'open-history', 'open-visit']);
 });
 
 test('resolveScenarioActionHandler maps action routing branches', () => {

@@ -8,7 +8,29 @@
   export let detailWhatHappened = [];
   export let narrativeKindLabels;
   export let formatMaybeDate;
+  export let syncLabels = {};
   export let onCloseDetail = () => {};
+
+  $: syncSummaryItems = detail ? [
+    {
+      key: 'sync-state',
+      label: 'Статус синхронизации',
+      value: syncLabels[detail.summary.sync_state] || detail.summary.sync_state || 'Нет данных',
+      note: detail.summary.has_unsynced ? 'Есть данные, ожидающие синхронизации.' : 'Сессия не ждёт дополнительной синхронизации.',
+    },
+    {
+      key: 'last-sync',
+      label: 'Последняя синхронизация',
+      value: formatMaybeDate(detail.summary.lifecycle.last_sync_at),
+      note: null,
+    },
+    {
+      key: 'incident-count',
+      label: 'Инциденты по сессии',
+      value: detail.summary.has_incident ? `${detail.summary.incident_count || 1}` : 'Нет',
+      note: detail.summary.has_incident ? 'Проверьте связанный контекст перед закрытием кейса.' : null,
+    },
+  ] : [];
 </script>
 
 <aside class="ui-card drawer" class:drawer-open={detail}>
@@ -29,18 +51,17 @@
       {/each}
     </section>
 
-    <section class="stats-grid">
-      {#each detailNarrativeGroups.lifecycleCards as card}
-        <article>
-          <span>{card.label}</span>
-          <strong>{card.value}</strong>
-          <small>{card.note}</small>
-        </article>
-      {/each}
-    </section>
-
     <section class="timeline-section">
       <h3>{SESSION_COPY.lifecycleSummary}</h3>
+      <div class="stats-grid">
+        {#each detailNarrativeGroups.lifecycleCards as card}
+          <article>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.note}</small>
+          </article>
+        {/each}
+      </div>
       <dl>
         <div><dt>Открытие</dt><dd>{formatMaybeDate(detail.summary.lifecycle.opened_at)}</dd></div>
         <div><dt>Авторизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
@@ -68,7 +89,18 @@
     </section>
 
     <section class="timeline-section">
-      <h3>{SESSION_COPY.operatorContext}</h3>
+      <h3>Синхронизация и контроль</h3>
+      <div class="stats-grid">
+        {#each syncSummaryItems as item}
+          <article>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            {#if item.note}
+              <small>{item.note}</small>
+            {/if}
+          </article>
+        {/each}
+      </div>
       {#if detailNarrativeGroups.operatorObservations.length}
         <ul class="timeline compact">
           {#each detailNarrativeGroups.operatorObservations as observation}
@@ -76,7 +108,20 @@
           {/each}
         </ul>
       {:else}
-        <p class="muted">Дополнительных операторских наблюдений система не передала.</p>
+        <p class="muted">Система не передала дополнительных предупреждений по синхронизации и операторскому контролю.</p>
+      {/if}
+    </section>
+
+    <section class="timeline-section">
+      <h3>{SESSION_COPY.operatorActions}</h3>
+      {#if detailOperatorActions.length}
+        <ul class="timeline compact">
+          {#each detailOperatorActions as action}
+            <li><div class="time">{formatMaybeDate(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'Без дополнительного комментария'}</p></div></li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="muted">Явных вмешательств оператора не было.</p>
       {/if}
     </section>
 
@@ -100,7 +145,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="muted">Override-поля не влияли на guest-facing поведение.</p>
+            <p class="muted">Override-поля не влияли на то, что видел гость на экране.</p>
           {/if}
           {#if detailDisplayContext.note}
             <p class="muted">{detailDisplayContext.note}</p>
@@ -114,19 +159,6 @@
         {#if detailDisplayContext.incidentLink}
           <p>{detailDisplayContext.incidentLink}</p>
         {/if}
-      {/if}
-    </section>
-
-    <section class="timeline-section">
-      <h3>{SESSION_COPY.operatorActions}</h3>
-      {#if detailOperatorActions.length}
-        <ul class="timeline compact">
-          {#each detailOperatorActions as action}
-            <li><div class="time">{formatMaybeDate(action.timestamp)}</div><div><strong>{action.label}</strong><p>{action.details || 'Без дополнительного комментария'}</p></div></li>
-          {/each}
-        </ul>
-      {:else}
-        <p class="muted">Явных вмешательств оператора не было.</p>
       {/if}
     </section>
   {:else}

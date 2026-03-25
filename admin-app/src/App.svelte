@@ -26,6 +26,7 @@
   import DemoGuide from './components/demo/DemoGuide.svelte';
   import ShellTopBar from './components/shell/ShellTopBar.svelte';
   import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
+  import { ROUTE_COPY, SHELL_NAV_COPY } from './lib/operator/routeCopy.js';
 
   const routes = {
     '/': Today,
@@ -46,33 +47,33 @@
   // NOTE: порядок primaryNav отражает operator workflow, а не технические домены.
   const primaryNav = [
     {
-      href: '#/today',
-      label: 'Сегодня',
-      description: 'Открыть текущие задачи, очередь внимания и быстрые действия смены.',
+      href: ROUTE_COPY.today.href,
+      label: ROUTE_COPY.today.label,
+      description: ROUTE_COPY.today.navDescription,
       visible: (permissions) => permissions.taps_view || permissions.sessions_view,
     },
     {
-      href: '#/taps',
-      label: 'Краны',
-      description: 'Следить за линиями, статусами и рабочими действиями у стойки.',
+      href: ROUTE_COPY.taps.href,
+      label: ROUTE_COPY.taps.label,
+      description: ROUTE_COPY.taps.navDescription,
       visible: (permissions) => permissions.taps_view,
     },
     {
-      href: '#/sessions',
-      label: 'Сессии',
-      description: 'Сопровождать активные визиты и разбирать историю обслуживания.',
+      href: ROUTE_COPY.sessions.href,
+      label: ROUTE_COPY.sessions.label,
+      description: ROUTE_COPY.sessions.navDescription,
       visible: (permissions) => permissions.sessions_view,
     },
     {
-      href: '#/cards-guests',
-      label: 'Карты и гости',
-      description: 'Найти гостя, проверить карту и безопасно продолжить обслуживание.',
+      href: ROUTE_COPY.cardsGuests.href,
+      label: ROUTE_COPY.cardsGuests.label,
+      description: ROUTE_COPY.cardsGuests.navDescription,
       visible: (permissions) => permissions.cards_lookup,
     },
     {
-      href: '#/kegs-beverages',
-      label: 'Кеги и напитки',
-      description: 'Рабочая подготовка ассортимента и линии налива.',
+      href: ROUTE_COPY.kegsBeverages.href,
+      label: ROUTE_COPY.kegsBeverages.label,
+      description: ROUTE_COPY.kegsBeverages.navDescription,
       visible: (permissions) => (
         permissions.inventory_view
         || permissions.kegs_manage
@@ -81,36 +82,36 @@
       ),
     },
     {
-      href: '#/incidents',
-      label: 'Инциденты',
-      description: 'Фиксировать проблемы смены и отслеживать эскалации.',
+      href: ROUTE_COPY.incidents.href,
+      label: ROUTE_COPY.incidents.label,
+      description: ROUTE_COPY.incidents.navDescription,
       visible: (permissions) => permissions.incidents_view,
     },
     {
-      href: '#/tap-screens',
-      label: 'Экраны кранов',
-      description: 'Сервисное управление display-сценариями.',
+      href: ROUTE_COPY.tapScreens.href,
+      label: ROUTE_COPY.tapScreens.label,
+      description: ROUTE_COPY.tapScreens.navDescription,
       visible: (permissions) => permissions.display_override,
     },
     {
-      href: '#/system',
-      label: 'Система',
-      description: 'Проверить health, устройства и синхронизацию, когда сервис проседает.',
+      href: ROUTE_COPY.system.href,
+      label: ROUTE_COPY.system.label,
+      description: ROUTE_COPY.system.navDescription,
       visible: (permissions) => permissions.system_health_view,
     },
   ];
 
   const supportNav = [
     {
-      href: '#/settings',
-      label: 'Настройки',
-      description: 'Редкие административные действия и управление параметрами продукта.',
+      href: ROUTE_COPY.settings.href,
+      label: ROUTE_COPY.settings.label,
+      description: ROUTE_COPY.settings.navDescription,
       visible: (permissions) => permissions.settings_manage,
     },
     {
-      href: '#/help',
-      label: 'Справка / регламенты',
-      description: 'Регламенты смены, SOP и сервисные entry-point\'ы для старшего/инженера.',
+      href: ROUTE_COPY.help.href,
+      label: ROUTE_COPY.help.label,
+      description: ROUTE_COPY.help.navDescription,
       visible: (permissions) => permissions.system_health_view,
     },
   ];
@@ -173,12 +174,12 @@
     <div class="workspace-grid">
       <aside class="left-rail ui-card">
         <div class="nav-group rail-intro">
-          <div class="nav-title">Рабочая навигация</div>
-          <p>Откройте раздел, где оператору нужно работать прямо сейчас. Сервисные и редкие инструменты убраны из постоянной зоны.</p>
+          <div class="nav-title">{SHELL_NAV_COPY.primaryIntroTitle}</div>
+          <p>{SHELL_NAV_COPY.primaryIntro}</p>
         </div>
 
         <div class="nav-group">
-          <div class="nav-title">Основные разделы</div>
+          <div class="nav-title">{SHELL_NAV_COPY.primaryTitle}</div>
           <nav aria-label="Главная навигация">
             {#each visiblePrimaryNav as item}
               <a href={item.href}>
@@ -191,8 +192,8 @@
 
         {#if visibleSupportNav.length > 0}
           <div class="support-block">
-            <div class="nav-title">Настройки и справка</div>
-            <p>Внизу собраны редкие административные действия и отдельный вход в справку / регламенты, чтобы не смешивать их с operator shell.</p>
+            <div class="nav-title">{SHELL_NAV_COPY.supportTitle}</div>
+            <p>{SHELL_NAV_COPY.supportIntro}</p>
             <nav aria-label="Настройки, поддержка и регламенты">
               {#each visibleSupportNav as item}
                 <a href={item.href} class="support-link">

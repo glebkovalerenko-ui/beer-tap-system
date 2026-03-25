@@ -48,12 +48,12 @@
   <div class="detail-header">
     <div>
       <h3>{guestDisplayName}</h3>
-      <p>{isOperatorVariant ? 'Короткий lookup-summary для оператора' : (guest.phone_number || 'Телефон не указан')}</p>
+      <p>{isOperatorVariant ? 'Короткая рабочая сводка для оператора' : (guest.phone_number || 'Телефон не указан')}</p>
     </div>
     <div class="header-actions">
       {#if !isOperatorVariant}
         <button class="ghost-btn" on:click={() => (showSecondary = !showSecondary)}>
-          {showSecondary ? 'Скрыть master-data' : 'Показать master-data'}
+          {showSecondary ? 'Скрыть подробности' : 'Показать подробности'}
         </button>
       {/if}
       <button class="close-btn" on:click={() => dispatch('close')} title="Закрыть">×</button>
@@ -82,9 +82,9 @@
     <div class="hero-actions">
       {#if canTopUp}<button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>{/if}
       {#if canToggleBlock}<button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>{/if}
-      {#if canMarkLost}<button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Lost / перевыпуск</button>{/if}
-      {#if canOpenVisit}<button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id}>Активная сессия</button>{/if}
+      {#if canMarkLost}<button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Пометить lost / перевыпустить</button>{/if}
       {#if canOpenHistory}<button on:click={() => dispatch('open-history')}>История</button>{/if}
+      {#if canOpenVisit}<button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id}>Активная сессия</button>{/if}
     </div>
   </section>
 
@@ -139,11 +139,11 @@
   {#if isOperatorVariant && canManageProfile}
     <section class="info-block management-callout">
       <div class="section-head">
-        <h4>Management path</h4>
+        <h4>Расширенное управление</h4>
       </div>
-      <p class="hint">Редактирование профиля, полный список карт, master-data и вторичные поля скрыты из operator layer и доступны только глубже.</p>
+      <p class="hint">Полный профиль гостя, редактирование и дополнительные поля вынесены из рабочего сценария и открываются отдельно.</p>
       <div class="management-actions">
-        <button class="ghost-btn" on:click={() => dispatch('open-management')}>Открыть management path</button>
+        <button class="ghost-btn" on:click={() => dispatch('open-management')}>Открыть полный профиль</button>
       </div>
     </section>
   {/if}
@@ -151,7 +151,7 @@
   {#if !isOperatorVariant && showSecondary}
     <section class="info-block secondary-block">
       <div class="section-head">
-        <h4>Мастер-данные и редактирование</h4>
+        <h4>Подробности и редактирование</h4>
         <button class="ghost-btn" on:click={() => dispatch('edit')}>Редактировать гостя</button>
       </div>
 

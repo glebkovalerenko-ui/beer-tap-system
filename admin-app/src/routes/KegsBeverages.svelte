@@ -12,6 +12,7 @@
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { uiStore } from '../stores/uiStore.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 
   const VIEW_MODES = {
     BEVERAGES: 'beverages',
@@ -142,8 +143,8 @@
 {:else}
   <div class="page-header">
     <div>
-      <h1>Кеги и напитки</h1>
-      <p>Разделённые режимы: просмотр инвентаря, операционные действия по кегам и управление каталогом напитков по разным правам.</p>
+      <h1>{ROUTE_COPY.kegsBeverages.title}</h1>
+      <p>{ROUTE_COPY.kegsBeverages.description}</p>
     </div>
   </div>
 
@@ -188,7 +189,7 @@
       <div class="section-header">
         <div>
           <h2 id="beverages-mode-title">Каталог напитков</h2>
-          <p class="section-hint">Показываем только beverage content/commercial workflow: карточку напитка, guest-facing тексты, цену и display-related поля.</p>
+          <p class="section-hint">Здесь настраиваются только карточка напитка, описание, цена и то, как напиток представлен гостю.</p>
         </div>
         <button type="button" class="ghost-link" on:click={() => switchMode(VIEW_MODES.KEGS)}>
           {hasKegs ? 'Показать подключённые кеги' : 'Перейти к списку кег'}
@@ -197,7 +198,7 @@
 
       <div class="context-note">
         <strong>В этом режиме:</strong>
-        редактируйте каталог, брендовые подписи, описание, цену и визуальные параметры Tap Display без отвлекающих операционных форм по кегам.
+        редактируйте каталог, описание, цену и экран напитка без смешения с физическим движением кег.
       </div>
 
       <BeverageManager canManage={canManageBeveragesCatalog} />
@@ -227,7 +228,7 @@
 
       <div class="context-note">
         <strong>В этом режиме:</strong>
-        управляйте запасом и назначением кег без одновременного редактирования guest-facing полей напитка.
+        управляйте запасом и назначением кег без одновременного редактирования карточки напитка.
       </div>
 
       {#if !hasBeverages}

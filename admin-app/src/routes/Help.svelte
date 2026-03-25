@@ -3,6 +3,7 @@
   import { demoGuideStore } from '../stores/demoGuideStore.js';
   import DebugManagementEntry from '../components/system/DebugManagementEntry.svelte';
   import ActivityTrail from '../components/system/ActivityTrail.svelte';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 
   const regulations = [
     {
@@ -96,8 +97,8 @@
     <header class="page-header">
       <div>
         <span class="eyebrow">Справка / регламенты</span>
-        <h1>Справка / регламенты</h1>
-        <p>Структура экрана повторяет действующие инструкции: золотые правила, пошаговые SOP и короткие сценарии для эскалации. Для технической диагностики переходите в «Система», а service/dev entry-point находится ниже и открывается только ролям с отдельными правами.</p>
+        <h1>{ROUTE_COPY.help.title}</h1>
+        <p>{ROUTE_COPY.help.description} Для технической диагностики переходите в «Система», а сервисные инструменты ниже открываются только по отдельным правам.</p>
       </div>
       <a class="route-link" href="#/system">К health и устройствам</a>
     </header>

@@ -217,6 +217,7 @@
       {detailWhatHappened}
       {narrativeKindLabels}
       {formatMaybeDate}
+      {syncLabels}
       onCloseDetail={closeDetail}
     />
   </div>
@@ -265,6 +266,9 @@
   :global(.chips) { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
   :global(.chips span), :global(.eyebrow), :global(.muted), :global(small), :global(dt) { color: var(--text-secondary, #64748b); }
   :global(.chips span) { background: #f1f5f9; border-radius: 999px; padding: 0.2rem 0.55rem; }
+  :global(.chips span[data-tone='warning']) { background: var(--state-warning-bg); color: var(--state-warning-text); }
+  :global(.chips span[data-tone='info']) { background: var(--state-neutral-bg); color: var(--state-neutral-text); }
+  :global(.chips span[data-tone='muted']) { background: #f8fafc; color: #475569; }
   :global(.meta-grid) { flex-wrap: wrap; }
   :global(.completion-pill) { font-weight: 600; color: #0f172a; }
   :global(.drawer) { position: sticky; top: 0; min-height: 320px; max-height: 85vh; overflow: auto; }

@@ -16,6 +16,7 @@
   import { resolveTopUpPreconditions } from '../lib/cardsGuests/scenarios/topup.js';
   import { buildReissueHint, getReissueTargetVisitId, validateReissueInput } from '../lib/cardsGuests/scenarios/lost_reissue.js';
   import { buildCardsGuestsViewModel, resolveScenarioActionHandler } from '../lib/operator/cardsGuestsModel.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import GuestDetail from '../components/guests/GuestDetail.svelte';
   import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
@@ -32,10 +33,19 @@
   let reissueUidInput = '';
   let reissueError = '';
   let isReissueBusy = false;
+  const SCENARIO_BADGE_LABELS = {
+    'check-card': 'Карта проверена',
+    'top-up': 'Нужно пополнение',
+    'toggle-block': 'Проверьте статус карты',
+    reissue: 'Нужен перевыпуск',
+    'open-history': 'Откройте историю',
+    'open-visit': 'Откройте активную сессию',
+  };
 
   $: cardsGuestsWorkflowStore.setPermissions($roleStore.permissions || {});
   $: workflow = $cardsGuestsWorkflowStore;
   $: pendingScenario = workflow.pendingScenario;
+  $: pendingScenarioLabel = pendingScenario ? (SCENARIO_BADGE_LABELS[pendingScenario] || 'Требуется действие') : '';
   $: selectedLookup = workflow.selectedLookup;
   $: reissueStatus = workflow.reissueStatus;
   $: selectedGuestId = workflow.selectedGuestId;
@@ -333,8 +343,8 @@
   <section class="cards-guests-page">
     <header class="page-header ui-card">
       <div>
-        <h1>Карты и гости</h1>
-        <p>Route работает как тонкий контейнер: orchestration сценариев, wiring UI-модулей и переходы в /sessions.</p>
+        <h1>{ROUTE_COPY.cardsGuests.title}</h1>
+        <p>{ROUTE_COPY.cardsGuests.description}</p>
       </div>
       <div class="header-actions">
         <button on:click={() => ensureCardsGuestsData({ reason: 'manual-refresh', force: true })} disabled={$guestStore.loading || $visitStore.loading}>Обновить данные</button>
@@ -342,8 +352,8 @@
     </header>
 
     <CardLookupPanel
-      title="Lookup и решение оператора"
-      description="Приложите карту, введите UID или найдите по номеру — и сразу получите статус карты, баланс, визит, последний кран, события и доступные быстрые действия."
+      title="Проверка карты и помощь гостю"
+      description="Приложите карту, введите UID или найдите гостя по номеру, чтобы сразу увидеть статус карты, баланс, активный визит, последний кран и доступные действия."
       result={selectedLookup}
       searchQuery={phoneQuery}
       searchResults={quickLookupResults}
@@ -357,7 +367,7 @@
       allowOpenGuest={Boolean(selectedGuest)}
       allowOpenNewVisit={canOpenVisit}
       openVisitLabel="Открыть активную сессию"
-      openGuestLabel="Показать операторский контекст"
+      openGuestLabel="Открыть контекст гостя"
       openNewVisitLabel="Открыть новый визит"
       actions={quickActions}
       selectedActionId={pendingScenario}
@@ -374,10 +384,10 @@
       <div class="section-top">
         <div>
           <h2>Контекст гостя</h2>
-          <p>Lookup остаётся главным экраном. Здесь показывается только короткий рабочий контекст без master-data и списка всех карт.</p>
+          <p>После проверки карты здесь остаётся только короткий рабочий контекст: статус карты, баланс, визит, последний кран и последние действия.</p>
         </div>
         {#if pendingScenario}
-          <span class="scenario-badge">{pendingScenario}</span>
+          <span class="scenario-badge">{pendingScenarioLabel}</span>
         {/if}
       </div>
 
@@ -406,8 +416,8 @@
         />
       {:else}
         <div class="empty-state">
-          <h3>Lookup — первый и обязательный шаг</h3>
-          <p>После идентификации здесь появится краткая операторская сводка: статус карты, баланс, активный визит, последний кран, события и быстрые действия.</p>
+          <h3>Сначала проверьте карту или гостя</h3>
+          <p>После идентификации здесь появится короткая рабочая сводка: статус карты, баланс, активный визит, последний кран, события и быстрые действия.</p>
         </div>
       {/if}
 
@@ -420,13 +430,13 @@
       <section class="ui-card reissue-panel">
         <div class="section-top">
           <div>
-            <h2>Перевыпуск и lost-карты</h2>
-            <p>Этот путь открывается только после lookup и не конкурирует с операторским summary.</p>
+            <h2>Перевыпуск и потерянные карты</h2>
+            <p>Этот сценарий открывается только после проверки карты и не мешает основному рабочему контексту по гостю.</p>
           </div>
         </div>
         {#if selectedLookup?.is_lost}
           <div class="scenario-warning">
-            <strong>Текущая карта в статусе lost.</strong>
+            <strong>Текущая карта отмечена как потерянная.</strong>
             <span>Отмечена {formatDateTimeRu(selectedLookup.lost_card?.reported_at)}.</span>
           </div>
         {/if}
@@ -441,7 +451,7 @@
         </div>
         <ol class="reissue-steps">
           <li>Подтвердите гостя: <strong>{lookupGuestName}</strong>.</li>
-          <li>При lost-статусе система снимет отметку и привяжет новую карту.</li>
+          <li>Если карта помечена как потерянная, система снимет отметку и привяжет новую карту.</li>
           <li>Если визит активен, контекст сессии будет автоматически перенесён на новую карту.</li>
         </ol>
         {#if reissueStatus}
@@ -470,7 +480,7 @@
         <div class="section-top">
           <div>
             <h2>Расширенное управление</h2>
-            <p>Редактирование профиля, master-data и вторичные поля вынесены из operator layer в отдельный глубокий режим.</p>
+            <p>Редактирование профиля и дополнительные поля вынесены из рабочего экрана в отдельный режим.</p>
           </div>
         </div>
         <GuestDetail

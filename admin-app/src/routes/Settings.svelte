@@ -1,5 +1,6 @@
 <script>
   import { buildCriticalActionRows } from '../lib/criticalActionMatrix.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { roleStore } from '../stores/roleStore.js';
 
   const workstationActions = [
@@ -57,8 +58,8 @@
     <header class="page-header">
       <div>
         <span class="eyebrow">Настройки</span>
-        <h1>Настройки</h1>
-        <p>Этот экран нужен для нечастых административных изменений: подготовить рабочее место, поменять backend-адрес или скорректировать сервисные параметры точки. Ежедневная работа оператора, контроль инцидентов и health остаются в рабочих разделах и в «Системе».</p>
+        <h1>{ROUTE_COPY.settings.title}</h1>
+        <p>{ROUTE_COPY.settings.description} Ежедневная работа смены остаётся в рабочих разделах и в «Системе».</p>
       </div>
       <a class="route-link" href="#/system">Открыть «Система»</a>
     </header>

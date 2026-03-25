@@ -1,5 +1,6 @@
 <script>
   import { SESSION_COPY } from '../../lib/operatorLabels.js';
+  import { buildSessionBadges } from '../../lib/operator/sessionBadgeModel.js';
 
   export let pinnedActiveItems = [];
   export let journalItems = [];
@@ -32,9 +33,9 @@
             <div class="row"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
             <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
             <div class="chips">
-              <span>{syncLabels[item.sync_state] || item.sync_state}</span>
-              {#if item.has_unsynced}<span>Есть несинхронизированные данные</span>{/if}
-              {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
+              {#each buildSessionBadges(item, { syncLabels, isZeroVolumeAbort }) as badge (badge.key)}
+                <span data-tone={badge.tone}>{badge.label}</span>
+              {/each}
             </div>
           </button>
         {/each}
@@ -61,15 +62,13 @@
               <strong>{item.guest_full_name}</strong>
               <span class:active={item.isActive} class="state">{item.operator_status}</span>
             </div>
-            <div class="row meta-grid"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span><span class="completion-pill">Источник: {describeCompletionSourceDetails(item)}</span></div>
+            <div class="row meta-grid"><span>Карта: {item.card_uid || '—'}</span><span>Кран: {item.taps?.length ? item.taps.join(', ') : '—'}</span></div>
             <div class="row"><span>Открыта: {formatMaybeDate(item.opened_at)}</span><span>Последнее событие: {formatMaybeDate(item.last_event_at)}</span></div>
+            <div class="row"><span class="completion-pill">Причина завершения: {describeCompletionSourceDetails(item)}</span></div>
             <div class="chips">
-              <span>{syncLabels[item.sync_state] || item.sync_state}</span>
-              {#if item.completion_source}<span>Код причины: {item.completion_source}</span>{/if}
-              {#if item.contains_tail_pour}<span>Есть долив хвоста</span>{/if}
-              {#if item.contains_non_sale_flow}<span>Есть служебный налив</span>{/if}
-              {#if item.has_incident}<span>Инциденты: {item.incident_count}</span>{/if}
-              {#if isZeroVolumeAbort(item)}<span>Прервана без налива</span>{/if}
+              {#each buildSessionBadges(item, { syncLabels, isZeroVolumeAbort }) as badge (badge.key)}
+                <span data-tone={badge.tone}>{badge.label}</span>
+              {/each}
             </div>
           </button>
         {/each}

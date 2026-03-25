@@ -14,6 +14,7 @@
   import { tapStore } from '../stores/tapStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { visitStore } from '../stores/visitStore.js';
+  import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
 
   let isAssignModalOpen = false;
   /** @type {any} */
@@ -213,8 +214,8 @@
 {:else}
   <div class="page-header">
     <div>
-      <h1>Краны</h1>
-      <p>Оперативная работа по каждому крану: статус, активный налив, подключённая кега и связанные события.</p>
+      <h1>{ROUTE_COPY.taps.title}</h1>
+      <p>{ROUTE_COPY.taps.description}</p>
     </div>
   </div>
 
@@ -222,7 +223,7 @@
     <div class="section-header">
       <div>
         <h2>Рабочая зона по кранам</h2>
-        <p class="section-hint">Каждая карточка показывает состояние крана, напитка, подсистем и текущей сессии. Переход к управлению экраном вынесен в отдельный route-level экран.</p>
+        <p class="section-hint">Каждая карточка показывает состояние крана, напитка, подсистем и текущей сессии. Экран крана, кега и история доступны без потери общего обзора.</p>
       </div>
     </div>
 
@@ -274,14 +275,11 @@
     describedBy="tap-drawer-description"
     on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
   >
-    <TapDrawer
-      tap={selectedTap}
-      canDisplayOverride={permissions.display_override}
-      canControl={permissions.taps_control}
-      canMaintain={permissions.maintenance_actions}
-      {permissions}
-      on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
-      on:display-settings={handleOpenTapDisplaySettings}
+      <TapDrawer
+        tap={selectedTap}
+        {permissions}
+        on:close={() => { isTapDrawerOpen = false; selectedTap = null; }}
+        on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}
       on:stop-pour={(event) => handleStopPour(event.detail.tap)}
       on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}

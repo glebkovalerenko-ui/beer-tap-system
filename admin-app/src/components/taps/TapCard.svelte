@@ -3,8 +3,8 @@
 
   import GuardedActionButton from '../common/GuardedActionButton.svelte';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRangeRu, formatVolumeRu } from '../../lib/formatters.js';
-  import { getCriticalActionGuard } from '../../lib/criticalActionMatrix.js';
   import { TAP_COPY } from '../../lib/operatorLabels.js';
+  import { buildTapQuickActions } from '../../lib/operator/tapQuickActions.js';
 
   export let tap;
   export let canControl = false;
@@ -20,34 +20,19 @@
   $: operatorMeta = operations.operatorStateMeta || { key: 'needs_help', tone: 'muted', icon: '?', shortLabel: 'Нет данных', eyebrow: 'Статус не определён', layout: 'stacked', headline: 'Состояние не определено', badgeStyle: 'callout', iconShape: 'alert', containerStyle: 'alert' };
   $: stateTheme = operatorMeta.tone || 'muted';
   $: stateKey = operatorMeta.key || operatorState || 'needs_help';
-  $: isLocked = tap.status === 'locked';
-  $: canShowStop = canControl && session;
-  $: canShowLockToggle = canControl && tap.keg_id;
-  $: canShowScreen = canDisplayOverride;
-  $: canShowKegAction = canControl;
-  $: canShowHistory = Boolean(tap?.tap_id);
   $: statusPills = [
     { label: TAP_COPY.controller, value: operations.controllerStatus?.label, tone: operations.controllerStatus?.state },
     { label: TAP_COPY.display, value: operations.displayStatus?.label, tone: operations.displayStatus?.state },
     { label: TAP_COPY.reader, value: operations.readerStatus?.label, tone: operations.readerStatus?.state },
   ];
-  $: secondaryAction = canShowScreen
-    ? { label: 'Экран', ariaLabel: `Открыть настройки экрана для ${tap.display_name}`, event: 'display-settings' }
-    : canShowKegAction
-      ? { label: 'Кега', ariaLabel: `Открыть карточку крана ${tap.display_name} для действий с кегой`, event: 'open-detail' }
-      : null;
-  $: stopGuard = getCriticalActionGuard('stop_pour', permissions, { extraAllowed: Boolean(session) });
-  $: lockGuard = getCriticalActionGuard('block_unblock_tap', permissions, { extraAllowed: Boolean(tap.keg_id) });
-  $: displayGuard = getCriticalActionGuard('display_override', permissions);
-  $: kegGuard = getCriticalActionGuard('keg_connect_disconnect', permissions);
-
-  $: actionCount = [
-    true,
-    canShowStop,
-    canShowLockToggle,
-    Boolean(secondaryAction),
-    canShowHistory,
-  ].filter(Boolean).length;
+  $: quickActions = buildTapQuickActions({
+    tap,
+    session,
+    permissions,
+    canControl,
+    canDisplayOverride,
+  });
+  $: actionCount = quickActions.length;
 
   function emit(name) {
     dispatch(name, { tap });
@@ -152,37 +137,25 @@
   </div>
 
   <div class="card-actions" class:multi-line={actionCount > 2}>
-    <button class="cta primary" type="button" aria-label={`Открыть карточку крана ${tap.display_name}`} on:click={() => emit('open-detail')}>Открыть</button>
-
-    <GuardedActionButton className="cta danger" visible={stopGuard.visible} disabled={stopGuard.disabled} reason={stopGuard.reason} ariaLabel={`Остановить налив на ${tap.display_name}`} on:click={() => emit('stop-pour')}>Стоп</GuardedActionButton>
-
-    <GuardedActionButton className="cta" visible={lockGuard.visible} disabled={lockGuard.disabled} reason={lockGuard.reason} ariaLabel={`${isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap} ${tap.display_name}`} on:click={() => emit('toggle-lock')}>
-      {isLocked ? TAP_COPY.unlockTap : TAP_COPY.lockTap}
-    </GuardedActionButton>
-
-    {#if secondaryAction?.event === 'display-settings'}
-      <GuardedActionButton
-        className="cta"
-        visible={displayGuard.visible}
-        disabled={displayGuard.disabled}
-        reason={displayGuard.reason}
-        ariaLabel={secondaryAction.ariaLabel}
-        on:click={() => emit(secondaryAction.event)}
-      >{secondaryAction.label}</GuardedActionButton>
-    {:else if secondaryAction?.event === 'open-detail'}
-      <GuardedActionButton
-        className="cta"
-        visible={kegGuard.visible}
-        disabled={kegGuard.disabled}
-        reason={kegGuard.reason}
-        ariaLabel={secondaryAction.ariaLabel}
-        on:click={() => emit(secondaryAction.event)}
-      >{secondaryAction.label}</GuardedActionButton>
-    {/if}
-
-    {#if canShowHistory}
-      <button class="cta" type="button" aria-label={`Открыть историю сессий для ${tap.display_name}`} on:click={() => emit('open-history')}>История</button>
-    {/if}
+    {#each quickActions as action (action.id)}
+      {#if action.guarded}
+        <GuardedActionButton
+          className={`cta${action.tone === 'danger' ? ' danger' : action.tone === 'primary' ? ' primary' : ''}`}
+          visible={true}
+          disabled={action.disabled}
+          reason={action.reason}
+          ariaLabel={action.ariaLabel}
+          on:click={() => emit(action.event)}
+        >{action.title}</GuardedActionButton>
+      {:else}
+        <button
+          class={`cta${action.tone === 'primary' ? ' primary' : ''}`}
+          type="button"
+          aria-label={action.ariaLabel}
+          on:click={() => emit(action.event)}
+        >{action.title}</button>
+      {/if}
+    {/each}
   </div>
 </article>
 

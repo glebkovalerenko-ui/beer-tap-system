@@ -73,13 +73,37 @@ export function buildCardsGuestsViewModel({
     ?? selectedLookup?.guest?.balance
     ?? selectedLookup?.active_visit?.balance
     ?? null;
+  const lookupVisitId = selectedVisit?.visit_id
+    || selectedLookup?.active_visit?.visit_id
+    || selectedLookup?.lost_card?.visit_id
+    || null;
   const lookupSummaryItems = hasLookup
     ? [
+      {
+        key: 'card-state',
+        label: 'Статус карты',
+        value: selectedLookup?.is_lost
+          ? 'Lost / нужна помощь'
+          : selectedLookup?.active_visit
+            ? 'Карта участвует в активной сессии'
+            : selectedLookup?.guest
+              ? 'Карта привязана к гостю'
+              : selectedLookup?.card
+                ? 'Карта есть, гость не найден'
+                : 'Карта не найдена',
+        tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
+      },
       {
         key: 'balance',
         label: 'Баланс',
         value: lookupBalance != null ? formatRubAmount(lookupBalance) : '—',
         tone: lookupBalance != null && lookupBalance <= 0 ? 'warning' : 'neutral',
+      },
+      {
+        key: 'active-visit',
+        label: 'Активный визит',
+        value: lookupVisitId ? `#${lookupVisitId}` : 'Нет активного визита',
+        tone: lookupVisitId ? 'info' : 'neutral',
       },
       {
         key: 'last-tap',
@@ -92,20 +116,6 @@ export function buildCardsGuestsViewModel({
         label: 'Последние события',
         value: recentEvents.length ? `${recentEvents.length} событий` : 'Нет событий',
         tone: recentEvents.length ? 'info' : 'neutral',
-      },
-      {
-        key: 'card-state',
-        label: 'Статус карты',
-        value: selectedLookup?.is_lost
-          ? 'Lost / нужен перевыпуск'
-          : selectedLookup?.active_visit
-            ? 'Есть активный визит'
-            : selectedLookup?.guest
-              ? 'Карта привязана'
-              : selectedLookup?.card
-                ? 'Карта без гостя'
-                : 'Карта не найдена',
-        tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
       },
     ]
     : [];

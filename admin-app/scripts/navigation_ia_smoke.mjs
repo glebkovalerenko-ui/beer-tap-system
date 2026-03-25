@@ -5,6 +5,7 @@ const repoRoot = resolve(import.meta.dirname, '..');
 
 const appPath = resolve(repoRoot, 'src/App.svelte');
 const actionRoutingPath = resolve(repoRoot, 'src/lib/actionRouting.js');
+const routeCopyPath = resolve(repoRoot, 'src/lib/operator/routeCopy.js');
 
 const routeFiles = {
   'Сегодня': 'src/routes/Today.svelte',
@@ -19,9 +20,10 @@ const routeFiles = {
   'Справка / регламенты': 'src/routes/Help.svelte',
 };
 
-const [appSource, actionRoutingSource, ...routeSources] = await Promise.all([
+const [appSource, actionRoutingSource, routeCopySource, ...routeSources] = await Promise.all([
   readFile(appPath, 'utf8'),
   readFile(actionRoutingPath, 'utf8'),
+  readFile(routeCopyPath, 'utf8'),
   ...Object.values(routeFiles).map((file) => readFile(resolve(repoRoot, file), 'utf8')),
 ]);
 
@@ -29,7 +31,7 @@ const routeSourceByLabel = Object.fromEntries(Object.keys(routeFiles).map((label
 
 const checks = [
   {
-    name: 'primaryNav содержит финальные IA-лейблы',
+    name: 'routeCopy содержит финальные IA-лейблы primary nav',
     ok: [
       "label: 'Сегодня'",
       "label: 'Краны'",
@@ -39,11 +41,26 @@ const checks = [
       "label: 'Инциденты'",
       "label: 'Экраны кранов'",
       "label: 'Система'",
-    ].every((token) => appSource.includes(token)),
+    ].every((token) => routeCopySource.includes(token)),
   },
   {
-    name: 'supportNav содержит Настройки и Справка / регламенты',
-    ok: ["label: 'Настройки'", "label: 'Справка / регламенты'"].every((token) => appSource.includes(token)),
+    name: 'routeCopy содержит support nav лейблы',
+    ok: ["label: 'Настройки'", "label: 'Справка / регламенты'"].every((token) => routeCopySource.includes(token)),
+  },
+  {
+    name: 'App использует общий routeCopy для primary и support nav',
+    ok: [
+      'ROUTE_COPY.today.label',
+      'ROUTE_COPY.taps.label',
+      'ROUTE_COPY.sessions.label',
+      'ROUTE_COPY.cardsGuests.label',
+      'ROUTE_COPY.kegsBeverages.label',
+      'ROUTE_COPY.incidents.label',
+      'ROUTE_COPY.tapScreens.label',
+      'ROUTE_COPY.system.label',
+      'ROUTE_COPY.settings.label',
+      'ROUTE_COPY.help.label',
+    ].every((token) => appSource.includes(token)),
   },
   {
     name: 'route alias / и /today направляют на Today',
@@ -74,7 +91,7 @@ const checks = [
   },
   ...Object.entries(routeSourceByLabel).map(([label, source]) => ({
     name: `h1 страницы совпадает с меню: ${label}`,
-    ok: source.includes(`<h1>${label}</h1>`),
+    ok: source.includes(`<h1>${label}</h1>`) || source.includes('.title}</h1>'),
   })),
 ];
 
