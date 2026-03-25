@@ -216,6 +216,8 @@ class TapCreate(TapBase):
 class TapUpdate(BaseModel):
     display_name: Optional[str] = None
     status: Optional[str] = None
+    reason_code: Optional[str] = None
+    comment: Optional[str] = None
 
 class TapAssignKeg(BaseModel):
     keg_id: uuid.UUID
@@ -1095,6 +1097,16 @@ class OperatorActionPolicy(BaseModel):
     disabled_reason: Optional[str] = None
 
 
+class CardGuestActionPolicySet(BaseModel):
+    top_up: OperatorActionPolicy
+    toggle_block: OperatorActionPolicy
+    mark_lost: OperatorActionPolicy
+    restore_lost: OperatorActionPolicy
+    reissue: OperatorActionPolicy
+    open_history: OperatorActionPolicy
+    open_visit: OperatorActionPolicy
+
+
 class OperatorSystemQueueSummary(BaseModel):
     pending_items: int = 0
     unsynced_sessions: int = 0
@@ -1257,6 +1269,7 @@ class CardGuestContextModel(BaseModel):
     recent_events: list[CardGuestEventItem] = []
     last_tap_label: Optional[str] = None
     lookup_summary_items: list[CardGuestSummaryItem] = []
+    action_policies: CardGuestActionPolicySet
     allowed_quick_actions: list[str] = []
 
 

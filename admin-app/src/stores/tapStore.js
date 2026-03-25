@@ -711,11 +711,17 @@ function createTapStore() {
       }
     },
 
-    updateTapStatus: async (tapId, status) => {
+    updateTapStatus: async (tapId, nextState) => {
       const token = ensureToken();
 
       try {
-        const payload = { status };
+        const payload = typeof nextState === 'string'
+          ? { status: nextState }
+          : {
+            status: nextState?.status,
+            ...(nextState?.reasonCode ? { reason_code: nextState.reasonCode } : {}),
+            ...(nextState?.comment ? { comment: nextState.comment } : {}),
+          };
         await invoke('update_tap', { token, tapId, payload });
         let updatedTap = await invoke('get_taps', { token }).then((items) => items.find((tap) => tap.tap_id === tapId));
         try {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
@@ -45,13 +45,35 @@ def read_tap(tap_id: int, db: Session = Depends(get_db)):
 def update_tap(
     tap_id: int,
     tap_update: schemas.TapUpdate,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(security.get_current_user),
     _permission_guard: dict = Depends(security.require_permissions("taps_control")),
     db: Session = Depends(get_db),
 ):
     """
     Обновляет информацию о кране (например, его отображаемое имя или статус).
     """
+    previous_status = tap_crud.get_tap(db, tap_id=tap_id).status
     tap = tap_crud.update_tap(db=db, tap_id=tap_id, tap_update=tap_update)
+    if tap_update.status is not None and tap_update.status != previous_status:
+        details = {
+            "tap_id": tap.tap_id,
+            "display_name": tap.display_name,
+            "previous_status": previous_status,
+            "next_status": tap.status,
+        }
+        if tap_update.reason_code:
+            details["reason_code"] = tap_update.reason_code
+        if tap_update.comment:
+            details["comment"] = tap_update.comment
+        background_tasks.add_task(
+            security.audit_log_task_wrapper,
+            actor_id=(current_user or {}).get("username") or "unknown",
+            action="tap_status_change",
+            target_entity="tap",
+            target_id=str(tap.tap_id),
+            details=details,
+        )
     operator_stream_hub.emit_invalidation(resource="taps", entity_id=str(tap_id), reason="tap_updated")
     operator_stream_hub.emit_invalidation(resource="today", entity_id=str(tap_id), reason="tap_updated")
     operator_stream_hub.emit_invalidation(resource="system", entity_id=str(tap_id), reason="tap_updated")

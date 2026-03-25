@@ -24,6 +24,7 @@
 
   import ToastContainer from './components/feedback/ToastContainer.svelte';
   import ConfirmDialog from './components/feedback/ConfirmDialog.svelte';
+  import OperatorActionModal from './components/feedback/OperatorActionModal.svelte';
   import DemoGuide from './components/demo/DemoGuide.svelte';
   import ShellTopBar from './components/shell/ShellTopBar.svelte';
   import SystemFallbackBanner from './components/system/SystemFallbackBanner.svelte';
@@ -227,6 +228,7 @@
 
 <ToastContainer />
 <ConfirmDialog />
+<OperatorActionModal />
 <DemoGuide />
 
 <style>

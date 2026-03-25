@@ -49,6 +49,8 @@ def update_tap(db: Session, tap_id: int, tap_update: schemas.TapUpdate):
     db_tap = get_tap(db, tap_id=tap_id)
     
     update_data = tap_update.model_dump(exclude_unset=True)
+    update_data.pop("reason_code", None)
+    update_data.pop("comment", None)
 
     # Проверяем уникальность нового имени, если оно было передано
     if 'display_name' in update_data and update_data['display_name'] != db_tap.display_name:

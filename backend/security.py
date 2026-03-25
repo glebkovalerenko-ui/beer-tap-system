@@ -173,7 +173,10 @@ def _get_display_api_keys() -> set[str]:
 # --- Функция-обертка для фоновой задачи ---
 def audit_log_task_wrapper(
     actor_id: str,
-    action: str
+    action: str,
+    target_entity: str | None = None,
+    target_id: str | None = None,
+    details: dict[str, Any] | None = None,
 ):
     """
     Эта обертка создает свою собственную сессию БД, выполняет логирование
@@ -184,7 +187,10 @@ def audit_log_task_wrapper(
         audit_crud.create_audit_log_entry(
             db=db,
             actor_id=actor_id,
-            action=action
+            action=action,
+            target_entity=target_entity,
+            target_id=target_id,
+            details=details,
         )
     finally:
         db.close()

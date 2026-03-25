@@ -2,6 +2,7 @@ import { buildPhoneCandidates, buildQuickLookupResults, fullName, hasLookupTarge
 import { buildQuickActions } from '../cardsGuests/scenarios/quick_actions.js';
 import { buildRecentEvents } from '../cardsGuests/scenarios/recent_events.js';
 import { formatRubAmount } from '../formatters.js';
+import { normalizeOperatorActionPolicy } from './actionPolicyAdapter.js';
 
 export const SCENARIO_ACTION_HANDLERS = {
   'top-up': 'open-top-up',
@@ -13,6 +14,66 @@ export const SCENARIO_ACTION_HANDLERS = {
 
 export function resolveScenarioActionHandler(actionId) {
   return SCENARIO_ACTION_HANDLERS[actionId] || 'none';
+}
+
+function toGuard(policy, fallback, meta = {}) {
+  const normalized = normalizeOperatorActionPolicy(policy || {
+    allowed: fallback.allowed,
+    confirm_required: fallback.confirmRequired,
+    reason_code_required: fallback.reasonCodeRequired,
+    disabled_reason: fallback.reason,
+  });
+
+  return {
+    ...meta,
+    ...normalized,
+    disabled: !normalized.allowed,
+    reason: normalized.disabledReason || '',
+  };
+}
+
+function buildActionGuards({ lookup, guest, visit, permissions }) {
+  const policies = lookup?.action_policies || {};
+  const visitId = visit?.visit_id || lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id || null;
+  const isGuestActive = Boolean(guest?.is_active ?? lookup?.guest?.is_active);
+
+  return {
+    topUp: toGuard(policies.top_up, {
+      allowed: Boolean(guest) && Boolean(permissions?.canTopUp),
+      reason: 'Guest context and top-up permission are required.',
+    }),
+    toggleBlock: toGuard(policies.toggle_block, {
+      allowed: Boolean(guest) && Boolean(permissions?.canToggleBlock),
+      confirmRequired: true,
+      reason: 'Guest context and block permission are required.',
+    }, {
+      isActive: isGuestActive,
+    }),
+    markLost: toGuard(policies.mark_lost, {
+      allowed: Boolean(permissions?.canReissue) && Boolean(visitId) && !lookup?.is_lost,
+      confirmRequired: true,
+      reason: lookup?.is_lost
+        ? 'Card is already marked as lost.'
+        : 'An active visit is required before the card can be marked as lost.',
+    }),
+    restoreLost: toGuard(policies.restore_lost, {
+      allowed: Boolean(permissions?.canReissue) && Boolean(lookup?.is_lost),
+      confirmRequired: true,
+      reason: 'Card is not currently marked as lost.',
+    }),
+    reissue: toGuard(policies.reissue, {
+      allowed: Boolean(permissions?.canReissue) && Boolean(guest) && Boolean(lookup?.is_lost || visitId),
+      reason: 'Guest context with an active or lost card workflow is required.',
+    }),
+    openHistory: toGuard(policies.open_history, {
+      allowed: Boolean(permissions?.canViewHistory) && Boolean(lookup),
+      reason: 'A resolved card is required to open history.',
+    }),
+    openVisit: toGuard(policies.open_visit, {
+      allowed: Boolean(permissions?.canOpenVisit) && Boolean(visitId),
+      reason: 'There is no active visit linked to this card.',
+    }),
+  };
 }
 
 export function buildCardsGuestsViewModel({
@@ -27,11 +88,6 @@ export function buildCardsGuestsViewModel({
   const safeGuests = guests || [];
   const safeVisits = activeVisits || [];
   const safePours = pours || [];
-  const canTopUp = Boolean(permissions?.canTopUp);
-  const canToggleBlock = Boolean(permissions?.canToggleBlock);
-  const canReissue = Boolean(permissions?.canReissue);
-  const canOpenVisit = Boolean(permissions?.canOpenVisit);
-  const canViewHistory = Boolean(permissions?.canViewHistory);
 
   const phoneCandidates = buildPhoneCandidates(safeGuests, phoneQuery || '');
   const quickLookupResults = buildQuickLookupResults(phoneCandidates, safeVisits);
@@ -85,56 +141,57 @@ export function buildCardsGuestsViewModel({
     ? (Array.isArray(selectedLookup?.lookup_summary_items) && selectedLookup.lookup_summary_items.length > 0
       ? selectedLookup.lookup_summary_items
       : [
-      {
-        key: 'card-state',
-        label: 'Статус карты',
-        value: selectedLookup?.is_lost
-          ? 'Lost / нужна помощь'
-          : selectedLookup?.active_visit
-            ? 'Карта участвует в активной сессии'
-            : selectedLookup?.guest
-              ? 'Карта привязана к гостю'
-              : selectedLookup?.card
-                ? 'Карта есть, гость не найден'
-                : 'Карта не найдена',
-        tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
-      },
-      {
-        key: 'balance',
-        label: 'Баланс',
-        value: lookupBalance != null ? formatRubAmount(lookupBalance) : '—',
-        tone: lookupBalance != null && lookupBalance <= 0 ? 'warning' : 'neutral',
-      },
-      {
-        key: 'active-visit',
-        label: 'Активный визит',
-        value: lookupVisitId ? `#${lookupVisitId}` : 'Нет активного визита',
-        tone: lookupVisitId ? 'info' : 'neutral',
-      },
-      {
-        key: 'last-tap',
-        label: 'Последний кран',
-        value: lastTapLabel || '—',
-        tone: selectedVisit?.active_tap_id ? 'info' : 'neutral',
-      },
-      {
-        key: 'recent-events',
-        label: 'Последние события',
-        value: recentEvents.length ? `${recentEvents.length} событий` : 'Нет событий',
-        tone: recentEvents.length ? 'info' : 'neutral',
-      },
-    ])
+        {
+          key: 'card-state',
+          label: 'Статус карты',
+          value: selectedLookup?.is_lost
+            ? 'Lost / нужна помощь'
+            : selectedLookup?.active_visit
+              ? 'Карта участвует в активной сессии'
+              : selectedLookup?.guest
+                ? 'Карта привязана к гостю'
+                : selectedLookup?.card
+                  ? 'Карта есть, гость не найден'
+                  : 'Карта не найдена',
+          tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
+        },
+        {
+          key: 'balance',
+          label: 'Баланс',
+          value: lookupBalance != null ? formatRubAmount(lookupBalance) : '—',
+          tone: lookupBalance != null && lookupBalance <= 0 ? 'warning' : 'neutral',
+        },
+        {
+          key: 'active-visit',
+          label: 'Активный визит',
+          value: lookupVisitId ? `#${lookupVisitId}` : 'Нет активного визита',
+          tone: lookupVisitId ? 'info' : 'neutral',
+        },
+        {
+          key: 'last-tap',
+          label: 'Последний кран',
+          value: lastTapLabel || '—',
+          tone: selectedVisit?.active_tap_id ? 'info' : 'neutral',
+        },
+        {
+          key: 'recent-events',
+          label: 'Последние события',
+          value: recentEvents.length ? `${recentEvents.length} событий` : 'Нет событий',
+          tone: recentEvents.length ? 'info' : 'neutral',
+        },
+      ])
     : [];
 
-  const quickActions = buildQuickActions({
+  const actionGuards = buildActionGuards({
     lookup: selectedLookup,
     guest: selectedGuest,
     visit: selectedVisit,
-    canTopUp,
-    canToggleBlock,
-    canReissue,
-    canOpenVisit,
-    canViewHistory,
+    permissions,
+  });
+
+  const quickActions = buildQuickActions({
+    lookup: selectedLookup,
+    actionGuards,
   });
 
   return {
@@ -149,5 +206,6 @@ export function buildCardsGuestsViewModel({
     hasLookup,
     lookupSummaryItems,
     quickActions,
+    actionGuards,
   };
 }

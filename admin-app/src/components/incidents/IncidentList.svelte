@@ -11,6 +11,7 @@
   export let actionCapabilities = {};
   export let actionCapabilityReasons = {};
   export let readOnly = false;
+  export let readOnlyReason = '';
   export let permissions = {};
 
   const dispatch = createEventDispatcher();
@@ -45,6 +46,13 @@
 
   function guardFor(actionKey, extraAllowed, extraReason = '') {
     return getCriticalActionGuard(actionKey, permissions, { extraAllowed, extraDeniedReason: extraReason });
+  }
+
+  function resolveReason(...reasons) {
+    if (readOnly && readOnlyReason) {
+      return readOnlyReason;
+    }
+    return reasons.find((reason) => Boolean(reason)) || '';
   }
 
   function onMainAction(item) {
@@ -142,42 +150,44 @@
                   {:else}
                     <GuardedActionButton
                       className="secondary"
-                      visible={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), actionType(item) === 'claim' ? (actionCapabilityReasons.claim || '') : (actionCapabilityReasons.close || actionCapabilityReasons.note || '')).visible}
-                      disabled={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), actionType(item) === 'claim' ? (actionCapabilityReasons.claim || '') : (actionCapabilityReasons.close || actionCapabilityReasons.note || '')).disabled}
-                      reason={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), actionType(item) === 'claim' ? (actionCapabilityReasons.claim || '') : (actionCapabilityReasons.close || actionCapabilityReasons.note || '')).reason}
+                      visible={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), resolveReason(actionType(item) === 'claim' ? actionCapabilityReasons.claim : (actionCapabilityReasons.close || actionCapabilityReasons.note || ''))).visible}
+                      disabled={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), resolveReason(actionType(item) === 'claim' ? actionCapabilityReasons.claim : (actionCapabilityReasons.close || actionCapabilityReasons.note || ''))).disabled}
+                      reason={guardFor('close_incident', !readOnly && (actionType(item) === 'claim' ? actionCapabilities.claim : (actionCapabilities.close || actionCapabilities.note)), resolveReason(actionType(item) === 'claim' ? actionCapabilityReasons.claim : (actionCapabilityReasons.close || actionCapabilityReasons.note || ''))).reason}
                       on:click={(event) => { event.stopPropagation(); onMainAction(item); }}
                     >
                       {actionLabel(item)}
                     </GuardedActionButton>
                     {#if actionType(item) === 'claim' && !actionCapabilities.claim && actionCapabilityReasons.claim}
-                      <small class="action-reason">{actionCapabilityReasons.claim}</small>
+                      <small class="action-reason">{resolveReason(actionCapabilityReasons.claim)}</small>
                     {/if}
                     {#if actionType(item) === 'close' && !actionCapabilities.close && !actionCapabilities.note && (actionCapabilityReasons.close || actionCapabilityReasons.note)}
-                      <small class="action-reason">{actionCapabilityReasons.close || actionCapabilityReasons.note}</small>
+                      <small class="action-reason">{resolveReason(actionCapabilityReasons.close, actionCapabilityReasons.note)}</small>
                     {/if}
                   {/if}
 
                   <GuardedActionButton
                     className="secondary warning"
-                    visible={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, actionCapabilityReasons.escalate || '').visible}
-                    disabled={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, actionCapabilityReasons.escalate || '').disabled}
-                    reason={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, actionCapabilityReasons.escalate || '').reason}
+                    visible={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, resolveReason(actionCapabilityReasons.escalate)).visible}
+                    disabled={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, resolveReason(actionCapabilityReasons.escalate)).disabled}
+                    reason={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, resolveReason(actionCapabilityReasons.escalate)).reason}
                     on:click={(event) => { event.stopPropagation(); emit('escalateIncident', item); }}
                   >Эскалировать</GuardedActionButton>
                   {#if !actionCapabilities.escalate && actionCapabilityReasons.escalate}
-                    <small class="action-reason">{actionCapabilityReasons.escalate}</small>
+                    <small class="action-reason">{resolveReason(actionCapabilityReasons.escalate)}</small>
                   {/if}
 
                   <button
                     class="primary"
                     disabled={readOnly || (!actionCapabilities.note && !actionCapabilities.close)}
-                    title={!actionCapabilities.note && !actionCapabilities.close
-                      ? (actionCapabilityReasons.note || actionCapabilityReasons.close || 'Действие недоступно')
-                      : ''}
+                    title={readOnly
+                      ? (readOnlyReason || 'Действие недоступно')
+                      : (!actionCapabilities.note && !actionCapabilities.close
+                        ? (actionCapabilityReasons.note || actionCapabilityReasons.close || 'Действие недоступно')
+                        : '')}
                     on:click|stopPropagation={() => emit('openActionForm', item)}
                   >{INCIDENT_COPY.actionForm}</button>
-                  {#if !actionCapabilities.note && !actionCapabilities.close && (actionCapabilityReasons.note || actionCapabilityReasons.close)}
-                    <small class="action-reason">{actionCapabilityReasons.note || actionCapabilityReasons.close}</small>
+                  {#if (readOnly && readOnlyReason) || (!actionCapabilities.note && !actionCapabilities.close && (actionCapabilityReasons.note || actionCapabilityReasons.close))}
+                    <small class="action-reason">{resolveReason(actionCapabilityReasons.note, actionCapabilityReasons.close)}</small>
                   {/if}
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -224,8 +225,33 @@ def test_operator_card_lookup_returns_context_summary_and_recent_events(client, 
     assert payload["last_tap_label"] == "Tap 1"
     assert any(item["key"] == "balance" for item in payload["lookup_summary_items"])
     assert len(payload["recent_events"]) >= 2
+    assert payload["action_policies"]["open_visit"]["allowed"] is True
+    assert payload["action_policies"]["mark_lost"]["allowed"] is False
+    assert payload["action_policies"]["toggle_block"]["allowed"] is False
+    assert payload["action_policies"]["toggle_block"]["disabled_reason"] == "Requires permission: cards_block_manage"
     assert "open-history" in payload["allowed_quick_actions"]
     assert "top-up" not in payload["allowed_quick_actions"]
+
+
+def test_operator_card_lookup_returns_action_policies_for_shift_lead(client, db_session):
+    _seed_operator_fixture(db_session)
+
+    response = client.get(
+        "/api/operator/cards/lookup",
+        params={"query": "04AB7815CD6B80"},
+        headers=_auth_headers(client, "shift_lead"),
+    )
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["action_policies"]["top_up"]["allowed"] is True
+    assert payload["action_policies"]["toggle_block"]["allowed"] is True
+    assert payload["action_policies"]["toggle_block"]["confirm_required"] is True
+    assert payload["action_policies"]["mark_lost"]["allowed"] is True
+    assert payload["action_policies"]["restore_lost"]["allowed"] is False
+    assert payload["action_policies"]["open_history"]["allowed"] is True
+    assert payload["action_policies"]["open_visit"]["allowed"] is True
+    assert payload["allowed_quick_actions"] == ["top-up", "toggle-block", "reissue", "open-history", "open-visit"]
 
 
 def test_operator_sessions_return_projection_filters_and_detail(client, db_session):
@@ -297,6 +323,47 @@ def test_operator_system_health_returns_mode_queue_and_blocked_actions(client, d
     assert payload["blocked_actions"]["incident_mutation"]["allowed"] is False
     assert payload["blocked_actions"]["emergency_stop"]["allowed"] is True
     assert payload["actionable_next_steps"]
+
+
+def test_update_tap_status_accepts_legacy_payload_without_safety_fields(client, db_session):
+    _seed_operator_fixture(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    response = client.put("/api/taps/2", headers=headers, json={"status": "active"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "active"
+
+
+def test_update_tap_status_writes_operator_audit_context(client, db_session):
+    _seed_operator_fixture(db_session)
+    headers = _auth_headers(client, "shift_lead")
+
+    response = client.put(
+        "/api/taps/1",
+        headers=headers,
+        json={
+            "status": "locked",
+            "reason_code": "safety",
+            "comment": "Stopped by operator due to suspicious flow.",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "locked"
+
+    audit = (
+        db_session.query(models.AuditLog)
+        .filter(models.AuditLog.action == "tap_status_change")
+        .filter(models.AuditLog.target_entity == "tap")
+        .filter(models.AuditLog.target_id == "1")
+        .order_by(models.AuditLog.timestamp.desc())
+        .first()
+    )
+    assert audit is not None
+    details = json.loads(audit.details)
+    assert details["previous_status"] == "active"
+    assert details["next_status"] == "locked"
+    assert details["reason_code"] == "safety"
+    assert details["comment"] == "Stopped by operator due to suspicious flow."
 
 
 def test_operator_stream_ticket_and_websocket_emit_invalidations(client, db_session):

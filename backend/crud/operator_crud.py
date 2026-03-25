@@ -209,6 +209,63 @@ def _session_action_policies(
     )
 
 
+def _card_guest_action_policies(
+    current_user: dict | None,
+    *,
+    guest: models.Guest | None,
+    visit: models.Visit | None,
+    base_resolution: dict,
+) -> schemas.CardGuestActionPolicySet:
+    is_lost = bool(base_resolution.get("is_lost"))
+    has_lookup_uid = bool(base_resolution.get("card_uid"))
+    has_visit_context = bool(
+        visit is not None
+        or base_resolution.get("active_visit")
+        or (base_resolution.get("lost_card") or {}).get("visit_id")
+    )
+    can_reissue = bool(guest is not None and (is_lost or has_visit_context))
+
+    return schemas.CardGuestActionPolicySet(
+        top_up=_contextualize_policy(
+            _action_policy(current_user, permission="cards_top_up"),
+            allowed=guest is not None,
+            disabled_reason="Guest context is required to top up balance.",
+        ),
+        toggle_block=_contextualize_policy(
+            _action_policy(current_user, permission="cards_block_manage", confirm_required=True),
+            allowed=guest is not None,
+            disabled_reason="Guest context is required to change the active status.",
+        ),
+        mark_lost=_contextualize_policy(
+            _action_policy(current_user, permission="cards_reissue_manage", confirm_required=True),
+            allowed=not is_lost and has_visit_context,
+            disabled_reason="An active visit is required before the card can be marked as lost."
+            if not is_lost
+            else "Card is already marked as lost.",
+        ),
+        restore_lost=_contextualize_policy(
+            _action_policy(current_user, permission="cards_reissue_manage", confirm_required=True),
+            allowed=is_lost,
+            disabled_reason="Card is not currently marked as lost.",
+        ),
+        reissue=_contextualize_policy(
+            _action_policy(current_user, permission="cards_reissue_manage"),
+            allowed=can_reissue,
+            disabled_reason="Guest context with an active or lost card workflow is required to reissue the card.",
+        ),
+        open_history=_contextualize_policy(
+            _action_policy(current_user, permission="cards_history_view"),
+            allowed=has_lookup_uid,
+            disabled_reason="Card UID is required to open history.",
+        ),
+        open_visit=_contextualize_policy(
+            _action_policy(current_user, permission="cards_open_active_session"),
+            allowed=has_visit_context,
+            disabled_reason="There is no active visit linked to this card.",
+        ),
+    )
+
+
 def _format_rub(value: Decimal | None) -> str:
     if value is None:
         return "—"
@@ -914,28 +971,17 @@ def _lookup_recent_events(
     return sorted(items, key=lambda item: item.timestamp, reverse=True)[:6]
 
 
-def _allowed_quick_actions(
-    current_user: dict | None,
-    *,
-    guest: models.Guest | None,
-    visit: models.Visit | None,
-    base_resolution: dict,
-) -> list[str]:
-    granted = _permissions(current_user)
+def _allowed_quick_actions(action_policies: schemas.CardGuestActionPolicySet) -> list[str]:
     actions: list[str] = []
-    if guest is not None and "cards_top_up" in granted:
+    if action_policies.top_up.allowed:
         actions.append("top-up")
-    if guest is not None and "cards_block_manage" in granted:
+    if action_policies.toggle_block.allowed:
         actions.append("toggle-block")
-    if guest is not None and "cards_reissue_manage" in granted and (
-        base_resolution.get("is_lost")
-        or visit is not None
-        or base_resolution.get("active_visit") is not None
-    ):
+    if action_policies.reissue.allowed:
         actions.append("reissue")
-    if base_resolution.get("card_uid") and "cards_history_view" in granted:
+    if action_policies.open_history.allowed:
         actions.append("open-history")
-    if (visit is not None or (base_resolution.get("lost_card") or {}).get("visit_id")) and "cards_open_active_session" in granted:
+    if action_policies.open_visit.allowed:
         actions.append("open-visit")
     return actions
 
@@ -1034,6 +1080,12 @@ def lookup_operator_card_context(
             **base_resolution["guest"],
             balance=guest.balance if guest is not None else None,
         )
+    action_policies = _card_guest_action_policies(
+        current_user,
+        guest=guest,
+        visit=visit,
+        base_resolution=base_resolution,
+    )
 
     return schemas.CardGuestContextModel(
         card_uid=base_resolution["card_uid"],
@@ -1046,10 +1098,6 @@ def lookup_operator_card_context(
         recent_events=recent_events,
         last_tap_label=last_tap_label,
         lookup_summary_items=lookup_summary_items,
-        allowed_quick_actions=_allowed_quick_actions(
-            current_user,
-            guest=guest,
-            visit=visit,
-            base_resolution=base_resolution,
-        ),
+        action_policies=action_policies,
+        allowed_quick_actions=_allowed_quick_actions(action_policies),
     )

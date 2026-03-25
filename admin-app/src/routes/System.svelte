@@ -3,6 +3,7 @@
 
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import SystemHealthSummary from '../components/system/SystemHealthSummary.svelte';
+  import { resolveActionBlockState } from '../lib/operator/actionPolicyAdapter.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
   import { roleStore } from '../stores/roleStore.js';
@@ -20,12 +21,34 @@
   /** @type {any} */
   let permissions = {};
 
+  function formatBlockedActionKey(value) {
+    if (!value) return 'Unknown action';
+    const text = String(value).replaceAll('_', ' ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   $: permissions = /** @type {any} */ ($roleStore.permissions || {});
   $: systemPermissions = {
     canViewHealth: Boolean(permissions.system_health_view),
     canUseEngineeringActions: Boolean(permissions.system_engineering_actions),
     canManageSystemSettings: Boolean(permissions.settings_manage),
   };
+  $: blockedActions = Object.entries($systemStore.blockedActions || {}).map(([key, policy]) => {
+    const state = resolveActionBlockState(
+      policy,
+      $operatorConnectionStore.readOnly
+        ? ($operatorConnectionStore.reason || $systemStore.reason || 'Backend currently degraded. Risky actions stay blocked until fresh data returns.')
+        : ''
+    );
+    return {
+      key,
+      label: formatBlockedActionKey(key),
+      available: !state.disabled,
+      reason: state.reason || (state.disabled
+        ? 'Wait for a fresh system snapshot before using this action.'
+        : 'This action can be used in the current context.'),
+    };
+  });
 
   onMount(() => {
     incidentFocusSource = sessionStorage.getItem('system.focusSource') || '';
@@ -96,11 +119,11 @@
         </div>
       </div>
       <div class="blocked-grid">
-        {#each Object.entries($systemStore.blockedActions || {}) as [key, policy]}
+        {#each blockedActions as action (action.key)}
           <article class="blocked-item">
-            <span>{key}</span>
-            <strong>{policy.allowed ? 'Available' : 'Blocked'}</strong>
-            <p>{policy.disabled_reason || (policy.allowed ? 'This action can be used in the current context.' : 'Wait for a fresh system snapshot before using this action.')}</p>
+            <span>{action.label}</span>
+            <strong>{action.available ? 'Available' : 'Blocked'}</strong>
+            <p>{action.reason}</p>
           </article>
         {/each}
       </div>

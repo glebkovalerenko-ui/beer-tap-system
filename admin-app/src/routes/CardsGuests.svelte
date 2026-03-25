@@ -17,6 +17,7 @@
   import { fullName, resolveLookupScenario } from '../lib/cardsGuests/scenarios/lookup.js';
   import { resolveTopUpPreconditions } from '../lib/cardsGuests/scenarios/topup.js';
   import { buildReissueHint, getReissueTargetVisitId, validateReissueInput } from '../lib/cardsGuests/scenarios/lost_reissue.js';
+  import { buildOperatorActionRequest } from '../lib/operator/actionDialogModel.js';
   import { buildCardsGuestsViewModel, resolveScenarioActionHandler } from '../lib/operator/cardsGuestsModel.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import GuestDetail from '../components/guests/GuestDetail.svelte';
@@ -24,6 +25,7 @@
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import Modal from '../components/common/Modal.svelte';
   import GuestForm from '../components/guests/GuestForm.svelte';
+  import { operatorActionStore } from '../stores/operatorActionStore.js';
 
   let phoneQuery = '';
   let lookupError = '';
@@ -84,6 +86,7 @@
   $: hasLookup = cardsGuestsModel.hasLookup;
   $: lookupSummaryItems = cardsGuestsModel.lookupSummaryItems;
   $: quickActions = cardsGuestsModel.quickActions;
+  $: actionGuards = cardsGuestsModel.actionGuards || {};
 
   function ensureWritable() {
     if (!routeReadOnlyReason) {
@@ -91,6 +94,22 @@
     }
     uiStore.notifyWarning(routeReadOnlyReason);
     return false;
+  }
+
+  async function requestCardAction(actionKey, guard, context = {}) {
+    const request = buildOperatorActionRequest({
+      actionKey,
+      policy: guard,
+      context,
+      readOnlyReason: routeReadOnlyReason,
+    });
+
+    if (request.blockedReason) {
+      uiStore.notifyWarning(request.blockedReason);
+      return null;
+    }
+
+    return operatorActionStore.open(request);
   }
 
   function selectGuest(guestId) {
@@ -118,14 +137,12 @@
     }
   }
 
-  async function handleRestoreLost(event) {
+async function handleRestoreLost(event) {
     if (!ensureWritable()) {
       return;
     }
-    if (!canReissue) {
-      uiStore.notifyWarning('Снятие отметки lost доступно только ролям с правом на перевыпуск.');
-      return;
-    }
+    const submission = await requestCardAction('card.restore_lost', actionGuards.restoreLost, { guestName: lookupGuestName });
+    if (!submission) return;
     const uid = event.detail.uid;
     if (!uid) return;
     try {
@@ -147,16 +164,16 @@
   }
 
   function handleOpenVisit() {
-    if (!canOpenVisit) {
-      uiStore.notifyWarning('Открытие активной сессии недоступно для текущей роли.');
+    if (actionGuards.openVisit?.disabled) {
+      uiStore.notifyWarning(actionGuards.openVisit.reason || 'Active session is unavailable.');
       return;
     }
     resolveVisitAndNavigate();
   }
 
   function handleOpenHistory() {
-    if (!canViewHistory) {
-      uiStore.notifyWarning('Просмотр истории недоступен для текущей роли.');
+    if (actionGuards.openHistory?.disabled) {
+      uiStore.notifyWarning(actionGuards.openHistory.reason || 'History is unavailable.');
       return;
     }
     const cardUid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid || '';
@@ -185,6 +202,10 @@
   }
 
   function handleOpenTopUpModal() {
+    if (actionGuards.topUp?.disabled) {
+      uiStore.notifyWarning(actionGuards.topUp.reason || 'Top-up is unavailable.');
+      return;
+    }
     const checks = resolveTopUpPreconditions({
       canTopUp,
       hasGuest: Boolean(selectedGuest),
@@ -212,14 +233,15 @@
     }
   }
 
-  async function handleToggleBlock() {
+async function handleToggleBlock() {
     if (!ensureWritable()) {
       return;
     }
-    if (!canToggleBlock) {
-      uiStore.notifyWarning('Блокировка гостя недоступна для текущей роли.');
-      return;
-    }
+    const submission = await requestCardAction('card.toggle_block', actionGuards.toggleBlock, {
+      guestName: lookupGuestName,
+      isActive: Boolean(selectedGuest?.is_active),
+    });
+    if (!submission) return;
     if (!selectedGuest) return;
     pageError = '';
     try {
@@ -238,32 +260,26 @@
     }
   }
 
-  async function handleMarkLost() {
+async function handleMarkLost() {
     if (!ensureWritable()) {
       return;
     }
-    if (!canReissue) {
-      uiStore.notifyWarning('Lost / перевыпуск недоступны для текущей роли.');
-      return;
-    }
+    const submission = await requestCardAction('card.mark_lost', actionGuards.markLost, {
+      guestName: lookupGuestName,
+    });
+    if (!submission) return;
     const visitId = selectedVisit?.visit_id || selectedLookup?.active_visit?.visit_id;
     if (!visitId) {
       uiStore.notifyWarning('Пометить lost можно из активного визита с привязанной картой.');
       return;
     }
 
-    const approved = await uiStore.confirm({
-      title: 'Пометить карту как lost',
-      message: 'Карта будет помечена lost, текущий рабочий сценарий переключится на перевыпуск, и оператору потребуется считать новую карту для переноса контекста активной сессии.',
-      confirmText: 'Пометить как lost',
-      cancelText: 'Отмена',
-      danger: true,
-    });
-
-    if (!approved) return;
-
     try {
-      await visitStore.reportLostCard({ visitId, reason: 'operator_marked_lost', comment: null });
+      await visitStore.reportLostCard({
+        visitId,
+        reason: submission.values.reasonCode || 'operator_marked_lost',
+        comment: submission.values.comment || null,
+      });
       const uid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid;
       if (uid) cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(uid));
       await visitStore.fetchActiveVisits();
@@ -412,7 +428,11 @@
       error={lookupError}
       loading={$lostCardStore.loading || $visitStore.loading}
       allowRestoreLost={canReissue}
+      restoreLostDisabled={Boolean(actionGuards.restoreLost?.disabled)}
+      restoreLostReason={actionGuards.restoreLost?.reason || ''}
       allowOpenVisit={canOpenVisit}
+      openVisitDisabled={Boolean(actionGuards.openVisit?.disabled)}
+      openVisitReason={actionGuards.openVisit?.reason || ''}
       allowOpenGuest={Boolean(selectedGuest)}
       allowOpenNewVisit={canOpenVisit}
       openVisitLabel="Открыть активную сессию"
@@ -451,10 +471,20 @@
           variant="operator"
           on:close={closeOperatorContext}
           canTopUp={canTopUp}
+          topUpDisabled={Boolean(actionGuards.topUp?.disabled)}
+          topUpReason={actionGuards.topUp?.reason || ''}
           canToggleBlock={canToggleBlock}
+          toggleBlockDisabled={Boolean(actionGuards.toggleBlock?.disabled)}
+          toggleBlockReason={actionGuards.toggleBlock?.reason || ''}
           canMarkLost={canReissue}
+          markLostDisabled={Boolean(actionGuards.markLost?.disabled)}
+          markLostReason={actionGuards.markLost?.reason || ''}
           canOpenHistory={canViewHistory}
+          openHistoryDisabled={Boolean(actionGuards.openHistory?.disabled)}
+          openHistoryReason={actionGuards.openHistory?.reason || ''}
           canOpenVisit={canOpenVisit}
+          openVisitDisabled={Boolean(actionGuards.openVisit?.disabled)}
+          openVisitReason={actionGuards.openVisit?.reason || ''}
           canManageProfile={hasManagementAccess}
           on:top-up={handleOpenTopUpModal}
           on:toggle-block={handleToggleBlock}
@@ -541,10 +571,20 @@
           lastTapLabel={lastTapLabel}
           variant="full"
           canTopUp={canTopUp}
+          topUpDisabled={Boolean(actionGuards.topUp?.disabled)}
+          topUpReason={actionGuards.topUp?.reason || ''}
           canToggleBlock={canToggleBlock}
+          toggleBlockDisabled={Boolean(actionGuards.toggleBlock?.disabled)}
+          toggleBlockReason={actionGuards.toggleBlock?.reason || ''}
           canMarkLost={canReissue}
+          markLostDisabled={Boolean(actionGuards.markLost?.disabled)}
+          markLostReason={actionGuards.markLost?.reason || ''}
           canOpenHistory={canViewHistory}
+          openHistoryDisabled={Boolean(actionGuards.openHistory?.disabled)}
+          openHistoryReason={actionGuards.openHistory?.reason || ''}
           canOpenVisit={canOpenVisit}
+          openVisitDisabled={Boolean(actionGuards.openVisit?.disabled)}
+          openVisitReason={actionGuards.openVisit?.reason || ''}
           canManageProfile={hasManagementAccess}
           on:top-up={handleOpenTopUpModal}
           on:toggle-block={handleToggleBlock}

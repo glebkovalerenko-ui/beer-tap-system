@@ -2,18 +2,19 @@
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
-  import Modal from '../components/common/Modal.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
   import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
-  import { buildIncidentActionCopy, buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
+  import { buildOperatorActionRequest } from '../lib/operator/actionDialogModel.js';
+  import { buildIncidentCapabilities, resolveIncidentAction, resolveIncidentActionRequest } from '../lib/operator/incidentModel.js';
   import { INCIDENT_COPY } from '../lib/operatorLabels.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { ensureIncidentsData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
+  import { operatorActionStore } from '../stores/operatorActionStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import { tapStore } from '../stores/tapStore.js';
@@ -54,15 +55,6 @@
   let filters = { ...DEFAULT_FILTERS };
   /** @type {any} */
   let selectedIncidentId = null;
-  let isActionModalOpen = false;
-  let actionForm = {
-    incidentId: null,
-    action: 'note',
-    owner: '',
-    note: '',
-    escalationReason: '',
-    resolutionSummary: '',
-  };
 
   onMount(() => {
     const token = get(sessionStore).token;
@@ -131,7 +123,6 @@
   }
 
   $: selectedIncident = filteredItems.find((item) => item.incident_id === selectedIncidentId) || null;
-  $: actionModalIncident = enrichedItems.find((item) => item.incident_id === actionForm.incidentId) || selectedIncident;
 
 
   /** @typedef {CustomEvent<{ incidentId: string|number }>} SelectIncidentEvent */
@@ -184,49 +175,55 @@
     ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Incident actions stay read-only until fresh data returns.')
     : ($incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.');
   $: incidentActionPlan = getActionPlan('incident');
-  $: actionFormCopy = buildIncidentActionCopy(actionForm.action);
+
+  function policyForIncidentAction(action) {
+    const candidate = incidentActionCapabilitiesRaw?.[action];
+    if (candidate) {
+      return candidate;
+    }
+    return {
+      allowed: Boolean(incidentActionCapabilities[action]),
+      disabled_reason: incidentActionCapabilityReasons[action] || null,
+      confirm_required: true,
+    };
+  }
 
   /** @param {any} event */
-  function openActionForm(event, suggestedAction = 'note') {
+  async function openActionForm(event, suggestedAction = 'note') {
     const item = event?.detail?.item || event;
-    if (incidentActionReadOnly) return;
-    const resolvedAction = resolveIncidentAction({ suggestedAction, capabilities: incidentActionCapabilities });
-
-    actionForm = {
-      incidentId: item.incident_id,
-      action: resolvedAction,
-      owner: item.accountability?.owner || item.operator || '',
-      note: item.note_action || '',
-      escalationReason: '',
-      resolutionSummary: '',
-    };
-    incidentStore.clearActionError();
-    isActionModalOpen = true;
-  }
-
-  function closeActionForm() {
-    isActionModalOpen = false;
-    incidentStore.clearActionError();
-  }
-
-  async function submitActionForm() {
-    const item = actionModalIncident;
     if (!item) return;
-    if (!incidentActionCapabilities[actionForm.action]) {
-      uiStore.notifyWarning(incidentActionCapabilityReasons[actionForm.action] || 'Действие недоступно для текущей роли/окружения.');
+    const resolvedAction = resolveIncidentAction({ suggestedAction, capabilities: incidentActionCapabilities });
+    const request = buildOperatorActionRequest({
+      actionKey: `incident.${resolvedAction}`,
+      policy: policyForIncidentAction(resolvedAction),
+      context: {
+        incidentId: item.incident_id,
+        owner: item.accountability?.owner || item.operator || '',
+        note: item.note_action || '',
+        escalationReason: '',
+        resolutionSummary: '',
+      },
+      readOnlyReason: incidentActionReadOnly ? incidentActionReadOnlyReason : '',
+    });
+
+    if (request.blockedReason) {
+      uiStore.notifyWarning(request.blockedReason);
       return;
     }
 
+    incidentStore.clearActionError();
+    const submission = await operatorActionStore.open(request);
+    if (!submission) return;
+
     try {
-      const request = resolveIncidentActionRequest({ action: actionForm.action, item, form: actionForm });
-      await incidentStore[request.method](request.payload);
+      const actionRequest = resolveIncidentActionRequest({ action: resolvedAction, item, form: submission.values });
+      await incidentStore[actionRequest.method](actionRequest.payload);
       await ensureIncidentsData({ reason: 'incident-action', force: true });
 
-      uiStore.notifySuccess('Действие по инциденту зафиксировано.');
+      uiStore.notifySuccess(request.successMessage || 'Действие по инциденту зафиксировано.');
       if (selectedIncidentId !== item.incident_id) {
         selectedIncidentId = item.incident_id;
       }
-      closeActionForm();
     } catch (error) {
       const errorMessage = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Фиксация действия по инциденту сейчас недоступна.';
       uiStore.notifyWarning(errorMessage);
@@ -337,6 +334,7 @@
             actionCapabilityReasons={incidentActionCapabilityReasons}
             {permissions}
             readOnly={incidentActionReadOnly}
+            readOnlyReason={incidentActionReadOnlyReason}
             on:select={selectIncident}
             on:openTap={openTap}
             on:openSession={openSession}
@@ -494,75 +492,6 @@
     </div>
   </section>
 
-  {#if isActionModalOpen && actionModalIncident}
-    <Modal on:close={closeActionForm}>
-      <div slot="header">
-        <h2>{actionFormCopy.heading} · #{actionModalIncident.incident_id}</h2>
-        <p class="modal-subtitle">{actionFormCopy.intro}</p>
-      </div>
-
-      <div class="incident-action-form">
-        <section class="detail-section compact-panel">
-          <div class="form-grid two-columns">
-            <label>
-              <span>Действие</span>
-              <select bind:value={actionForm.action} disabled={incidentActionReadOnly}>
-                <option value="claim" disabled={!incidentActionCapabilities.claim}>Взять в работу</option>
-                <option value="note" disabled={!incidentActionCapabilities.note}>Добавить заметку</option>
-                <option value="escalate" disabled={!incidentActionCapabilities.escalate}>Эскалировать</option>
-                <option value="close" disabled={!incidentActionCapabilities.close}>Закрыть</option>
-              </select>
-            </label>
-            <label>
-              <span>Ответственный</span>
-              <input bind:value={actionForm.owner} placeholder="Имя оператора" disabled={incidentActionReadOnly} />
-            </label>
-          </div>
-          <p class="muted">Текущий статус в системе: <strong>{actionModalIncident.statusLabel}</strong>. После сохранения карточка обновится подтверждёнными данными без сброса выбранного инцидента.</p>
-          {#if incidentActionReadOnly}
-            <p class="muted">{incidentActionReadOnlyReason}</p>
-          {/if}
-        </section>
-
-        <section class="detail-section compact-panel">
-          <h3>{actionFormCopy.noteLabel}</h3>
-          <textarea bind:value={actionForm.note} rows="5" placeholder={actionFormCopy.notePlaceholder} disabled={incidentActionReadOnly}></textarea>
-        </section>
-
-        {#if actionForm.action === 'escalate'}
-          <section class="detail-section compact-panel">
-            <h3>{actionFormCopy.secondaryLabel}</h3>
-            <textarea bind:value={actionForm.escalationReason} rows="4" placeholder={actionFormCopy.secondaryPlaceholder} disabled={incidentActionReadOnly}></textarea>
-            <p class="muted">{actionFormCopy.secondaryHelp}</p>
-          </section>
-        {/if}
-
-        {#if actionForm.action === 'close'}
-          <section class="detail-section compact-panel">
-            <h3>{actionFormCopy.secondaryLabel}</h3>
-            <textarea bind:value={actionForm.resolutionSummary} rows="4" placeholder={actionFormCopy.secondaryPlaceholder} disabled={incidentActionReadOnly}></textarea>
-            <p class="muted">{actionFormCopy.secondaryHelp}</p>
-          </section>
-        {/if}
-
-        <section class="detail-section compact-panel">
-          <h3>Прозрачность статуса</h3>
-          <ul class="modal-checklist">
-            <li>Новый → в работе → закрыт отображаются только по данным системы.</li>
-            <li>Ответственный, передача на разбор и закрытие сохраняются в журнале системы.</li>
-            <li>Экран показывает ответственного, последнее действие и время закрытия только из подтверждённых полей.</li>
-          </ul>
-        </section>
-      </div>
-
-      <div slot="footer" class="modal-actions">
-        <button class="secondary" type="button" on:click={closeActionForm}>Закрыть</button>
-        <button type="button" on:click={submitActionForm} disabled={incidentActionReadOnly || $incidentStore.actionLoading}>
-          {incidentActionReadOnly ? INCIDENT_COPY.readOnlyCta : INCIDENT_COPY.saveAction}
-        </button>
-      </div>
-    </Modal>
-  {/if}
 {/if}
 
 <style>
@@ -581,9 +510,8 @@
   .banner-panel[data-tone='ok'] { border: 1px solid #86efac; background: #f0fdf4; }
   .banner-error { color: #9a3412; margin: 0; }
   label { display: grid; gap: 0.35rem; }
-  input, select, button, textarea { font: inherit; }
-  input, select, button, textarea { border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.7rem 0.85rem; background: #fff; }
-  textarea { resize: vertical; min-height: 120px; }
+  input, select, button { font: inherit; }
+  input, select, button { border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.7rem 0.85rem; background: #fff; }
   button { font-weight: 700; }
   .secondary, .link { background: #fff; color: #0f172a; }
   .link { padding: 0; border: none; color: #1d4ed8; }

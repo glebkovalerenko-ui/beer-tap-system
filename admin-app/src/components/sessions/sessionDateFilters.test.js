@@ -10,8 +10,21 @@ test('resolveDateBounds uses getPeriodBounds for today/shift and raw values for 
     return { dateFrom: '2026-03-20', dateTo: '2026-03-22' };
   });
 
-  assert.equal(bounds.start.toISOString(), '2026-03-20T00:00:00.000Z');
-  assert.equal(bounds.end.toISOString(), '2026-03-22T23:59:59.999Z');
+  assert.equal(bounds.start.getFullYear(), 2026);
+  assert.equal(bounds.start.getMonth(), 2);
+  assert.equal(bounds.start.getDate(), 20);
+  assert.equal(bounds.start.getHours(), 0);
+  assert.equal(bounds.start.getMinutes(), 0);
+  assert.equal(bounds.start.getSeconds(), 0);
+  assert.equal(bounds.start.getMilliseconds(), 0);
+
+  assert.equal(bounds.end.getFullYear(), 2026);
+  assert.equal(bounds.end.getMonth(), 2);
+  assert.equal(bounds.end.getDate(), 22);
+  assert.equal(bounds.end.getHours(), 23);
+  assert.equal(bounds.end.getMinutes(), 59);
+  assert.equal(bounds.end.getSeconds(), 59);
+  assert.equal(bounds.end.getMilliseconds(), 999);
 
   const rangeBounds = resolveDateBounds(
     { periodPreset: 'range', dateFrom: '2026-03-10', dateTo: '2026-03-10' },
@@ -20,8 +33,14 @@ test('resolveDateBounds uses getPeriodBounds for today/shift and raw values for 
     }
   );
 
-  assert.equal(rangeBounds.start.toISOString(), '2026-03-10T00:00:00.000Z');
-  assert.equal(rangeBounds.end.toISOString(), '2026-03-10T23:59:59.999Z');
+  assert.equal(rangeBounds.start.getFullYear(), 2026);
+  assert.equal(rangeBounds.start.getMonth(), 2);
+  assert.equal(rangeBounds.start.getDate(), 10);
+  assert.equal(rangeBounds.start.getHours(), 0);
+  assert.equal(rangeBounds.end.getHours(), 23);
+  assert.equal(rangeBounds.end.getMinutes(), 59);
+  assert.equal(rangeBounds.end.getSeconds(), 59);
+  assert.equal(rangeBounds.end.getMilliseconds(), 999);
 });
 
 test('active session stays visible when backend history is filtered to a day inside active interval', () => {

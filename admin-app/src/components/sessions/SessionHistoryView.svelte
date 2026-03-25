@@ -27,6 +27,9 @@
     normalizedOperatorActions,
     syncLabels,
   } from './sessionNarrative.js';
+  import { buildOperatorActionRequest } from '../../lib/operator/actionDialogModel.js';
+  import { resolveActionBlockState } from '../../lib/operator/actionPolicyAdapter.js';
+  import { operatorActionStore } from '../../stores/operatorActionStore.js';
 
   const DEFAULT_FILTERS = {
     periodPreset: 'today',
@@ -180,51 +183,31 @@
   }
 
   function actionDisabledReason(policy) {
-    if (routeReadOnlyReason) return routeReadOnlyReason;
-    if (!policy?.allowed) return policy?.disabled_reason || 'Action is temporarily unavailable.';
-    return '';
+    return resolveActionBlockState(policy, routeReadOnlyReason).reason;
   }
 
-  async function confirmDangerousAction(policy, title, message) {
-    if (actionDisabledReason(policy)) {
-      uiStore.notifyWarning(actionDisabledReason(policy));
-      return false;
-    }
-
-    if (!policy?.confirm_required) {
-      return true;
-    }
-
-    return uiStore.confirm({
-      title,
-      message,
-      confirmText: 'Confirm',
-      cancelText: 'Cancel',
-      danger: true,
+  async function requestAction(actionKey, policy, context = {}) {
+    const request = buildOperatorActionRequest({
+      actionKey,
+      policy,
+      context,
+      readOnlyReason: routeReadOnlyReason,
     });
-  }
 
-  function requestRequiredValue(message, defaultValue = '') {
-    const result = window.prompt(message, defaultValue);
-    const normalized = result?.trim();
-    if (!normalized) {
-      uiStore.notifyWarning('Required field must be filled.');
+    if (request.blockedReason) {
+      uiStore.notifyWarning(request.blockedReason);
       return null;
     }
-    return normalized;
+
+    return operatorActionStore.open(request);
   }
 
   async function handleCloseSession() {
     const policy = detail?.safe_actions?.close;
-    const approved = await confirmDangerousAction(
-      policy,
-      'Close session',
-      'The session will be closed and refreshed in the operator journal.'
-    );
-    if (!approved) return;
+    const submission = await requestAction('session.close', policy, { visitId: detail?.summary?.visit_id });
+    if (!submission) return;
 
-    const closedReason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для закрытия сессии', 'operator_close') : 'operator_close';
-    if (!closedReason) return;
+    const closedReason = submission.values.reasonCode || 'incident-response';
 
     await sessionsStore.closeSession({ visitId: detail.summary.visit_id, closedReason, cardReturned: true });
     uiStore.notifySuccess('Session closed.');
@@ -232,70 +215,46 @@
 
   async function handleForceUnlock() {
     const policy = detail?.safe_actions?.force_unlock;
-    const approved = await confirmDangerousAction(
-      policy,
-      'Force unlock session',
-      'The system will remove the lock and record operator intervention.'
-    );
-    if (!approved) return;
+    const submission = await requestAction('session.force_unlock', policy, { visitId: detail?.summary?.visit_id });
+    if (!submission) return;
 
-    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для force unlock', 'operator_force_unlock') : 'operator_force_unlock';
-    if (!reason) return;
-    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
-
-    await sessionsStore.forceUnlockSession({ visitId: detail.summary.visit_id, reason, comment });
+    await sessionsStore.forceUnlockSession({
+      visitId: detail.summary.visit_id,
+      reason: submission.values.reasonCode || 'hardware-fault',
+      comment: submission.values.comment || null,
+    });
     uiStore.notifySuccess('Session unlocked.');
   }
 
   async function handleMarkLostCard() {
     const policy = detail?.safe_actions?.mark_lost_card;
-    const approved = await confirmDangerousAction(
-      policy,
-      'Mark card as lost',
-      'The card will be marked as lost and the operator flow will require reissue.'
-    );
-    if (!approved) return;
+    const submission = await requestAction('session.mark_lost_card', policy, { visitId: detail?.summary?.visit_id });
+    if (!submission) return;
 
-    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для lost card', 'operator_marked_lost') : 'operator_marked_lost';
-    if (!reason) return;
-    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
-
-    await sessionsStore.markLostCard({ visitId: detail.summary.visit_id, reason, comment });
+    await sessionsStore.markLostCard({
+      visitId: detail.summary.visit_id,
+      reason: submission.values.reasonCode || 'security',
+      comment: submission.values.comment || null,
+    });
     uiStore.notifySuccess('Card marked as lost.');
   }
 
   async function handleReconcile() {
     const policy = detail?.safe_actions?.reconcile;
-    const approved = await confirmDangerousAction(
-      policy,
-      'Reconcile pour manually',
-      'The system will store a manual reconcile entry for this session.'
-    );
-    if (!approved) return;
+    const submission = await requestAction('session.reconcile', policy, {
+      visitId: detail?.summary?.visit_id,
+      defaultTapId: detail?.summary?.taps?.[0] || '',
+    });
+    if (!submission) return;
 
-    const tapIdRaw = requestRequiredValue('Enter tap id for reconcile', String(detail?.summary?.taps?.[0] || ''));
-    const shortId = requestRequiredValue('Enter short id (6-8 chars)', '');
-    const volumeMlRaw = requestRequiredValue('Enter volume in ml', '250');
-    const amountRaw = requestRequiredValue('Enter amount', '175.00');
-    const reason = policy?.reason_code_required ? requestRequiredValue('Укажите reason code для reconcile', 'operator_reconcile') : 'operator_reconcile';
-    if (!tapIdRaw || !shortId || !volumeMlRaw || !amountRaw || !reason) return;
-
-    const tapId = Number(tapIdRaw);
-    const volumeMl = Number(volumeMlRaw);
-    if (!Number.isFinite(tapId) || !Number.isFinite(volumeMl) || tapId <= 0 || volumeMl <= 0) {
-      uiStore.notifyWarning('Tap id and volume must be positive numbers.');
-      return;
-    }
-
-    const comment = window.prompt('Operator comment (optional)', '')?.trim() || null;
     await sessionsStore.reconcileSession({
       visitId: detail.summary.visit_id,
-      tapId,
-      shortId,
-      volumeMl,
-      amount: amountRaw,
-      reason,
-      comment,
+      tapId: Number(submission.values.tapId),
+      shortId: submission.values.shortId,
+      volumeMl: Number(submission.values.volumeMl),
+      amount: submission.values.amount,
+      reason: submission.values.reasonCode || 'incident-response',
+      comment: submission.values.comment || null,
     });
     uiStore.notifySuccess('Pour reconciled manually.');
   }

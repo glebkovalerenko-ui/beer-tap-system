@@ -10,10 +10,20 @@
   export let lastTapLabel = '—';
   export let variant = 'full';
   export let canTopUp = true;
+  export let topUpDisabled = false;
+  export let topUpReason = '';
   export let canToggleBlock = true;
+  export let toggleBlockDisabled = false;
+  export let toggleBlockReason = '';
   export let canMarkLost = true;
+  export let markLostDisabled = false;
+  export let markLostReason = '';
   export let canOpenVisit = true;
+  export let openVisitDisabled = false;
+  export let openVisitReason = '';
   export let canOpenHistory = true;
+  export let openHistoryDisabled = false;
+  export let openHistoryReason = '';
   export let canManageProfile = true;
 
   const dispatch = createEventDispatcher();
@@ -79,12 +89,44 @@
       <span class="label">Последний кран</span>
       <strong>{lastTapLabel}</strong>
     </div>
-    <div class="hero-actions">
-      {#if canTopUp}<button class="top-up-btn" on:click={() => dispatch('top-up')}>Пополнить</button>{/if}
-      {#if canToggleBlock}<button on:click={() => dispatch('toggle-block')}>{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>{/if}
-      {#if canMarkLost}<button class="danger-btn" on:click={() => dispatch('mark-lost')} disabled={!primaryCard?.card_uid && !cardLookup?.card_uid}>Пометить lost / перевыпустить</button>{/if}
-      {#if canOpenHistory}<button on:click={() => dispatch('open-history')}>История</button>{/if}
-      {#if canOpenVisit}<button on:click={() => dispatch('open-visit')} disabled={!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id}>Активная сессия</button>{/if}
+<div class="hero-actions">
+      {#if canTopUp}
+        <button
+          class="top-up-btn"
+          title={topUpDisabled ? (topUpReason || 'Action unavailable') : ''}
+          disabled={topUpDisabled}
+          on:click={() => dispatch('top-up')}
+        >Пополнить</button>
+      {/if}
+      {#if canToggleBlock}
+        <button
+          title={toggleBlockDisabled ? (toggleBlockReason || 'Action unavailable') : ''}
+          disabled={toggleBlockDisabled}
+          on:click={() => dispatch('toggle-block')}
+        >{guest.is_active ? 'Заблокировать' : 'Разблокировать'}</button>
+      {/if}
+      {#if canMarkLost}
+        <button
+          class="danger-btn"
+          title={markLostDisabled ? (markLostReason || 'Action unavailable') : ''}
+          on:click={() => dispatch('mark-lost')}
+          disabled={markLostDisabled || (!primaryCard?.card_uid && !cardLookup?.card_uid)}
+        >Пометить lost / перевыпустить</button>
+      {/if}
+      {#if canOpenHistory}
+        <button
+          title={openHistoryDisabled ? (openHistoryReason || 'Action unavailable') : ''}
+          disabled={openHistoryDisabled}
+          on:click={() => dispatch('open-history')}
+        >История</button>
+      {/if}
+      {#if canOpenVisit}
+        <button
+          title={openVisitDisabled ? (openVisitReason || 'Action unavailable') : ''}
+          on:click={() => dispatch('open-visit')}
+          disabled={openVisitDisabled || (!activeVisit && !cardLookup?.active_visit && !cardLookup?.lost_card?.visit_id)}
+        >Активная сессия</button>
+      {/if}
     </div>
   </section>
 

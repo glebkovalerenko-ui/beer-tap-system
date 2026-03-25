@@ -7,6 +7,8 @@
   import AssignKegModal from '../components/modals/AssignKegModal.svelte';
   import TapDrawer from '../components/taps/TapDrawer.svelte';
   import TapGrid from '../components/taps/TapGrid.svelte';
+  import { buildOperatorActionRequest } from '../lib/operator/actionDialogModel.js';
+  import { operatorActionStore } from '../stores/operatorActionStore.js';
   import { resolveSessionHistoryTargets } from '../lib/tapWorkspaceHelpers.js';
   import { beverageStore } from '../stores/beverageStore.js';
   import { kegStore } from '../stores/kegStore.js';
@@ -138,25 +140,53 @@
 
 
   /** @param {any} tap @param {string} nextStatus @param {string} title @param {{permissionKey?: string, deniedMessage?: string, message?: string, confirmText?: string, danger?: boolean}} [options] */
-  async function handleTapStatusChange(tap, nextStatus, title, options = {}) {
-    const permissionKey = options.permissionKey || (nextStatus === 'cleaning' ? 'maintenance_actions' : 'taps_control');
+  async function handleTapStatusChange(tap, nextStatus, actionKey, options = {}) {
+    const permissionKey = options.permissionKey || null;
+    const allowedByPermission = permissionKey ? Boolean(permissions[permissionKey]) : true;
     const deniedMessage = options.deniedMessage || (permissionKey === 'maintenance_actions'
       ? 'Сервисные действия по крану доступны только старшему смены или инженеру.'
       : 'Управление линией доступно только ролям с правом taps_control.');
 
-    if (!requirePermission(permissionKey, deniedMessage)) return;
-    const approved = await uiStore.confirm({
-      title,
-      message: options.message || `Изменить статус ${tap.display_name} на "${nextStatus}"?`,
-      confirmText: options.confirmText || 'Подтвердить',
-      cancelText: 'Отмена',
-      danger: options.danger ?? nextStatus === 'locked',
+    const policy = options.policy || {
+      allowed: allowedByPermission,
+      confirm_required: true,
+      disabled_reason: allowedByPermission ? null : deniedMessage,
+    };
+    const resolvedActionKey = String(actionKey || '').startsWith('tap.')
+      ? actionKey
+      : nextStatus === 'cleaning'
+        ? 'tap.cleaning'
+        : (nextStatus === 'active' && permissionKey === 'maintenance_actions')
+          ? 'tap.mark_ready'
+          : nextStatus === 'active'
+            ? 'tap.unlock'
+            : 'tap.lock';
+    const request = buildOperatorActionRequest({
+      actionKey: resolvedActionKey,
+      policy,
+      context: { tap },
+      readOnlyReason: routeReadOnlyReason,
+      overrides: {
+        description: options.message,
+        submitText: options.confirmText,
+        danger: options.danger,
+      },
     });
 
-    if (!approved) return;
+    if (request.blockedReason) {
+      uiStore.notifyWarning(request.blockedReason);
+      return;
+    }
+
+    const submission = await operatorActionStore.open(request);
+    if (!submission) return;
 
     try {
-      await tapStore.updateTapStatus(tap.tap_id, nextStatus);
+      await tapStore.updateTapStatus(tap.tap_id, {
+        status: nextStatus,
+        reasonCode: submission.values.reasonCode || null,
+        comment: submission.values.comment || null,
+      });
     } catch (error) {
       uiStore.notifyError(`Ошибка: ${error}`);
     }
@@ -169,10 +199,10 @@
       return;
     }
 
-    await handleTapStatusChange(tap, 'locked', 'Остановить налив и заблокировать кран', {
-      permissionKey: 'taps_control',
-      message: `Остановить текущий налив на ${tap.display_name} и перевести кран в блокировку?`,
-      confirmText: 'Остановить налив',
+    await handleTapStatusChange(tap, 'locked', 'tap.stop', {
+      policy: tap?.safe_actions?.stop,
+      message: `Stop the current pour on ${tap.display_name} and move the tap to locked state?`,
+      confirmText: 'Stop pour',
       danger: true,
     });
   }
@@ -271,9 +301,13 @@
         on:display-settings={handleOpenTapDisplaySettings}
         on:open-history={openSessionFromTap}
         on:stop-pour={(event) => handleStopPour(event.detail.tap)}
-        on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
-        on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}
-        on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'Вернуть кран в готовность', {
+        on:toggle-lock={(event) => handleTapStatusChange(
+          event.detail.tap,
+          event.detail.tap.status === 'locked' ? 'active' : 'locked',
+          event.detail.tap.status === 'locked' ? 'tap.unlock' : 'tap.lock'
+        )}
+        on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'tap.cleaning')}
+        on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'tap.mark_ready', {
           permissionKey: 'maintenance_actions',
           message: `Перевести ${event.detail.tap.display_name} в статус "active" после сервисных работ?`,
           confirmText: 'Вернуть в готовность',
@@ -312,11 +346,15 @@
         on:display-settings={handleOpenTapDisplaySettings}
       on:open-session={openSessionFromTap}
       on:stop-pour={(event) => handleStopPour(event.detail.tap)}
-      on:toggle-lock={(event) => handleTapStatusChange(event.detail.tap, event.detail.tap.status === 'locked' ? 'active' : 'locked', event.detail.tap.status === 'locked' ? 'Разблокировать кран' : 'Заблокировать кран')}
+      on:toggle-lock={(event) => handleTapStatusChange(
+        event.detail.tap,
+        event.detail.tap.status === 'locked' ? 'active' : 'locked',
+        event.detail.tap.status === 'locked' ? 'tap.unlock' : 'tap.lock'
+      )}
       on:assign={handleOpenAssignModal}
       on:unassign={(event) => handleUnassignTap(event.detail.tap)}
-      on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'Перевод крана на промывку')}
-      on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'Вернуть кран в готовность', {
+      on:cleaning={(event) => handleTapStatusChange(event.detail.tap, 'cleaning', 'tap.cleaning')}
+      on:mark-ready={(event) => handleTapStatusChange(event.detail.tap, 'active', 'tap.mark_ready', {
         permissionKey: 'maintenance_actions',
         message: `Перевести ${event.detail.tap.display_name} в статус "active" после сервисных работ?`,
         confirmText: 'Вернуть в готовность',
