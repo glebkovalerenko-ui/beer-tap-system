@@ -93,6 +93,7 @@ export function buildTodayRouteModel({
   const severityWeight = DEFAULT_SEVERITY_WEIGHT;
   const criticalIncidents = sortCriticalIncidents(incidents);
   const sessionsToday = Number(todaySummary?.sessions_count || 0);
+  const todaySummaryPeriod = todaySummary?.period || 'day';
   const volumeTodayMl = Number(todaySummary?.volume_ml || 0);
   const revenueToday = Number(todaySummary?.revenue || 0);
   const todaySummaryWarning = todaySummaryError
@@ -186,6 +187,8 @@ export function buildTodayRouteModel({
 
   return {
     criticalIncidents,
+    sessionsToday,
+    todaySummaryPeriod,
     todaySummaryWarning,
     syncProblemCount,
     needsHelpCount,

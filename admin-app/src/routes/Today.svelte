@@ -96,6 +96,8 @@
     dismissedAttentionKeys,
   });
   $: criticalIncidents = todayModel.criticalIncidents;
+  $: sessionsToday = todayModel.sessionsToday;
+  $: todaySummaryPeriod = todayModel.todaySummaryPeriod;
   $: todaySummaryWarning = todayModel.todaySummaryWarning;
   $: attentionItems = todayModel.attentionItems;
   $: operatorActionItems = todayModel.operatorActionItems;
@@ -242,7 +244,7 @@
       <div class="section-head">
         <div>
           <h2>Обзорная лента событий</h2>
-          <p>{sessionsToday} сессий за {todaySummary?.period === 'shift' ? 'смену' : 'день'} · {$tapStore.summary?.pouringCount || 0} кранов льют прямо сейчас</p>
+          <p>{sessionsToday} сессий за {todaySummaryPeriod === 'shift' ? 'смену' : 'день'} · {$tapStore.summary?.pouringCount || 0} кранов льют прямо сейчас</p>
         </div>
       </div>
 
