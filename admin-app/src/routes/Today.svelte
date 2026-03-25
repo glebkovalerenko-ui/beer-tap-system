@@ -96,6 +96,8 @@
     dismissedAttentionKeys,
   });
   $: criticalIncidents = todayModel.criticalIncidents;
+  $: sessionsToday = Number($pourStore.todaySummary?.sessions_count || 0);
+  $: todaySummary = $pourStore.todaySummary || {};
   $: todaySummaryWarning = todayModel.todaySummaryWarning;
   $: attentionItems = todayModel.attentionItems;
   $: operatorActionItems = todayModel.operatorActionItems;
