@@ -40,6 +40,7 @@ SEVERITY_MATRIX = {
     },
 }
 
+_VOLATILE_INCIDENT_FIRST_SEEN_AT: dict[str, datetime] = {}
 
 
 def _utcnow() -> datetime:
@@ -60,6 +61,15 @@ def _minutes_since(value: Optional[datetime]) -> Optional[int]:
         return None
     now = _utcnow()
     return max(0, int((now - value).total_seconds() // 60))
+
+
+def _first_seen_created_at(incident_id: str, observed_at: Optional[datetime] = None) -> datetime:
+    stable = _VOLATILE_INCIDENT_FIRST_SEEN_AT.get(incident_id)
+    if stable is not None:
+        return stable
+    stable = _as_utc(observed_at) or _utcnow()
+    _VOLATILE_INCIDENT_FIRST_SEEN_AT[incident_id] = stable
+    return stable
 
 
 def _device_health(state: str, label: str, detail: Optional[str] = None, updated_at: Optional[datetime] = None):
@@ -208,13 +218,16 @@ def _apply_overlay(base: dict, state: Optional[models.IncidentState]) -> dict:
 
 def list_incidents(db: Session, limit: int = 100) -> list[dict]:
     incidents: list[dict] = []
+    volatile_ids: set[str] = set()
 
     emergency_state = db.query(models.SystemState).filter(models.SystemState.key == EMERGENCY_STOP_KEY).first()
     if emergency_state and str(emergency_state.value).strip().lower() == "true":
+        incident_id = "system-emergency-stop"
+        volatile_ids.add(incident_id)
         incidents.append({
-            "incident_id": "system-emergency-stop",
+            "incident_id": incident_id,
             "priority": "critical",
-            "created_at": datetime.now(timezone.utc),
+            "created_at": _first_seen_created_at(incident_id),
             "tap": None,
             "type": "emergency_stop",
             "status": "in_progress",
@@ -270,10 +283,12 @@ def list_incidents(db: Session, limit: int = 100) -> list[dict]:
 
     for tap in db.query(models.Tap).options(joinedload(models.Tap.keg)).all():
         if tap.keg_id is None:
+            incident_id = f"tap-no-keg-{tap.tap_id}"
+            volatile_ids.add(incident_id)
             incidents.append({
-                "incident_id": f"tap-no-keg-{tap.tap_id}",
+                "incident_id": incident_id,
                 "priority": "medium",
-                "created_at": _utcnow(),
+                "created_at": _first_seen_created_at(incident_id),
                 "tap": tap.display_name,
                 "type": "tap_without_keg",
                 "status": "new",
@@ -281,6 +296,10 @@ def list_incidents(db: Session, limit: int = 100) -> list[dict]:
                 "note_action": f"На {tap.display_name} не назначена кега. Назначьте кегу или переведите точку в maintenance.",
                 "source": "tap_state",
             })
+
+    for incident_id in list(_VOLATILE_INCIDENT_FIRST_SEEN_AT):
+        if incident_id not in volatile_ids:
+            _VOLATILE_INCIDENT_FIRST_SEEN_AT.pop(incident_id, None)
 
     incident_ids = [item["incident_id"] for item in incidents]
     overlays = {}
