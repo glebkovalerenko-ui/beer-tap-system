@@ -38,6 +38,20 @@
    - Undo last operation (if available)
    - Incident form + next best action
 
+## Today route focus contract
+
+`Today` — это операционная стартовая панель, а не второй shell.
+
+Содержимое `Today`:
+- **что сломано сейчас** (исключения/attention),
+- **какое действие сделать первым** (один приоритетный шаг),
+- **переход в 1 клик** к объекту действия (tap/session/incident/system).
+
+Ограничения:
+- не дублировать в `Today` глобальный контекст top bar (смена, время, health, оператор);
+- в hero-зоне допускается только **один Primary CTA** — контекстный приоритетный;
+- `Инциденты` и `Все краны` — вторичные CTA, не конкурирующие за главный визуальный вес.
+
 ## IA view (logical)
 
 ```text
@@ -343,4 +357,3 @@ POS Workspace
 - `scripts/cards_guests/lost_reissue_smoke.mjs`
 - `scripts/cards_guests/quick_actions_smoke.mjs`
 - `scripts/cards_guests/recent_events_smoke.mjs`
-

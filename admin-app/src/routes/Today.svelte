@@ -1,20 +1,15 @@
 <script>
-  import { onMount } from 'svelte';
   import { incidentStore } from '../stores/incidentStore.js';
   import { pourStore } from '../stores/pourStore.js';
-  import { shiftStore } from '../stores/shiftStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import { tapStore } from '../stores/tapStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import EventFeed from '../components/pours/EventFeed.svelte';
-  import { formatDateTimeRu, formatTimeRu } from '../lib/formatters.js';
-  import { formatHealthPill, healthStateLabel, healthTone } from '../lib/healthStatus.js';
   import { navigateWithFocus } from '../lib/actionRouting.js';
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
   import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
 
-  let now = new Date();
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
 
@@ -49,33 +44,12 @@
     dismissedAttentionKeys = new Set([...dismissedAttentionKeys, item.key]);
   }
 
-  function shiftSummary() {
-    if ($shiftStore.isOpen) {
-      return $shiftStore.shift?.opened_at ? `Открыта с ${formatDateTimeRu($shiftStore.shift.opened_at)}` : 'Смена открыта';
-    }
-    if ($shiftStore.shift?.closed_at) {
-      return `Закрыта ${formatDateTimeRu($shiftStore.shift.closed_at)}`;
-    }
-    return 'Смена закрыта';
-  }
-
-
-  onMount(() => {
-    const timer = setInterval(() => {
-      now = new Date();
-    }, 1000);
-
-    return () => clearInterval(timer);
-  });
-
   $: tapStore.setOperationalContext({
     activeVisits: $visitStore.activeVisits || [],
     feedItems: $pourStore.feedItems || [],
   });
 
-  $: activeIncidents = ($incidentStore.items || []).filter((item) => item.status !== 'closed');
   $: visibleFeedItems = ($pourStore.feedItems || []).filter((item) => !dismissedEventIds.has(item.item_id)).slice(0, 12);
-  $: healthItems = $systemStore.health.primaryPills || [];
   $: todayModel = buildTodayRouteModel({
     incidents: $incidentStore.items || [],
     tapSummary: $tapStore.summary || {},
@@ -94,41 +68,22 @@
   $: deEmphasizeSecondaryStats = todayModel.deEmphasizeSecondaryStats;
   $: heroStats = todayModel.heroStats;
   $: secondaryActionItems = operatorActionItems.slice(1, 5);
+  $: sessionsToday = Number($pourStore.todaySummary?.sessions_count || 0);
+  $: todaySummary = $pourStore.todaySummary || null;
   $: canViewIncidents = Boolean($roleStore.permissions?.incidents_view);
   $: incidentsAccessHint = 'Нет доступа к инцидентам. Нужна роль с правом incidents_view.';
   $: priorityCta = todayModel.priorityCta;
 </script>
 
 <section class="today-page">
-  <section class="top-strip ui-card">
-    <article>
-      <span class="eyebrow">Текущая смена</span>
-      <strong>{$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}</strong>
-      <small>{shiftSummary()}</small>
-    </article>
-    <article>
-      <span class="eyebrow">Текущее время</span>
-      <strong>{formatTimeRu(now.toISOString())}</strong>
-      <small>{formatDateTimeRu(now.toISOString())}</small>
-    </article>
-    <article class="health-overview" data-tone={$systemStore.health.overall}>
-      <span class="eyebrow">Состояние системы</span>
-      <strong>{healthStateLabel($systemStore.health.overall, 'overall')}</strong>
-      <div class="health-pills">
-        {#each healthItems as item}
-          <span class="health-pill {healthTone(item.state)}">{formatHealthPill(item)}</span>
-        {/each}
-      </div>
-    </article>
-  </section>
-
   <section class="hero ui-card">
     <div class="hero-copy">
-      <span class="eyebrow">Сегодня</span>
+      <span class="eyebrow">Операционный фокус</span>
       <h1>Сегодня</h1>
-      <p>Сначала — живое операционное состояние, затем дневные итоги по продажам и наливам.</p>
+      <p>Что сломано сейчас, что делать первым и куда перейти в 1 клик. Общий контекст смены остаётся в верхней панели.</p>
     </div>
     <div class="hero-actions">
+      <button class="cta-button primary" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
       {#if canViewIncidents}
         <a class="cta-button incidents-entry" href="#/incidents">Инциденты</a>
       {:else}
@@ -142,7 +97,6 @@
           Инциденты
         </button>
       {/if}
-      <button class="cta-button contextual" on:click={() => openActionTarget(priorityCta)}>{priorityCta.label}</button>
       <a class="cta-button secondary" href="#/taps">Все краны</a>
     </div>
     <div class="stats" data-muted={deEmphasizeSecondaryStats}>
@@ -256,5 +210,5 @@
 </section>
 
 <style>
-  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.top-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}.top-strip article{display:flex;flex-direction:column;gap:.35rem}.health-pills{display:flex;flex-wrap:wrap;gap:.5rem}.health-pill{padding:.3rem .55rem;border-radius:999px;background:var(--state-neutral-bg);font-size:.8rem}.health-pill.ok{background:var(--state-success-bg);color:var(--state-success-text)}.health-pill.warning,.health-pill.unknown,.health-pill.degraded{background:var(--state-warning-bg);color:var(--state-warning-text)}.health-pill.critical,.health-pill.error,.health-pill.offline{background:var(--state-critical-bg);color:var(--state-critical-text)}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end;flex-wrap:wrap}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;background:var(--accent-color,#1d4ed8);color:#fff;text-decoration:none;font-weight:600;border:0}.cta-button.incidents-entry{background:var(--state-critical-text)}.cta-button.contextual{background:var(--accent-color,#1d4ed8)}.cta-button.secondary{background:var(--state-neutral-bg);color:var(--state-neutral-text)}.cta-button:disabled{opacity:.65;cursor:not-allowed}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.85rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc);transition:opacity .2s ease,transform .2s ease}.stats article[data-tone='warning']{background:var(--state-warning-bg)}.stats[data-muted='true'] article[data-emphasis='secondary']{opacity:.62;transform:scale(.98)}.stats article span{display:block;color:var(--text-secondary);margin-bottom:.2rem}.stats article strong{display:block}.summary-warning{display:grid;gap:.35rem;padding:.9rem 1rem;border:1px solid var(--state-warning-border);background:var(--state-warning-bg);color:var(--state-warning-text);border-radius:16px}.content-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.45fr);gap:1rem;align-items:start}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.priority-panel{position:sticky;top:1rem}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:var(--state-neutral-bg);font-weight:700}.next-actions,.secondary-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions{border:1px solid var(--state-neutral-border)}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head.compact h3{font-size:1rem}.next-actions-head h3{margin:0}.next-action,.secondary-action{display:grid;gap:.35rem;text-align:left;padding:.8rem .9rem;border-radius:.8rem;border:1px solid var(--state-neutral-border);background:#fff;cursor:pointer}.next-action.primary{gap:.4rem;padding:1rem}.next-action.primary strong,.secondary-action strong{font-size:.85rem;color:var(--state-neutral-text)}.next-action[data-severity='critical'],.secondary-action[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.next-action[data-severity='warning'],.secondary-action[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.next-action span,.secondary-action span{font-weight:700}.next-action small,.secondary-action small{color:var(--text-secondary)}.secondary-actions-list{display:grid;gap:.5rem}.secondary-action{grid-template-columns:minmax(0,1fr) auto;align-items:center}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.attention-item[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:var(--state-critical-text)}@media (max-width: 960px){.top-strip,.hero,.content-grid,.secondary-action{grid-template-columns:1fr}.hero-actions{justify-content:flex-start;gap:.5rem}.hero-actions .cta-button{flex:1 1 calc(50% - .5rem);min-width:140px}.priority-panel{position:static}}
+  .today-page{display:grid;gap:1rem}.ui-card{padding:1rem}.eyebrow{font-size:.8rem;color:var(--text-secondary);text-transform:uppercase}.hero{display:grid;grid-template-columns:1.4fr auto;gap:1rem;align-items:start}.hero h1{margin:.25rem 0}.hero-copy p{margin:.25rem 0 0}.hero-actions{display:flex;gap:.75rem;justify-content:flex-end;flex-wrap:wrap}.cta-button{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.8rem;text-decoration:none;font-weight:600;border:1px solid transparent}.cta-button.primary{background:var(--accent-color,#1d4ed8);color:#fff}.cta-button.incidents-entry{background:#fff;color:var(--state-critical-text);border-color:var(--state-critical-border)}.cta-button.secondary{background:var(--state-neutral-bg);color:var(--state-neutral-text);border-color:var(--state-neutral-border)}.cta-button:disabled{opacity:.65;cursor:not-allowed}.stats{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.85rem}.stats article{padding:.85rem;border-radius:.8rem;background:var(--surface-secondary,#f8fafc);transition:opacity .2s ease,transform .2s ease}.stats article[data-tone='warning']{background:var(--state-warning-bg)}.stats[data-muted='true'] article[data-emphasis='secondary']{opacity:.62;transform:scale(.98)}.stats article span{display:block;color:var(--text-secondary);margin-bottom:.2rem}.stats article strong{display:block}.summary-warning{display:grid;gap:.35rem;padding:.9rem 1rem;border:1px solid var(--state-warning-border);background:var(--state-warning-bg);color:var(--state-warning-text);border-radius:16px}.content-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(0,1.45fr);gap:1rem;align-items:start}.section-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:1rem}.section-head h2,.section-head p{margin:0}.section-head p{margin-top:.25rem;color:var(--text-secondary)}.feed-panel{min-height:540px}.priority-panel{position:sticky;top:1rem}.attention-panel .count,.next-actions-head span{padding:.35rem .65rem;border-radius:999px;background:var(--state-neutral-bg);font-weight:700}.next-actions,.secondary-actions{display:grid;gap:.75rem;margin-bottom:1rem;padding:.9rem;border-radius:.9rem;background:#f8fafc}.next-actions{border:1px solid var(--state-neutral-border)}.next-actions-head{display:flex;justify-content:space-between;gap:1rem;align-items:center}.next-actions-head.compact h3{font-size:1rem}.next-actions-head h3{margin:0}.next-action,.secondary-action{display:grid;gap:.35rem;text-align:left;padding:.8rem .9rem;border-radius:.8rem;border:1px solid var(--state-neutral-border);background:#fff;cursor:pointer}.next-action.primary{gap:.4rem;padding:1rem}.next-action.primary strong,.secondary-action strong{font-size:.85rem;color:var(--state-neutral-text)}.next-action[data-severity='critical'],.secondary-action[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.next-action[data-severity='warning'],.secondary-action[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.next-action span,.secondary-action span{font-weight:700}.next-action small,.secondary-action small{color:var(--text-secondary)}.secondary-actions-list{display:grid;gap:.5rem}.secondary-action{grid-template-columns:minmax(0,1fr) auto;align-items:center}.attention-list{display:grid;gap:.75rem}.attention-item{display:grid;gap:.75rem;padding:.9rem;border:1px solid #e5e7eb;border-radius:.9rem}.attention-item[data-severity='critical']{border-color:var(--state-critical-border);background:var(--state-critical-bg)}.attention-item[data-severity='warning']{border-color:var(--state-warning-border);background:var(--state-warning-bg)}.attention-category{display:block;font-size:.75rem;text-transform:uppercase;color:var(--text-secondary);margin-bottom:.25rem}.attention-actions{display:flex;gap:.5rem;flex-wrap:wrap}.attention-actions button{border:1px solid #d1d5db;background:#fff;border-radius:999px;padding:.45rem .8rem;cursor:pointer}.attention-actions .subtle{color:var(--text-secondary)}.error{color:var(--state-critical-text)}@media (max-width: 960px){.hero,.content-grid,.secondary-action{grid-template-columns:1fr}.hero-actions{justify-content:flex-start;gap:.5rem}.hero-actions .cta-button{flex:1 1 calc(50% - .5rem);min-width:140px}.priority-panel{position:static}}
 </style>
