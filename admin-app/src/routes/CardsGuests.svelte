@@ -12,11 +12,10 @@
   import { cardsGuestsWorkflowStore } from '../stores/cardsGuestsWorkflowStore.js';
   import { normalizeError } from '../lib/errorUtils.js';
   import { formatDateTimeRu, formatRubAmount } from '../lib/formatters.js';
-  import { buildPhoneCandidates, buildQuickLookupResults, fullName, hasLookupTarget, resolveLookupScenario } from '../lib/cardsGuests/scenarios/lookup.js';
+  import { fullName, resolveLookupScenario } from '../lib/cardsGuests/scenarios/lookup.js';
   import { resolveTopUpPreconditions } from '../lib/cardsGuests/scenarios/topup.js';
   import { buildReissueHint, getReissueTargetVisitId, validateReissueInput } from '../lib/cardsGuests/scenarios/lost_reissue.js';
-  import { buildQuickActions } from '../lib/cardsGuests/scenarios/quick_actions.js';
-  import { buildRecentEvents } from '../lib/cardsGuests/scenarios/recent_events.js';
+  import { buildCardsGuestsViewModel, resolveScenarioActionHandler } from '../lib/operator/cardsGuestsModel.js';
   import GuestDetail from '../components/guests/GuestDetail.svelte';
   import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
@@ -66,30 +65,24 @@
 
   $: guests = $guestStore.guests || [];
   $: activeVisits = $visitStore.activeVisits || [];
-  $: phoneCandidates = buildPhoneCandidates(guests, phoneQuery);
-  $: quickLookupResults = buildQuickLookupResults(phoneCandidates, activeVisits);
-  $: selectedGuest = selectedGuestId ? guests.find((guest) => guest.guest_id === selectedGuestId) : null;
-  $: selectedGuest = !selectedGuest && selectedLookup?.guest?.guest_id
-    ? guests.find((guest) => guest.guest_id === selectedLookup.guest.guest_id) || null
-    : selectedGuest;
-  $: selectedVisit = selectedGuest ? activeVisits.find((visit) => visit.guest_id === selectedGuest.guest_id) || null : null;
-  $: recentGuestPours = selectedGuest
-    ? $pourStore.pours.filter((item) => item?.guest?.guest_id === selectedGuest.guest_id).slice(0, 6)
-    : [];
-  $: lastTapLabel = recentGuestPours[0]?.tap?.display_name || (recentGuestPours[0]?.tap_id ? `Кран #${recentGuestPours[0].tap_id}` : '—');
-  $: recentEvents = buildRecentEvents({ guest: selectedGuest, visit: selectedVisit, lookup: selectedLookup, pours: recentGuestPours });
-  $: lookupGuestName = selectedGuest ? fullName(selectedGuest) : (selectedLookup?.guest?.full_name || 'Гость не определён');
-  $: hasLookup = hasLookupTarget(selectedLookup);
-  $: quickActions = buildQuickActions({
-    lookup: selectedLookup,
-    guest: selectedGuest,
-    visit: selectedVisit,
-    canTopUp,
-    canToggleBlock,
-    canReissue,
-    canOpenVisit,
-    canViewHistory,
+  $: cardsGuestsModel = buildCardsGuestsViewModel({
+    guests,
+    activeVisits,
+    pours: $pourStore.pours,
+    phoneQuery,
+    selectedGuestId,
+    selectedLookup,
+    permissions: { canTopUp, canToggleBlock, canReissue, canOpenVisit, canViewHistory },
   });
+  $: quickLookupResults = cardsGuestsModel.quickLookupResults;
+  $: selectedGuest = cardsGuestsModel.selectedGuest;
+  $: selectedVisit = cardsGuestsModel.selectedVisit;
+  $: recentGuestPours = cardsGuestsModel.recentGuestPours;
+  $: lastTapLabel = cardsGuestsModel.lastTapLabel;
+  $: recentEvents = cardsGuestsModel.recentEvents;
+  $: lookupGuestName = cardsGuestsModel.lookupGuestName;
+  $: hasLookup = cardsGuestsModel.hasLookup;
+  $: quickActions = cardsGuestsModel.quickActions;
 
   function selectGuest(guestId) {
     cardsGuestsWorkflowStore.setSelectedGuestId(guestId);
@@ -261,23 +254,24 @@
   async function handleScenarioAction(event) {
     const { actionId } = event.detail;
     cardsGuestsWorkflowStore.setPendingScenario(actionId);
-    if (actionId === 'top-up') {
+    const handler = resolveScenarioActionHandler(actionId);
+    if (handler === 'open-top-up') {
       handleOpenTopUpModal();
       return;
     }
-    if (actionId === 'open-visit') {
+    if (handler === 'open-visit') {
       handleOpenVisit();
       return;
     }
-    if (actionId === 'open-history') {
+    if (handler === 'open-history') {
       handleOpenHistory();
       return;
     }
-    if (actionId === 'toggle-block') {
+    if (handler === 'toggle-block') {
       await handleToggleBlock();
       return;
     }
-    if (actionId === 'reissue') {
+    if (handler === 'reissue') {
       reissueError = '';
       cardsGuestsWorkflowStore.setReissueStatus(buildReissueHint(selectedLookup));
     }

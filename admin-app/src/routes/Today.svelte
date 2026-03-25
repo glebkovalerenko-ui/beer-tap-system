@@ -8,19 +8,17 @@
   import { tapStore } from '../stores/tapStore.js';
   import { visitStore } from '../stores/visitStore.js';
   import EventFeed from '../components/pours/EventFeed.svelte';
-  import { formatDateTimeRu, formatTimeRu, formatVolumeRu } from '../lib/formatters.js';
+  import { formatDateTimeRu, formatTimeRu } from '../lib/formatters.js';
   import { formatHealthPill, healthStateLabel, healthTone } from '../lib/healthStatus.js';
-  import { ACTION_LABELS, getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
+  import { navigateWithFocus } from '../lib/actionRouting.js';
   import { uiStore } from '../stores/uiStore.js';
   import { roleStore } from '../stores/roleStore.js';
+  import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
 
   let now = new Date();
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
   let initialLoadAttempted = false;
-
-  const severityWeight = { critical: 0, warning: 1, info: 2 };
-  const incidentPriorityWeight = { critical: 0, high: 1, medium: 2, low: 3 };
 
   function openTap(item) {
     navigateWithFocus({ target: 'tap', tapId: item.tap_id, source: item.tap_name || item.title });
@@ -63,75 +61,6 @@
     return 'Смена закрыта';
   }
 
-  function attentionCategory(item) {
-    const labels = {
-      no_keg: 'кега',
-      stale_heartbeat: 'связь с краном',
-      unsynced_flow: 'синхронизация налива',
-      reader_offline: 'считыватель',
-      display_offline: 'экран крана',
-      controller_offline: 'контроллер',
-      backend_offline: 'бэкенд',
-      sync_offline: 'синхронизация',
-      controllers_offline: 'контроллеры',
-      displays_offline: 'экраны',
-      readers_offline: 'считыватели',
-    };
-
-    return labels[item.kind] || String(item.kind || 'операции').replaceAll('_', ' ');
-  }
-
-  function actionTitleForAttention(item) {
-    const tapLabel = item.title || 'кран';
-
-    switch (item.kind) {
-      case 'unsynced_flow':
-        return `Проверить зависший налив на ${tapLabel}`;
-      case 'stale_heartbeat':
-        return `Проверить связь с ${tapLabel}`;
-      case 'reader_offline':
-        return `Проверить считыватель на ${tapLabel}`;
-      case 'display_offline':
-        return `Проверить экран на ${tapLabel}`;
-      case 'controller_offline':
-        return `Проверить контроллер на ${tapLabel}`;
-      case 'no_keg':
-        return `Назначить кегу для ${tapLabel}`;
-      default:
-        return `Проверить ${tapLabel}`;
-    }
-  }
-
-
-  function actionLabelForTarget(target, kind = 'default') {
-    const plan = getActionPlan(kind);
-    if (target === 'system' && plan.primaryCta === ACTION_LABELS.checkSync) {
-      return ACTION_LABELS.checkSync;
-    }
-    return ACTION_LABELS[target] || ACTION_LABELS.context;
-  }
-
-  function buildActionItem(item) {
-    const plan = getActionPlan(item.kind || (item.target === 'incident' ? 'incident' : 'default'));
-    const target = item.target || plan.primaryTarget || 'system';
-    return {
-      ...item,
-      target,
-      actionLabel: item.actionLabel || actionLabelForTarget(target, item.kind),
-      secondaryCta: item.secondaryCta || plan.secondaryCta,
-      recommendedOwnerState: item.recommendedOwnerState || plan.recommendedOwnerState,
-      recommendedActionState: item.recommendedActionState || plan.recommendedActionState,
-    };
-  }
-
-  function describeSyncProblems() {
-    return ($tapStore.summary?.unsyncedFlowCount || 0)
-      + ($tapStore.summary?.readerOfflineCount || 0)
-      + ($tapStore.summary?.displayOfflineCount || 0)
-      + ($tapStore.summary?.controllerOfflineCount || 0)
-      + ($systemStore.health.sections?.accumulatedIssues?.deviceCount || 0)
-      + (['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes($systemStore.health.sync?.state) ? 1 : 0);
-  }
 
   onMount(() => {
     const timer = setInterval(() => {
@@ -154,103 +83,29 @@
   });
 
   $: activeIncidents = ($incidentStore.items || []).filter((item) => item.status !== 'closed');
-  $: criticalIncidents = activeIncidents
-    .filter((item) => ['critical', 'high'].includes(item.priority))
-    .sort((left, right) => (incidentPriorityWeight[left.priority] ?? 9) - (incidentPriorityWeight[right.priority] ?? 9));
   $: visibleFeedItems = ($pourStore.feedItems || []).filter((item) => !dismissedEventIds.has(item.item_id)).slice(0, 12);
-  $: todaySummary = $pourStore.todaySummary;
-  $: sessionsToday = Number(todaySummary?.sessions_count || 0);
-  $: volumeTodayMl = Number(todaySummary?.volume_ml || 0);
-  $: revenueToday = Number(todaySummary?.revenue || 0);
-  $: todaySummaryWarning = $pourStore.todaySummaryError
-    || todaySummary?.fallback_copy
-    || (!todaySummary?.summary_complete ? 'Сводка KPI неполная. Проверьте backend/смену перед принятием операционных решений.' : null);
-  $: syncProblemCount = describeSyncProblems();
-  $: needsHelpCount = ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'needs_help').length;
-  $: hasCriticalTapAttention = attentionItems?.some((item) => item.target === 'tap' && item.severity === 'critical') || false;
-  $: hasCriticalIncident = criticalIncidents.length > 0;
-  $: deEmphasizeSecondaryStats = hasCriticalIncident || hasCriticalTapAttention;
-  $: heroStats = [
-    { label: 'Льют сейчас', value: $tapStore.summary?.pouringCount || 0, tone: 'neutral', emphasis: 'primary' },
-    { label: 'Требуют помощи', value: needsHelpCount, tone: needsHelpCount ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Открытые инциденты', value: activeIncidents.length, tone: activeIncidents.length ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Sync / offline', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Сессии сегодня', value: sessionsToday, tone: 'neutral', emphasis: 'secondary' },
-    { label: 'Объём / выручка', value: `${formatVolumeRu(volumeTodayMl)} · ${revenueToday.toFixed(2)} ₽`, tone: 'neutral', emphasis: 'secondary' },
-  ];
   $: healthItems = $systemStore.health.primaryPills || [];
-  $: systemAttentionItems = healthItems
-    .filter((item) => ['warning', 'critical', 'error', 'offline', 'unknown', 'degraded'].includes(item.state))
-    .map((item) => ({
-      key: `system-${item.key}`,
-      kind: `${item.key}_offline`,
-      severity: item.state === 'critical' || item.state === 'error' ? 'critical' : 'warning',
-      title: item.label,
-      description: item.detail,
-      href: '/system',
-      target: 'system',
-      systemSource: item.label,
-      actionLabel: actionLabelForTarget('system'),
-      category: 'система',
-    }));
-  $: attentionItems = [
-    ...(($tapStore.summary?.attentionItems || []).map((item) => buildActionItem({
-      ...item,
-      target: item.href === '#/sessions' ? 'session' : 'tap',
-      tapId: item.tapId || item.tap_id || Number.parseInt(String(item.key).split('-').at(-1), 10) || null,
-      visitId: item.visitId || item.visit_id || null,
-      category: attentionCategory(item),
-      actionTitle: actionTitleForAttention(item),
-      href: item.href?.replace('#', '') || '/taps',
-    }))),
-    ...systemAttentionItems.map((item) => buildActionItem(item)),
-  ]
-    .filter((item) => !dismissedAttentionKeys.has(item.key))
-    .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9));
-
-  $: operatorActionItems = [
-    ...($roleStore.permissions.incidents_view ? criticalIncidents.slice(0, 3).map((incident) => buildActionItem({
-      key: `incident-${incident.incident_id}`,
-      severity: incident.priority === 'critical' ? 'critical' : 'warning',
-      title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
-      description: $roleStore.permissions.incidents_manage
-        ? (incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.')
-        : (incident.tap ? `Проверьте ${incident.tap}, сверяйте связанную сессию и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
-      target: 'incident',
-      tapId: incident.tap || null,
-      systemSource: `Инцидент #${incident.incident_id}`,
-      href: '/incidents',
-    })) : []),
-    ...attentionItems.slice(0, 4).map((item) => buildActionItem({
-      key: `next-${item.key}`,
-      severity: item.severity,
-      title: item.actionTitle || `Проверить ${item.title}`,
-      description: item.description,
-      target: item.target,
-      tapId: item.tapId || null,
-      visitId: item.visitId || null,
-      systemSource: item.systemSource || item.title,
-      href: item.href,
-    })),
-  ]
-    .sort((left, right) => (severityWeight[left.severity] ?? 9) - (severityWeight[right.severity] ?? 9))
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.key === item.key) === index)
-    .slice(0, 5);
-  $: primaryActionItem = operatorActionItems[0] || null;
+  $: todayModel = buildTodayRouteModel({
+    incidents: $incidentStore.items || [],
+    tapSummary: $tapStore.summary || {},
+    taps: $tapStore.taps || [],
+    systemHealth: $systemStore.health || {},
+    todaySummary: $pourStore.todaySummary || {},
+    todaySummaryError: $pourStore.todaySummaryError,
+    permissions: $roleStore.permissions || {},
+    dismissedAttentionKeys,
+  });
+  $: criticalIncidents = todayModel.criticalIncidents;
+  $: todaySummaryWarning = todayModel.todaySummaryWarning;
+  $: attentionItems = todayModel.attentionItems;
+  $: operatorActionItems = todayModel.operatorActionItems;
+  $: primaryActionItem = todayModel.primaryActionItem;
+  $: deEmphasizeSecondaryStats = todayModel.deEmphasizeSecondaryStats;
+  $: heroStats = todayModel.heroStats;
   $: secondaryActionItems = operatorActionItems.slice(1, 5);
   $: canViewIncidents = Boolean($roleStore.permissions?.incidents_view);
   $: incidentsAccessHint = 'Нет доступа к инцидентам. Нужна роль с правом incidents_view.';
-
-  $: priorityCta = primaryActionItem
-    ? {
-        label: primaryActionItem.actionLabel,
-        target: primaryActionItem.target,
-        tapId: primaryActionItem.tapId || null,
-        visitId: primaryActionItem.visitId || null,
-        systemSource: primaryActionItem.systemSource || primaryActionItem.title,
-        href: primaryActionItem.href,
-      }
-    : { label: 'Открыть систему', target: 'system', systemSource: 'Today overview', href: '/system' };
+  $: priorityCta = todayModel.priorityCta;
 </script>
 
 <section class="today-page">
