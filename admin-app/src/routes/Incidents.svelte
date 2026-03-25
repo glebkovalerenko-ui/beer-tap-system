@@ -322,6 +322,7 @@
             selectedIncidentId={selectedIncidentId}
             actionCapabilities={incidentActionCapabilities}
             actionCapabilityReasons={incidentActionCapabilityReasons}
+            {permissions}
             readOnly={incidentActionReadOnly}
             on:select={selectIncident}
             on:openTap={openTap}

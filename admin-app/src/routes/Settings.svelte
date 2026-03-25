@@ -1,4 +1,5 @@
 <script>
+  import { buildCriticalActionRows } from '../lib/criticalActionMatrix.js';
   import { roleStore } from '../stores/roleStore.js';
 
   const workstationActions = [
@@ -36,6 +37,8 @@
     'Сначала зафиксируйте текущее значение и причину изменения, затем вносите новую настройку.',
     'После редких изменений вернитесь в раздел «Система» только чтобы убедиться, что health и sync не деградировали.'
   ];
+
+  const criticalActionRows = buildCriticalActionRows();
 
   const handoffChecklist = [
     'Подтвердить, что backend URL и режим запуска записаны в локальный runbook точки.',
@@ -81,6 +84,39 @@
       {/each}
     </section>
 
+
+
+    <section class="ui-card matrix-card">
+      <div class="card-head">
+        <h2>Role × Action matrix (critical operations)</h2>
+        <p>Матрица задаёт единые guard-правила: required role, двухшаговое подтверждение, обязательный комментарий и поведение в UI.</p>
+      </div>
+      <div class="matrix-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>Required role</th>
+              <th>2-step validation</th>
+              <th>Mandatory log comment</th>
+              <th>UI visibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each criticalActionRows as row (row.key)}
+              <tr>
+                <td>{row.action}</td>
+                <td>{row.requiredRole}</td>
+                <td>{row.requiresTwoStep ? 'Да' : 'Нет'}</td>
+                <td>{row.requiresComment ? 'Да' : 'Нет'}</td>
+                <td>{row.uiVisibility}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="split-grid">
       <article class="ui-card checklist-card">
         <h2>Правила перед изменением</h2>
@@ -113,6 +149,11 @@
   .route-link{display:inline-flex;align-items:center;justify-content:center;padding:.7rem 1rem;border-radius:.85rem;background:#eef2ff;color:#1e3a8a;text-decoration:none;font-weight:700;white-space:nowrap}
   .callout{display:grid;gap:.35rem;border:1px solid #bfdbfe;background:#eff6ff}
   .callout p,.action-card p{margin:0;color:var(--text-secondary)}
+  .matrix-card{display:grid;gap:.85rem;padding:1rem}
+  .matrix-wrap{overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:.92rem}
+  th,td{border-bottom:1px solid #e2e8f0;padding:.55rem;text-align:left;vertical-align:top}
+  th{background:#f8fafc;white-space:nowrap}
   .action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
   .action-card{display:grid;gap:.9rem}
   .card-head{display:grid;gap:.35rem}
