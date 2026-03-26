@@ -2,10 +2,9 @@
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import EventFeed from '../components/pours/EventFeed.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
-  import { formatRubAmount, formatVolumeRu } from '../lib/formatters.js';
   import { buildTodayFeedItems } from '../lib/operator/todayFeedModel.js';
-  import { buildTodayRouteModel } from '../lib/operator/todayModel.js';
-  import { canonicalVisitStatusLabel } from '../lib/operator/visitStatus.js';
+  import { buildShiftKpis, buildTodayRouteModel } from '../lib/operator/todayModel.js';
+  import { canonicalVisitStatusLabel, resolveCanonicalVisitStatus } from '../lib/operator/visitStatus.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { incidentStore } from '../stores/incidentStore.js';
   import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
@@ -13,19 +12,18 @@
   import { roleStore } from '../stores/roleStore.js';
   import { systemStore } from '../stores/systemStore.js';
   import { tapStore } from '../stores/tapStore.js';
-  import { uiStore } from '../stores/uiStore.js';
   import { visitStore } from '../stores/visitStore.js';
 
   let dismissedEventIds = new Set();
   let dismissedAttentionKeys = new Set();
 
   function openTap(item) {
-    navigateWithFocus({ target: 'tap', tapId: item.tap_id, visitId: item.visit_id, source: item.tap_name || item.title });
+    navigateWithFocus({ target: 'tap', tapId: item.tap_id || item.tapId, visitId: item.visit_id || item.visitId, source: item.tap_name || item.title });
   }
 
   function openVisit(item) {
     const visitId = item.visit_id || item.active_session?.visit_id || item.operations?.activeSessionSummary?.visitId || item.visitId || null;
-    navigateWithFocus({ target: 'visit', visitId, tapId: item.tap_id || item.tapId, source: item.tap_name || item.title });
+    navigateWithFocus({ target: 'visit', visitId, tapId: item.tap_id || item.tapId, source: item.tap_name || item.title || item.guest_full_name });
   }
 
   function openAttentionItem(item) {
@@ -49,6 +47,20 @@
     dismissedAttentionKeys = new Set([...dismissedAttentionKeys, item.key]);
   }
 
+  function visitNextStep(item) {
+    const status = resolveCanonicalVisitStatus(item);
+    if (status === 'blocked') return 'Проверить блокировку и карту';
+    if (status === 'needs_attention') return 'Проверить инцидент или синхронизацию';
+    if (status === 'awaiting_action') return 'Нужно действие по визиту';
+    if (status === 'pouring_now') return 'Следить за наливом';
+    return 'Открыть визит';
+  }
+
+  function visitMeta(item) {
+    const taps = item.active_tap_id ? `кран #${item.active_tap_id}` : item.taps?.length ? `краны: ${item.taps.join(', ')}` : 'кран не выбран';
+    return `${canonicalVisitStatusLabel(resolveCanonicalVisitStatus(item))} · ${item.card_uid || 'без карты'} · ${taps}`;
+  }
+
   $: tapStore.setOperationalContext({
     activeVisits: $visitStore.activeVisits || [],
     feedItems: $pourStore.feedItems || [],
@@ -70,18 +82,18 @@
     limit: 10,
   });
   $: attentionItems = shiftModel.attentionItems || [];
-  $: activeVisits = ($visitStore.activeVisits || []).slice(0, 6);
-  $: pouringTaps = ($tapStore.taps || []).filter((tap) => tap.operations?.productState === 'pouring').slice(0, 6);
-  $: blockedOrNoKegTaps = ($tapStore.taps || []).filter((tap) => ['no_keg', 'needs_help', 'unavailable', 'syncing'].includes(tap.operations?.productState)).slice(0, 6);
-  $: kpis = [
-    { key: 'active-visits', label: 'Активные визиты', value: ($visitStore.activeVisits || []).length },
-    { key: 'pouring-now', label: 'Льют сейчас', value: Number($tapStore.summary?.pouringCount || 0) },
-    { key: 'incidents', label: 'Инциденты', value: ($incidentStore.items || []).filter((item) => item.status !== 'closed').length },
-    { key: 'shift-volume', label: 'Объём за смену', value: formatVolumeRu(Number($pourStore.todaySummary?.volume_ml || 0)) },
-    { key: 'shift-revenue', label: 'Выручка за смену', value: formatRubAmount(Number($pourStore.todaySummary?.revenue || 0)) },
-  ];
+  $: activeVisits = ($visitStore.activeVisits || []).slice(0, 8);
+  $: problemVisits = activeVisits.filter((item) => ['awaiting_action', 'needs_attention', 'blocked'].includes(resolveCanonicalVisitStatus(item))).slice(0, 6);
+  $: pouringVisits = activeVisits.filter((item) => resolveCanonicalVisitStatus(item) === 'pouring_now').slice(0, 6);
+  $: kpis = buildShiftKpis({
+    activeVisitCount: ($visitStore.activeVisits || []).length,
+    pouringCount: Number($tapStore.summary?.pouringCount || 0),
+    openIncidentCount: ($incidentStore.items || []).filter((item) => item.status !== 'closed').length,
+    volumeMl: Number($pourStore.todaySummary?.volume_ml || 0),
+    revenue: Number($pourStore.todaySummary?.revenue || 0),
+  });
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend временно деградирован. Обзор смены доступен, но risky actions выполняйте только после обновления данных.')
+    ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Обзор смены доступен, но действия лучше выполнять после обновления данных.')
     : '';
 </script>
 
@@ -93,22 +105,22 @@
     </div>
     <div class="header-actions">
       <DataFreshnessChip
-        label="Shift"
+        label="Смена"
         lastFetchedAt={$pourStore.lastFetchedAt}
         staleAfterMs={$pourStore.staleTtlMs}
         mode={$operatorConnectionStore.mode}
         transport={$operatorConnectionStore.transport}
         reason={$operatorConnectionStore.reason}
       />
-      <button on:click={() => (window.location.hash = '/incidents')}>Инциденты</button>
-      <button class="secondary" on:click={() => (window.location.hash = '/taps')}>Все краны</button>
-      <button class="secondary" on:click={() => (window.location.hash = '/visits')}>Открыть визит</button>
+      <button on:click={() => (window.location.hash = '/visits')}>Визиты</button>
+      <button class="secondary" on:click={() => (window.location.hash = '/incidents')}>Инциденты</button>
+      <button class="secondary" on:click={() => (window.location.hash = '/taps')}>Краны</button>
     </div>
   </div>
 
   {#if routeReadOnlyReason}
     <div class="banner warning">
-      <strong>Read-only mode.</strong>
+      <strong>Только просмотр.</strong>
       <span>{routeReadOnlyReason}</span>
     </div>
   {/if}
@@ -126,21 +138,21 @@
     <section class="ui-card attention-panel">
       <div class="section-head">
         <div>
-          <h2>Требует внимания</h2>
-          <p>Только actionable-объекты: проблемный визит, кран, reader, sync или инцидент.</p>
+          <h2>Что требует действия</h2>
+          <p>Сначала показываем только то, что реально тормозит гостя, визит или работу крана прямо сейчас.</p>
         </div>
         <span class="counter">{attentionItems.length}</span>
       </div>
 
       {#if attentionItems.length === 0}
-        <p class="muted">Критичных действий сейчас нет. Смена идёт в штатном режиме.</p>
+        <p class="muted">Срочных действий сейчас нет. Смена идёт штатно.</p>
       {:else}
         <div class="attention-list">
           {#each attentionItems as item}
             <article class="attention-item" data-severity={item.severity}>
               <div class="attention-copy">
                 <div class="attention-meta">
-                  <span class="category">{item.category || 'Операционный сигнал'}</span>
+                  <span class="category">{item.category || 'операционный сигнал'}</span>
                   <strong>{item.actionTitle || item.title}</strong>
                 </div>
                 <p>{item.description}</p>
@@ -163,8 +175,8 @@
     <section class="ui-card feed-panel">
       <div class="section-head">
         <div>
-          <h2>Живые события</h2>
-          <p>Последние значимые операционные события смены без превращения в бесконечный технический лог.</p>
+          <h2>События смены</h2>
+          <p>Здесь только важные сигналы для смены, а не бесконечный технический лог.</p>
         </div>
       </div>
 
@@ -175,8 +187,8 @@
       {:else}
         <EventFeed
           items={liveEventItems}
-          title="Живые события смены"
-          emptyMessage="Сейчас нет свежих операционных событий."
+          title="События смены"
+          emptyMessage="Свежих событий, требующих внимания, сейчас нет."
           onOpenTap={openTap}
           onOpenSession={openVisit}
           onDismiss={dismissEvent}
@@ -189,8 +201,54 @@
     <article class="ui-card compact-panel">
       <div class="section-head compact">
         <div>
+          <h3>Проблемные визиты</h3>
+          <p>Кого нужно открыть первым, чтобы не потерять контекст гостя.</p>
+        </div>
+        <span class="counter">{problemVisits.length}</span>
+      </div>
+      {#if problemVisits.length === 0}
+        <p class="muted">Сейчас нет визитов, которые ждут срочного действия.</p>
+      {:else}
+        <div class="compact-list">
+          {#each problemVisits as item}
+            <button class="compact-item" on:click={() => openVisit(item)}>
+              <strong>{item.guest_full_name || 'Гость без имени'}</strong>
+              <small>{visitMeta(item)}</small>
+              <small class="next-step">{visitNextStep(item)}</small>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </article>
+
+    <article class="ui-card compact-panel">
+      <div class="section-head compact">
+        <div>
+          <h3>Льют сейчас</h3>
+          <p>Кто сейчас у крана и где оператору важно не потерять визит.</p>
+        </div>
+        <span class="counter">{pouringVisits.length}</span>
+      </div>
+      {#if pouringVisits.length === 0}
+        <p class="muted">Прямо сейчас активных наливов нет.</p>
+      {:else}
+        <div class="compact-list">
+          {#each pouringVisits as item}
+            <button class="compact-item" on:click={() => openVisit(item)}>
+              <strong>{item.guest_full_name || 'Гость без имени'}</strong>
+              <small>{visitMeta(item)}</small>
+              <small class="next-step">Открыть визит и следить за наливом</small>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </article>
+
+    <article class="ui-card compact-panel">
+      <div class="section-head compact">
+        <div>
           <h3>Активные визиты</h3>
-          <p>Кого сейчас обслуживает система.</p>
+          <p>Быстрый переход к гостю и открытому визиту без ухода в диагностику.</p>
         </div>
         <span class="counter">{activeVisits.length}</span>
       </div>
@@ -198,54 +256,11 @@
         <p class="muted">Активных визитов сейчас нет.</p>
       {:else}
         <div class="compact-list">
-          {#each activeVisits as item}
+          {#each activeVisits.slice(0, 6) as item}
             <button class="compact-item" on:click={() => openVisit(item)}>
-              <strong>{item.guest_full_name}</strong>
-              <small>{canonicalVisitStatusLabel(item.canonical_visit_status)} · {item.card_uid || 'без карты'}</small>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </article>
-
-    <article class="ui-card compact-panel">
-      <div class="section-head compact">
-        <div>
-          <h3>Активные наливы</h3>
-          <p>Краны, где прямо сейчас идёт розлив.</p>
-        </div>
-        <span class="counter">{pouringTaps.length}</span>
-      </div>
-      {#if pouringTaps.length === 0}
-        <p class="muted">Прямо сейчас никто не льёт.</p>
-      {:else}
-        <div class="compact-list">
-          {#each pouringTaps as tap}
-            <button class="compact-item" on:click={() => openTap(tap)}>
-              <strong>{tap.display_name}</strong>
-              <small>{tap.operations?.beverageName || 'Напиток не назначен'} · {tap.active_session?.guest_full_name || 'гость не определён'}</small>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </article>
-
-    <article class="ui-card compact-panel">
-      <div class="section-head compact">
-        <div>
-          <h3>Без кеги / заблокированы</h3>
-          <p>Краны, где нужен быстрый операторский шаг.</p>
-        </div>
-        <span class="counter">{blockedOrNoKegTaps.length}</span>
-      </div>
-      {#if blockedOrNoKegTaps.length === 0}
-        <p class="muted">Все краны сейчас в рабочем состоянии.</p>
-      {:else}
-        <div class="compact-list">
-          {#each blockedOrNoKegTaps as tap}
-            <button class="compact-item" on:click={() => openTap(tap)}>
-              <strong>{tap.display_name}</strong>
-              <small>{tap.operations?.productStateLabel || tap.status} · {tap.operations?.beverageName || 'без напитка'}</small>
+              <strong>{item.guest_full_name || 'Гость без имени'}</strong>
+              <small>{visitMeta(item)}</small>
+              <small class="next-step">{visitNextStep(item)}</small>
             </button>
           {/each}
         </div>
@@ -270,7 +285,7 @@
     display: grid;
     gap: 0.35rem;
   }
-  .kpi-card span, .category, .counter, .eyebrow { color: var(--text-secondary); font-size: 0.82rem; }
+  .kpi-card span, .category, .counter { color: var(--text-secondary); font-size: 0.82rem; }
   .kpi-card strong { font-size: 1.2rem; }
   .main-grid { display: grid; gap: 1rem; grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.25fr); align-items: start; }
   .attention-panel, .feed-panel, .compact-panel { display: grid; gap: 1rem; }
@@ -290,7 +305,7 @@
     color: inherit;
     text-align: left;
     display: grid;
-    gap: 0.75rem;
+    gap: 0.55rem;
   }
   .attention-item[data-severity='critical'] { background: var(--state-critical-bg); border-color: var(--state-critical-border); }
   .attention-item[data-severity='warning'] { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
@@ -298,6 +313,7 @@
   .attention-actions { flex-wrap: wrap; }
   .bottom-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .compact-item small, .muted, .error { color: var(--text-secondary); }
+  .compact-item .next-step { font-weight: 600; color: var(--text-primary); }
   .subtle, .secondary { background: #edf2fb; color: #23416b; }
   .error { color: var(--state-critical-text); }
   @media (max-width: 1100px) {

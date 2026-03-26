@@ -234,10 +234,10 @@
           </div>
 
           <div class="action-row">
-            <button on:click={handleOpenVisit}>Открыть визит</button>
+            <button on:click={handleOpenVisit}>{activeVisit?.visit_id ? 'Продолжить визит' : 'Открыть визит'}</button>
             <button class="secondary" on:click={handleOpenTopUp}>Пополнить</button>
-            <button class="secondary" on:click={handleBindCard}>Привязать карту</button>
-            <button class="secondary" on:click={() => (window.location.hash = '/lost-cards')}>Потерянные карты</button>
+            <button class="secondary" on:click={handleBindCard}>Привязать / перевыпустить карту</button>
+            <button class="secondary" on:click={() => (window.location.hash = '/lost-cards')}>Потерянная карта</button>
           </div>
 
           <section class="detail-section">

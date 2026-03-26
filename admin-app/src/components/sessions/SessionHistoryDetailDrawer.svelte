@@ -20,19 +20,19 @@
   $: syncSummaryItems = detail ? [
     {
       key: 'sync-state',
-      label: 'Sync',
+      label: 'Синхронизация',
       value: syncLabels[detail.summary.sync_state] || detail.summary.sync_state || 'Нет данных',
-      note: detail.summary.has_unsynced ? 'Есть данные, ожидающие синхронизацию.' : 'Дополнительный sync не требуется.',
+      note: detail.summary.has_unsynced ? 'Есть данные, ожидающие синхронизацию.' : 'Дополнительная синхронизация не требуется.',
     },
     {
       key: 'last-sync',
-      label: 'Последний sync',
+      label: 'Последняя синхронизация',
       value: formatMaybeDate(detail.summary.lifecycle.last_sync_at),
       note: null,
     },
     {
       key: 'incident-count',
-      label: 'Проблемы визита',
+      label: 'Инциденты',
       value: detail.summary.has_incident ? `${detail.summary.incident_count || 1}` : 'Нет',
       note: detail.summary.has_incident ? 'Перед закрытием сверьте связанный инцидент и состояние крана.' : null,
     },
@@ -90,7 +90,7 @@
     </section>
 
     <section class="timeline-section">
-      <h3>Текущее состояние визита</h3>
+      <h3>Состояние визита</h3>
       <div class="stats-grid">
         {#each detailNarrativeGroups.lifecycleCards as card}
           <article>
@@ -105,7 +105,7 @@
         <div><dt>Авторизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_authorized_at)}</dd></div>
         <div><dt>Первый налив</dt><dd>{formatMaybeDate(detail.summary.lifecycle.first_pour_started_at)}</dd></div>
         <div><dt>Последний налив</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_pour_ended_at)}</dd></div>
-        <div><dt>Последний sync</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_sync_at)}</dd></div>
+        <div><dt>Последняя синхронизация</dt><dd>{formatMaybeDate(detail.summary.lifecycle.last_sync_at)}</dd></div>
         <div><dt>Закрыт</dt><dd>{formatMaybeDate(detail.summary.lifecycle.closed_at)}</dd></div>
       </dl>
     </section>
@@ -127,7 +127,7 @@
     </section>
 
     <section class="timeline-section">
-      <h3>Проблемы и sync</h3>
+      <h3>Контроль и синхронизация</h3>
       <div class="stats-grid">
         {#each syncSummaryItems as item}
           <article>
@@ -146,7 +146,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="muted">Дополнительных предупреждений по sync и операторскому контролю система не вернула.</p>
+        <p class="muted">Дополнительных предупреждений по визиту система не вернула.</p>
       {/if}
     </section>
 
@@ -159,7 +159,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="muted">Явных ручных действий оператора по этому визиту не зафиксировано.</p>
+        <p class="muted">Явных ручных действий по этому визиту не зафиксировано.</p>
       {/if}
     </section>
 
@@ -175,7 +175,7 @@
           {/each}
         </dl>
         <div class="summary-section nested-summary">
-          <strong>Важные override-поля</strong>
+          <strong>Изменения экрана</strong>
           {#if detailDisplayContext.overrides.length}
             <ul class="override-list">
               {#each detailDisplayContext.overrides as override}
@@ -183,7 +183,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="muted">Override-поля не меняли guest-facing экран в этом визите.</p>
+            <p class="muted">Экран крана не менялся вручную в этом визите.</p>
           {/if}
           {#if detailDisplayContext.note}
             <p class="muted">{detailDisplayContext.note}</p>
@@ -203,7 +203,7 @@
     <div class="empty-drawer">
       <div class="eyebrow">Детали визита</div>
       <h2>Выберите визит</h2>
-      <p>Откройте любую строку в активном блоке или общем журнале, чтобы увидеть гостя, наливы, проблемы и действия.</p>
+      <p>Откройте любую строку в активном блоке или журнале, чтобы увидеть гостя, наливы, проблемы и доступные действия.</p>
     </div>
   {/if}
 </aside>

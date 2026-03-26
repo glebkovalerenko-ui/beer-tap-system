@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildTodayRouteModel, sortCriticalIncidents } from './todayModel.js';
+import { buildShiftKpis, buildTodayRouteModel, SHIFT_KPI_ORDER, sortCriticalIncidents } from './todayModel.js';
 
 test('sortCriticalIncidents keeps only high/critical and sorts by priority', () => {
   const sorted = sortCriticalIncidents([
@@ -47,4 +47,18 @@ test('buildTodayRouteModel deduplicates action items and builds fallback CTA', (
 
   assert.equal(fallback.priorityCta.target, 'system');
   assert.equal(fallback.priorityCta.href, '/system');
+});
+
+test('buildShiftKpis keeps canonical KPI order for shift screen', () => {
+  const kpis = buildShiftKpis({
+    activeVisitCount: 4,
+    pouringCount: 2,
+    openIncidentCount: 1,
+    volumeMl: 1200,
+    revenue: 980,
+  });
+
+  assert.deepEqual(kpis.map((item) => item.key), SHIFT_KPI_ORDER);
+  assert.equal(kpis[0].label, 'Активные визиты');
+  assert.equal(kpis[2].label, 'Инциденты');
 });

@@ -30,7 +30,7 @@
   $: permissions = $roleStore.permissions || {};
   $: taps = $tapStore.taps || [];
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend временно деградирован. Рабочая зона кранов остаётся доступной для просмотра, но управляющие действия пока лучше не выполнять.')
+    ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Рабочая зона кранов остаётся доступной для просмотра, но управляющие действия лучше отложить до свежих данных.')
     : '';
 
   $: tapStore.setOperationalContext({
@@ -268,7 +268,7 @@
       <p>{ROUTE_COPY.taps.description}</p>
     </div>
     <DataFreshnessChip
-      label="Taps"
+      label="Краны"
       lastFetchedAt={$tapStore.lastFetchedAt}
       staleAfterMs={$tapStore.staleTtlMs}
       mode={$operatorConnectionStore.mode}

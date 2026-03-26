@@ -49,7 +49,6 @@
   function emit(name) {
     dispatch(name, { tap });
   }
-
 </script>
 
 <article
@@ -63,7 +62,7 @@
     </div>
     <div
       class="state-badge"
-      aria-label={`Статус крана: ${operations.productStateLabel || 'Нет данных'}. Системный статус: ${operations.liveStatus || 'Нет данных'}.`}
+      aria-label={`Статус крана: ${operations.productStateLabel || 'Нет данных'}. Сигналы системы: ${operations.liveStatus || 'Нет данных'}.`}
     >
       <span class="badge-icon" aria-hidden="true">{operatorMeta.icon}</span>
       <span>{operations.productStateLabel}</span>
@@ -73,35 +72,52 @@
   <div class="card-body">
     <section class="hero status-hero">
       <div class="status-copy">
-        <span class="hero-label">{operatorMeta.eyebrow || 'Операторский статус'}</span>
+        <span class="hero-label">Что происходит</span>
         <strong>{operatorMeta.headline}</strong>
         <p>{operations.operatorStateReason || 'Причина не указана.'}</p>
       </div>
       <div class="meta-block live-telemetry">
-        <span class="meta-label">Поддерживающая телеметрия</span>
-        <strong>{operations.liveStatus}</strong>
+        <span class="meta-label">Подтверждение статуса</span>
+        <strong>{operations.liveStatus || operatorMeta.shortLabel}</strong>
         {#if operations.operatorStateTelemetry}
           <p>{operations.operatorStateTelemetry}</p>
         {/if}
       </div>
     </section>
 
-    <section class="hero beverage-hero">
+    <section class="session-summary" class:empty={!session}>
+      <div class="section-title-row compact">
+        <span class="section-title">Гость и визит</span>
+        <span class="muted">{session?.cardUid || 'без карты'}</span>
+      </div>
+      <strong>{session?.guestName || 'Сейчас у крана нет активного визита'}</strong>
+      {#if session}
+        <div class="session-grid">
+          <span>{session.lockedAt ? `${TAP_COPY.lockAt} ${formatDateTimeRu(session.lockedAt)}` : TAP_COPY.waitingForLock}</span>
+          <span>{operations.currentPour?.volumeMl ? formatVolumeRu(operations.currentPour.volumeMl) : '0 мл'}</span>
+          <span>{operations.currentPour?.amount ? formatRubAmount(operations.currentPour.amount) : '0 ₽'}</span>
+        </div>
+      {:else}
+        <p class="muted">Откройте визит, если гость уже у крана, или оставьте линию закрытой до начала обслуживания.</p>
+      {/if}
+    </section>
+
+    <section class="hero beverage-hero quiet">
       <div>
-        <span class="hero-label">Напиток</span>
-        <strong>{operations.beverageName}</strong>
-        <p>{operations.beverageStyle || 'Без стиля / контента'}</p>
+        <span class="hero-label">Напиток и кега</span>
+        <strong>{operations.beverageName || 'Напиток не назначен'}</strong>
+        <p>{keg ? `${formatVolumeRu(operations.remainingVolumeMl)} из ${formatVolumeRu(operations.initialVolumeMl)}` : 'Кега не подключена'}</p>
       </div>
       <div class="meta-block telemetry-chip">
-        <span class="meta-label">{TAP_COPY.keySignal}</span>
-        <strong>{operatorMeta.shortLabel}</strong>
-        <p>{operatorMeta.eyebrow || operatorState}</p>
+        <span class="meta-label">Остаток</span>
+        <strong>{keg ? `${operations.remainingPercent || 0}%` : '—'}</strong>
+        <p>{operations.beverageStyle || 'Без дополнительного описания'}</p>
       </div>
     </section>
 
     <section class="keg-section">
       <div class="section-title-row">
-        <span class="section-title">Остаток</span>
+        <span class="section-title">Остаток кеги</span>
         <span class="percent">{operations.remainingPercent || 0}%</span>
       </div>
       <div class="progress-container" title={formatVolumeRangeRu(operations.remainingVolumeMl, operations.initialVolumeMl)}>
@@ -127,23 +143,8 @@
       {/each}
     </section>
 
-    {#if session}
-      <section class="session-summary">
-        <div class="section-title-row compact">
-          <span class="section-title">Активный визит</span>
-          <span class="muted">{session.cardUid || 'без карты'}</span>
-        </div>
-        <strong>{session.guestName}</strong>
-        <div class="session-grid">
-          <span>{session.lockedAt ? `${TAP_COPY.lockAt} ${formatDateTimeRu(session.lockedAt)}` : TAP_COPY.waitingForLock}</span>
-          <span>{operations.currentPour?.volumeMl ? formatVolumeRu(operations.currentPour.volumeMl) : '0 мл'}</span>
-          <span>{operations.currentPour?.amount ? formatRubAmount(operations.currentPour.amount) : '0 ₽'}</span>
-        </div>
-      </section>
-    {/if}
-
     <section class="footer-meta">
-      <span>{TAP_COPY.heartbeat}: {operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'нет данных'}</span>
+      <span>{TAP_COPY.heartbeat}: {operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин. назад` : 'нет данных'}</span>
       <span>{TAP_COPY.sync}: {operations.syncState?.label || 'нет данных'}</span>
     </section>
   </div>
@@ -190,11 +191,16 @@
   .eyebrow, .meta-label, .section-title, .muted, .hero-label { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
   h3, p, strong { margin: 0; }
   .hero { align-items: flex-start; }
-  .status-hero {
+  .status-hero,
+  .session-summary,
+  .beverage-hero {
     border: 1px solid var(--tap-status-hero-border, #e2e8f0);
     border-radius: var(--tap-status-hero-radius, 14px);
     padding: 0.8rem;
     background: var(--tap-status-hero-bg, rgba(255,255,255,0.88));
+  }
+  .beverage-hero.quiet {
+    background: color-mix(in srgb, white 76%, var(--bg-surface-muted));
   }
   .status-copy, .live-telemetry, .telemetry-chip { display: grid; gap: 0.2rem; }
   .status-copy { max-width: 65%; }
@@ -222,6 +228,8 @@
     border: 1px solid var(--tap-status-icon-border, transparent);
   }
   .card-body { display: grid; gap: 0.9rem; }
+  .session-summary { display: grid; gap: 0.45rem; }
+  .session-summary.empty { background: color-mix(in srgb, white 70%, var(--bg-surface-muted)); }
   .progress-container { height: 9px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
   .progress-bar { height: 100%; background: linear-gradient(90deg, var(--state-success-border), var(--state-success-text)); }
   .progress-bar.low { background: linear-gradient(90deg, var(--state-warning-border), var(--state-warning-text)); }
@@ -238,7 +246,6 @@
   .system-pill.unknown { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
   .system-pill.info,
   .system-pill.live { background: var(--state-neutral-bg); color: var(--state-neutral-text); border-color: var(--state-neutral-border); }
-  .session-summary { border: 1px solid #f1f5f9; border-radius: 14px; padding: 0.8rem; background: rgba(255,255,255,0.85); display: grid; gap: 0.45rem; }
   .session-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; color: var(--text-secondary, #64748b); font-size: 0.84rem; }
   .footer-meta { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.82rem; }
   .card-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }

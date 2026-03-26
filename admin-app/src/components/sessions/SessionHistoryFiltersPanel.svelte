@@ -12,7 +12,7 @@
   <div class="filters-title">
     <div>
       <h2>Журнал визитов</h2>
-      <p>Активные визиты закреплены сверху, а завершённые и проблемные остаются в общем плотном списке ниже.</p>
+      <p>Сверху остаются активные визиты, а ниже идёт плотный журнал для поиска гостя, статуса и следующего шага.</p>
     </div>
     <button on:click={onRefresh} disabled={loading}>Обновить</button>
   </div>
@@ -23,7 +23,7 @@
       <select bind:value={filters.periodPreset} on:change={(event) => onPeriodPresetChange(event.currentTarget.value)}>
         <option value="today">Сегодня</option>
         <option value="shift">Текущая смена</option>
-        <option value="range">Произвольный диапазон</option>
+        <option value="range">Диапазон</option>
       </select>
     </label>
     <label><span>Дата от</span><input type="date" bind:value={filters.dateFrom} disabled={filters.periodPreset !== 'range'} /></label>
@@ -40,7 +40,7 @@
     </label>
     <label><span>Карта / UID / номер визита</span><input bind:value={filters.cardUid} placeholder="UID карты или номер визита" /></label>
     <label>
-      <span>Причина / завершение</span>
+      <span>Как завершился визит</span>
       <select bind:value={filters.completionSource}>
         <option value="">Все</option>
         <option value="normal">{completionSourceLabels.normal}</option>
@@ -51,8 +51,8 @@
         <option value="no_sale_flow">{completionSourceLabels.no_sale_flow}</option>
       </select>
     </label>
-    <label class="checkbox"><input type="checkbox" bind:checked={filters.incidentOnly} /> Только с проблемами</label>
-    <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только без sync</label>
+    <label class="checkbox"><input type="checkbox" bind:checked={filters.incidentOnly} /> Только с инцидентами</label>
+    <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только без синхронизации</label>
     <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> Только без налива</label>
     <label class="checkbox"><input type="checkbox" bind:checked={filters.activeOnly} /> Только активные</label>
   </div>

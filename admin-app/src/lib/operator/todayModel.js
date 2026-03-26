@@ -4,6 +4,30 @@ import { formatVolumeRu } from '../formatters.js';
 const DEFAULT_SEVERITY_WEIGHT = { critical: 0, warning: 1, info: 2 };
 const DEFAULT_INCIDENT_WEIGHT = { critical: 0, high: 1, medium: 2, low: 3 };
 
+export const SHIFT_KPI_ORDER = Object.freeze([
+  'active-visits',
+  'pouring-now',
+  'incidents',
+  'shift-volume',
+  'shift-revenue',
+]);
+
+export function buildShiftKpis({
+  activeVisitCount = 0,
+  pouringCount = 0,
+  openIncidentCount = 0,
+  volumeMl = 0,
+  revenue = 0,
+}) {
+  return [
+    { key: 'active-visits', label: 'Активные визиты', value: Number(activeVisitCount || 0) },
+    { key: 'pouring-now', label: 'Льют сейчас', value: Number(pouringCount || 0) },
+    { key: 'incidents', label: 'Инциденты', value: Number(openIncidentCount || 0) },
+    { key: 'shift-volume', label: 'Объём за смену', value: formatVolumeRu(Number(volumeMl || 0)) },
+    { key: 'shift-revenue', label: 'Выручка за смену', value: `${Number(revenue || 0).toFixed(2)} ₽` },
+  ];
+}
+
 export function sortCriticalIncidents(items, incidentPriorityWeight = DEFAULT_INCIDENT_WEIGHT) {
   return (items || [])
     .filter((item) => item.status !== 'closed')
@@ -49,14 +73,14 @@ function attentionCategory(item) {
     reader_offline: 'считыватель',
     display_offline: 'экран крана',
     controller_offline: 'контроллер',
-    backend_offline: 'бэкенд',
+    backend_offline: 'сервер',
     sync_offline: 'синхронизация',
     controllers_offline: 'контроллеры',
     displays_offline: 'экраны',
     readers_offline: 'считыватели',
   };
 
-  return labels[item.kind] || String(item.kind || 'операции').replaceAll('_', ' ');
+  return labels[item.kind] || String(item.kind || 'операция').replaceAll('_', ' ');
 }
 
 function actionTitleForAttention(item) {
@@ -97,7 +121,7 @@ export function buildTodayRouteModel({
   const revenueToday = Number(todaySummary?.revenue || 0);
   const todaySummaryWarning = todaySummaryError
     || todaySummary?.fallback_copy
-    || (!todaySummary?.summary_complete ? 'Сводка KPI неполная. Проверьте backend/смену перед принятием операционных решений.' : null);
+    || (!todaySummary?.summary_complete ? 'Сводка KPI неполная. Проверьте сервер и состояние смены перед операционными решениями.' : null);
 
   const syncProblemCount = describeSyncProblems({ tapSummary, systemHealth });
   const needsHelpCount = (taps || []).filter((tap) => tap.operations?.productState === 'needs_help').length;
@@ -138,7 +162,7 @@ export function buildTodayRouteModel({
       title: `Разобрать ${incident.priority === 'critical' ? 'критичный' : 'срочный'} инцидент #${incident.incident_id}`,
       description: permissions?.incidents_manage
         ? (incident.tap ? `Проверьте ${incident.tap} и зафиксируйте действие по инциденту.` : 'Откройте инцидент, назначьте ответственного и выберите решение.')
-        : (incident.tap ? `Проверьте ${incident.tap}, сверяйте связанный визит и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
+        : (incident.tap ? `Проверьте ${incident.tap}, сверьте связанный визит и передайте кейс дальше по маршруту смены.` : 'Откройте инцидент, посмотрите контекст и эскалируйте кейс дальше по регламенту.'),
       target: 'incident',
       tapId: incident.tap || null,
       systemSource: `Инцидент #${incident.incident_id}`,
@@ -170,18 +194,26 @@ export function buildTodayRouteModel({
       systemSource: primaryActionItem.systemSource || primaryActionItem.title,
       href: primaryActionItem.href,
     }
-    : { label: 'Открыть систему', target: 'system', systemSource: 'Today overview', href: '/system' };
+    : { label: 'Открыть систему', target: 'system', systemSource: 'Смена', href: '/system' };
 
   const hasCriticalTapAttention = attentionItems.some((item) => item.target === 'tap' && item.severity === 'critical');
   const hasCriticalIncident = criticalIncidents.length > 0;
   const deEmphasizeSecondaryStats = hasCriticalIncident || hasCriticalTapAttention;
   const heroStats = [
-    { label: 'Льют сейчас', value: tapSummary?.pouringCount || 0, tone: 'neutral', emphasis: 'primary' },
-    { label: 'Требуют помощи', value: needsHelpCount, tone: needsHelpCount ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Открытые инциденты', value: (incidents || []).filter((item) => item.status !== 'closed').length, tone: (incidents || []).some((item) => item.status !== 'closed') ? 'warning' : 'neutral', emphasis: 'primary' },
-    { label: 'Sync / offline', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral', emphasis: 'primary' },
+    ...buildShiftKpis({
+      activeVisitCount: tapSummary?.activeVisitCount || 0,
+      pouringCount: tapSummary?.pouringCount || 0,
+      openIncidentCount: (incidents || []).filter((item) => item.status !== 'closed').length,
+      volumeMl: volumeTodayMl,
+      revenue: revenueToday,
+    }).map((item) => ({
+      ...item,
+      tone: item.key === 'incidents' && Number(item.value) > 0 ? 'warning' : 'neutral',
+      emphasis: ['active-visits', 'pouring-now', 'incidents'].includes(item.key) ? 'primary' : 'secondary',
+    })),
+    { label: 'Нужна помощь', value: needsHelpCount, tone: needsHelpCount ? 'warning' : 'neutral', emphasis: 'secondary' },
+    { label: 'Проблемы связи', value: syncProblemCount, tone: syncProblemCount ? 'warning' : 'neutral', emphasis: 'secondary' },
     { label: 'Визиты за смену', value: sessionsToday, tone: 'neutral', emphasis: 'secondary' },
-    { label: 'Объём / выручка', value: `${formatVolumeRu(volumeTodayMl)} · ${revenueToday.toFixed(2)} ₽`, tone: 'neutral', emphasis: 'secondary' },
   ];
 
   return {

@@ -4,7 +4,11 @@
   import { get } from 'svelte/store';
 
   import { formatDateTimeRu } from '../../lib/formatters.js';
+  import { buildOperatorActionRequest } from '../../lib/operator/actionDialogModel.js';
+  import { resolveActionBlockState } from '../../lib/operator/actionPolicyAdapter.js';
+  import { resolveCanonicalVisitStatus } from '../../lib/operator/visitStatus.js';
   import { operatorConnectionStore } from '../../stores/operatorConnectionStore.js';
+  import { operatorActionStore } from '../../stores/operatorActionStore.js';
   import { sessionsStore } from '../../stores/sessionsStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
   import { uiStore } from '../../stores/uiStore.js';
@@ -27,9 +31,6 @@
     normalizedOperatorActions,
     syncLabels,
   } from './sessionNarrative.js';
-  import { buildOperatorActionRequest } from '../../lib/operator/actionDialogModel.js';
-  import { resolveActionBlockState } from '../../lib/operator/actionPolicyAdapter.js';
-  import { operatorActionStore } from '../../stores/operatorActionStore.js';
 
   const DEFAULT_FILTERS = {
     periodPreset: 'today',
@@ -67,17 +68,30 @@
   $: pinnedActiveItems = ($sessionsStore.pinnedActiveSessions || []).map((item) => normalizeVisit(item, 'active'));
   $: journalItems = ($sessionsStore.items || []).map((item) => normalizeVisit(item, item.is_active ? 'active' : 'history'));
   $: detail = $sessionsStore.detail;
+  $: summaryVisits = Array.from(new Map([...pinnedActiveItems, ...journalItems].map((item) => [String(item.visit_id), item])).values());
+  $: summaryCards = [
+    { key: 'active', label: 'Активные', value: header?.active_sessions || 0 },
+    { key: 'pouring', label: 'Льют сейчас', value: summaryVisits.filter((item) => resolveCanonicalVisitStatus(item) === 'pouring_now').length },
+    { key: 'awaiting', label: 'Ожидают действия', value: summaryVisits.filter((item) => resolveCanonicalVisitStatus(item) === 'awaiting_action').length },
+    { key: 'attention', label: 'Требуют внимания', value: summaryVisits.filter((item) => ['needs_attention', 'blocked'].includes(resolveCanonicalVisitStatus(item))).length },
+  ];
+  $: secondarySummary = [
+    `Всего: ${header?.total_sessions || 0}`,
+    `Завершены: ${summaryVisits.filter((item) => resolveCanonicalVisitStatus(item) === 'completed').length}`,
+    `Без синхронизации: ${header?.unsynced_sessions || 0}`,
+    `Без налива: ${header?.zero_volume_abort_sessions || 0}`,
+  ];
   $: focusContextText = focusVisitId
-    ? `Открываем визит ${focusVisitId} в общем журнале.`
+    ? `Открываем визит #${focusVisitId} в журнале.`
     : focusTapId
-      ? `Журнал сфокусирован на кране ${focusTapId}.`
+      ? `Журнал сфокусирован на кране #${focusTapId}.`
       : '';
   $: detailNarrativeGroups = detail ? groupedNarrative(detail, formatMaybeDate, describeCompletionSource) : { timeline: [], operatorObservations: [], lifecycleCards: [] };
   $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary, describeCompletionSource, describeFlags) : [];
   $: detailWhatHappened = detail ? buildWhatHappened(detail.summary, describeCompletionSource) : [];
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend временно деградирован. Рискованные действия по визитам доступны только для просмотра.')
+    ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Действия по визитам временно доступны только для просмотра.')
     : '';
   $: if (focusVisitId && !focusResolved && !$sessionsStore.loading && !$sessionsStore.detailLoading) {
     resolveFocusVisit();
@@ -273,14 +287,15 @@
 
   <div class="summary-strip">
     <div class="summary-cards">
-      <article><span>Всего визитов</span><strong>{header?.total_sessions || 0}</strong></article>
-      <article><span>Активные</span><strong>{header?.active_sessions || 0}</strong></article>
-      <article><span>С проблемами</span><strong>{header?.incident_sessions || 0}</strong></article>
-      <article><span>Без sync</span><strong>{header?.unsynced_sessions || 0}</strong></article>
-      <article><span>Без налива</span><strong>{header?.zero_volume_abort_sessions || 0}</strong></article>
+      {#each summaryCards as item}
+        <article>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+        </article>
+      {/each}
     </div>
     <DataFreshnessChip
-      label="Visits"
+      label="Визиты"
       lastFetchedAt={$sessionsStore.lastFetchedAt}
       staleAfterMs={$sessionsStore.staleTtlMs}
       mode={$operatorConnectionStore.mode}
@@ -288,6 +303,8 @@
       reason={$operatorConnectionStore.reason}
     />
   </div>
+
+  <p class="summary-secondary">{secondarySummary.join(' · ')}</p>
 
   {#if routeReadOnlyReason}
     <div class="degraded-banner">{routeReadOnlyReason}</div>
@@ -342,6 +359,7 @@
   .degraded-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.85rem 1rem; }
   .summary-cards article { background: #fff; display: grid; gap: 0.25rem; }
   .summary-cards article span { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
+  .summary-secondary { margin: -0.35rem 0 0; color: var(--text-secondary, #64748b); }
   .degraded-banner { background: var(--state-warning-bg, #fff7ed); border-color: var(--state-warning-border, #fcd34d); color: var(--state-warning-text, #9a3412); }
   .focus-banner { color: var(--state-neutral-text); background: var(--state-neutral-bg); }
 
