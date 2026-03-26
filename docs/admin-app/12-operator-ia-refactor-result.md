@@ -135,6 +135,37 @@
 - `ShellTopBar` остаётся общей shift bar
 - detail view визита пока реализован через drawer, а не отдельную detail route
 
+## Follow-Up: Operator Polish Sprint
+
+После фиксации IA refactor выполнен отдельный узкий polish sprint:
+
+- RU-first cleanup operator copy
+- усиление guest/visit-first flows на `Смена`, `Визиты`, `Гости`, `Краны`
+- снижение first-layer density
+- canonical KPI order для `Смена`
+- canonical statuses для `Кранов`, `Визитов`, `Наливов`
+- incident hygiene, role wording и degraded UX polish
+
+Этот этап не менял базовую operator-first IA.
+
+Подробный отчёт:
+
+- `docs/admin-app/13-operator-polish-sprint.md`
+
+Что сделано именно в polish sprint:
+
+- operator-facing `session` окончательно убран из active UI
+- `Система` и `Справка` приведены к русскоязычному operational language
+- `Инциденты` получили severity/aging/dedupe projection
+- first layer ключевых экранов стал менее шумным и более action-oriented
+
+Что оставлено на later phases:
+
+- любые новые большие IA moves
+- отдельный POS
+- массовый rename internal backend/Tauri naming
+- отдельная optimisation phase по bundle splitting и расширенным smoke сценариям
+
 ## Проверка
 
 Подтверждено следующими командами:
