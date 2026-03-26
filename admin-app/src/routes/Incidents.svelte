@@ -37,7 +37,6 @@
     closed: 'Закрытые',
   };
 
-  /** @type {Record<string, string>} */
   const PRIORITY_LABELS = {
     low: 'Низкий',
     medium: 'Средний',
@@ -45,7 +44,6 @@
     critical: 'Критический',
   };
 
-  /** @type {Record<string, string>} */
   const STATUS_LABELS = {
     new: 'Новый',
     in_progress: 'В работе',
@@ -53,7 +51,6 @@
   };
 
   let filters = { ...DEFAULT_FILTERS };
-  /** @type {any} */
   let selectedIncidentId = null;
 
   onMount(() => {
@@ -76,29 +73,16 @@
     }
   });
 
-
-
-  /** @param {string|number|null|undefined} value */
   function titleCase(value) {
     if (!value) return '—';
     const text = String(value).replaceAll('_', ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-
-  /** @type {import('../lib/incidentsViewModel.js').IncidentViewModel[]} */
   let enrichedItems = [];
-
-  /** @type {any} */
   let filterOptions = { priorities: [], statuses: [], types: [], taps: [] };
-
-  /** @type {any} */
   let permissions = {};
-
-  /** @type {import('../lib/incidentsViewModel.js').IncidentViewModel[]} */
   let filteredItems = [];
-
-  /** @type {{key: string, label: string, items: import('../lib/incidentsViewModel.js').IncidentViewModel[]}[]} */
   let groupedItems = [];
 
   $: enrichedItems = buildEnrichedIncidents({
@@ -112,10 +96,8 @@
     statusLabels: STATUS_LABELS,
   });
 
-  $: filterOptions = /** @type {any} */ (buildFilterOptions(enrichedItems));
-
+  $: filterOptions = buildFilterOptions(enrichedItems);
   $: filteredItems = filterIncidents(enrichedItems, filters);
-
   $: groupedItems = groupIncidentsByStatus(filteredItems, SECTION_LABELS);
 
   $: if (filteredItems.length > 0 && !filteredItems.some((item) => item.incident_id === selectedIncidentId)) {
@@ -124,55 +106,47 @@
 
   $: selectedIncident = filteredItems.find((item) => item.incident_id === selectedIncidentId) || null;
 
-
-  /** @typedef {CustomEvent<{ incidentId: string|number }>} SelectIncidentEvent */
   function resetFilters() {
     filters = { ...DEFAULT_FILTERS };
   }
 
-  /** @param {SelectIncidentEvent} event */
   function selectIncident(event) {
     selectedIncidentId = event.detail.incidentId;
   }
 
-  /** @param {any} event */
   function openTap(event) {
     const item = event.detail.item;
-    navigateWithFocus(/** @type {any} */ ({ target: 'tap', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
+    navigateWithFocus({ target: 'tap', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined });
   }
 
-  /** @param {any} event */
   function openSession(event) {
     const item = event.detail.item;
     if (item.sessionMatch?.visit_id) {
-      navigateWithFocus(/** @type {any} */ ({ target: 'visit', visitId: item.sessionMatch.visit_id || undefined, tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
+      navigateWithFocus({ target: 'visit', visitId: item.sessionMatch.visit_id || undefined, tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined });
       return;
     }
     if (item.tapId) {
-      navigateWithFocus(/** @type {any} */ ({ target: 'visit', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined }));
+      navigateWithFocus({ target: 'visit', tapId: item.tapId || undefined, source: item.tapLabel || item.sourceLabel || undefined });
       return;
     }
     window.location.hash = '/visits';
   }
 
-  /** @param {any} event */
   function openSystem(event) {
     const item = event.detail.item;
-    navigateWithFocus(/** @type {any} */ ({ target: 'system', source: item.sourceLabel || item.source || 'incident', tapId: item.tapId, incidentId: item.incident_id }));
+    navigateWithFocus({ target: 'system', source: item.sourceLabel || item.source || 'incident', tapId: item.tapId, incidentId: item.incident_id });
   }
 
-  $: permissions = /** @type {any} */ ($roleStore.permissions || {});
+  $: permissions = $roleStore.permissions || {};
   $: canViewIncidents = Boolean(permissions.incidents_view);
   $: incidentActionCapabilitiesRaw = $incidentStore.capabilities || {};
   $: incidentCapabilitiesModel = buildIncidentCapabilities(incidentActionCapabilitiesRaw);
-  /** @type {Record<string, boolean>} */
   $: incidentActionCapabilities = incidentCapabilitiesModel.capabilities;
-  /** @type {Record<string, string|null>} */
   $: incidentActionCapabilityReasons = incidentCapabilitiesModel.reasons;
   $: incidentActionReadOnly = $incidentStore.readOnly || $operatorConnectionStore.readOnly;
   $: incidentActionReadOnlyReason = $operatorConnectionStore.readOnly
-    ? ($operatorConnectionStore.reason || 'Backend temporarily degraded. Incident actions stay read-only until fresh data returns.')
-    : ($incidentStore.readOnlyReason || 'Фиксация действий временно недоступна.');
+    ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Фиксация действий по инцидентам временно доступна только для просмотра.')
+    : ($incidentStore.readOnlyReason || 'Фиксация действий по инцидентам временно недоступна.');
   $: incidentActionPlan = getActionPlan('incident');
 
   function policyForIncidentAction(action) {
@@ -187,7 +161,6 @@
     };
   }
 
-  /** @param {any} event */
   async function openActionForm(event, suggestedAction = 'note') {
     const item = event?.detail?.item || event;
     if (!item) return;
@@ -237,16 +210,16 @@
     <div class="page-header">
       <div>
         <h1>{ROUTE_COPY.incidents.title}</h1>
-        <p>{incidentActionReadOnly ? 'Очередь инцидентов доступна для разбора, но действия по ним сейчас временно недоступны.' : ROUTE_COPY.incidents.description}</p>
+        <p>{incidentActionReadOnly ? 'Очередь инцидентов доступна для разбора, но фиксация действий временно отключена.' : ROUTE_COPY.incidents.description}</p>
       </div>
       <div class="header-meta">
         <div class="header-stats">
           <article><span>Всего</span><strong>{enrichedItems.length}</strong></article>
-          <article><span>Открытые</span><strong>{enrichedItems.filter((item) => item.status !== 'closed').length}</strong></article>
+          <article><span>Требуют действия</span><strong>{enrichedItems.filter((item) => item.requiresAction).length}</strong></article>
           <article><span>{INCIDENT_COPY.systemLabel}</span><strong>{$systemStore.overallState}</strong></article>
         </div>
         <DataFreshnessChip
-          label="Incidents"
+          label="Инциденты"
           lastFetchedAt={$incidentStore.lastFetchedAt}
           staleAfterMs={$incidentStore.staleTtlMs}
           mode={$operatorConnectionStore.mode}
@@ -260,7 +233,7 @@
       <div>
         <div class="eyebrow">{INCIDENT_COPY.actionLayer}</div>
         <strong>{incidentActionReadOnly ? INCIDENT_COPY.readOnlyMode : INCIDENT_COPY.backendActionsActive}</strong>
-        <p>{incidentActionReadOnly ? incidentActionReadOnlyReason : 'Все действия оператора записываются в систему и сразу обновляют очередь инцидентов.'}</p>
+        <p>{incidentActionReadOnly ? incidentActionReadOnlyReason : 'Все действия оператора журналируются и сразу обновляют очередь инцидентов.'}</p>
       </div>
       {#if $incidentStore.actionError}
         <p class="banner-error">{$incidentStore.actionError}</p>
@@ -269,7 +242,7 @@
 
     <section class="ui-card filters-panel">
       <div class="filters-grid">
-        <label><span>Поиск</span><input bind:value={filters.query} placeholder="ID, тип, кран, оператор" /></label>
+        <label><span>Поиск</span><input bind:value={filters.query} placeholder="ID, тип, кран, ответственный" /></label>
         <label>
           <span>Приоритет</span>
           <select bind:value={filters.priority}>
@@ -299,7 +272,7 @@
           </select>
         </label>
         <label>
-          <span>Время</span>
+          <span>Период</span>
           <select bind:value={filters.time}>
             <option value="all">За всё время</option>
             <option value="24h">Последние 24 часа</option>
@@ -308,10 +281,10 @@
           </select>
         </label>
         <label>
-          <span>SLA</span>
+          <span>SLA / старение</span>
           <select bind:value={filters.slaRisk}>
             <option value="all">Все</option>
-            <option value="at_risk">SLA at risk</option>
+            <option value="at_risk">Стареют / просрочены</option>
           </select>
         </label>
       </div>
@@ -352,9 +325,9 @@
             <div>
               <div class="eyebrow">{INCIDENT_COPY.detailsPanel}</div>
               <h2>#{selectedIncident.incident_id}</h2>
-              <p>{selectedIncident.typeLabel} · {selectedIncident.priorityLabel} · {selectedIncident.statusLabel}</p>
+              <p>{selectedIncident.typeLabel} · {selectedIncident.uiSeverityLabel} · {selectedIncident.agingCueLabel}</p>
             </div>
-            <div class={`priority-badge ${selectedIncident.priority}`}>{selectedIncident.priorityLabel}</div>
+            <div class={`priority-badge ${selectedIncident.uiSeverity}`}>{selectedIncident.uiSeverityLabel}</div>
           </div>
 
           <section class="detail-section accountability-strip">
@@ -364,14 +337,14 @@
               <small>{selectedIncident.accountability.nextStep}</small>
             </article>
             <article>
-              <span>Последнее действие</span>
-              <strong>{selectedIncident.accountability.lastActionLabel}</strong>
-              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Данные подтверждены системой.' : 'Изменение ещё ожидает подтверждения системы.'}</small>
+              <span>Текущий статус</span>
+              <strong>{selectedIncident.statusLabel}</strong>
+              <small>{selectedIncident.entryKind === 'incident' ? 'Требует подтверждённого действия.' : 'Остаётся в истории как событие.'}</small>
             </article>
             <article>
-              <span>Закрыт в</span>
-              <strong>{selectedIncident.accountability.closedAt ? formatDateTimeRu(selectedIncident.accountability.closedAt) : 'Ещё открыт'}</strong>
-              <small>{selectedIncident.closed_at ? 'Время закрытия подтверждено системой.' : 'Ожидает подтверждения закрытия от системы.'}</small>
+              <span>Срок</span>
+              <strong>{selectedIncident.agingCueLabel}</strong>
+              <small>{selectedIncident.backendStatusIsAuthoritative ? 'Статус подтверждён системой.' : 'Изменение ещё ждёт подтверждения.'}</small>
             </article>
           </section>
 
@@ -384,20 +357,20 @@
               Рекомендация: <strong>{incidentActionPlan.recommendedOwnerState}</strong> · {incidentActionPlan.recommendedActionState}.
             </p>
             <div class="next-step-actions">
-              <button on:click={() => navigateWithFocus(/** @type {any} */ ({
+              <button on:click={() => navigateWithFocus({
                 target: incidentActionPlan.primaryTarget,
                 incidentId: selectedIncident.incident_id || undefined,
                 tapId: selectedIncident.tapId || undefined,
                 source: selectedIncident.sourceLabel || undefined,
-              }))}>{incidentActionPlan.primaryCta}</button>
+              })}>{incidentActionPlan.primaryCta}</button>
               <button
                 class="secondary"
-                on:click={() => navigateWithFocus(/** @type {any} */ ({
+                on:click={() => navigateWithFocus({
                   target: incidentActionPlan.secondaryCta.target,
                   incidentId: selectedIncident.incident_id || undefined,
                   tapId: selectedIncident.tapId || undefined,
                   source: selectedIncident.sourceLabel || undefined,
-                }))}
+                })}
               >
                 {incidentActionPlan.secondaryCta.label}
               </button>
@@ -429,9 +402,9 @@
 
           <section class="detail-section meta-grid">
             <article><span>Кран</span><strong>{selectedIncident.tapLabel}</strong></article>
-            <article><span>{INCIDENT_COPY.ownerServer}</span><strong>{selectedIncident.owner || selectedIncident.accountability.ownerLabel}</strong></article>
             <article><span>Источник</span><strong>{selectedIncident.sourceLabel}</strong></article>
             <article><span>Связанный визит</span><strong>{selectedIncident.sessionMatch ? `#${selectedIncident.sessionMatch.visit_id}` : 'Не найден'}</strong></article>
+            <article><span>Приоритет</span><strong>{selectedIncident.priorityLabel}</strong></article>
           </section>
 
           <section class="detail-section">
@@ -461,7 +434,7 @@
 
           {#if incidentActionReadOnly}
             <section class="detail-section viewer-guidance">
-              <div class="section-head"><h3>Что может сделать оператор</h3></div>
+              <div class="section-head"><h3>Что можно сделать сейчас</h3></div>
               <p>{incidentActionReadOnlyReason} Доступны просмотр очереди, фильтры и переходы в связанный контекст.</p>
             </section>
           {/if}
@@ -490,11 +463,10 @@
       </aside>
     </div>
   </section>
-
 {/if}
 
 <style>
-  .page, .filters-panel, .panel, .detail-panel, .detail-section, .banner-panel, .incident-action-form { display: grid; gap: 1rem; }
+  .page, .filters-panel, .panel, .detail-panel, .detail-section, .banner-panel { display: grid; gap: 1rem; }
   .page-header, .filters-actions, .detail-head, .section-head, .timeline li { display: flex; gap: 1rem; justify-content: space-between; }
   .page-header { align-items: flex-start; flex-wrap: wrap; }
   .page-header h1, .page-header p, .detail-head h2, .detail-head p, .detail-section h3, .timeline p { margin: 0; }
@@ -503,7 +475,7 @@
   .header-stats article, .meta-grid article, .accountability-strip article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.85rem 1rem; background: #fff; min-width: 120px; display: grid; gap: 0.3rem; }
   .filters-grid, .meta-grid, .form-grid { display: grid; gap: 0.75rem; }
   .filters-grid { grid-template-columns: repeat(6, minmax(120px, 1fr)); }
-  .meta-grid, .accountability-strip, .two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meta-grid, .accountability-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .accountability-strip { display: grid; gap: 0.75rem; }
   .banner-panel[data-tone='warning'] { border: 1px solid #fdba74; background: #fff7ed; }
   .banner-panel[data-tone='ok'] { border: 1px solid #86efac; background: #f0fdf4; }
@@ -516,15 +488,13 @@
   .link { padding: 0; border: none; color: #1d4ed8; }
   .content-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.9fr); gap: 1rem; align-items: start; }
   .detail-panel { position: sticky; top: 0; }
-  .eyebrow, .muted, .detail-section p, label span, .timeline-meta, .modal-subtitle, .accountability-strip small { color: var(--text-secondary, #64748b); }
+  .eyebrow, .muted, .detail-section p, label span, .timeline-meta, .accountability-strip small { color: var(--text-secondary, #64748b); }
   .priority-badge { align-self: flex-start; padding: 0.35rem 0.7rem; border-radius: 999px; font-weight: 700; }
-  .priority-badge.low { background: #e2e8f0; }
-  .priority-badge.medium { background: #dbeafe; color: #1d4ed8; }
-  .priority-badge.high { background: #fef3c7; color: #92400e; }
+  .priority-badge.info { background: #e2e8f0; color: #334155; }
+  .priority-badge.warning { background: #fef3c7; color: #92400e; }
   .priority-badge.critical { background: #fee2e2; color: #b91c1c; }
   .detail-section { border: 1px solid #e2e8f0; border-radius: 18px; padding: 1rem; background: rgba(248,250,252,0.8); }
-  .compact-panel { background: #fff; }
-  .narrative-section ul, .chip-list, .timeline, .state-flow, .modal-checklist { margin: 0; padding-left: 1rem; }
+  .narrative-section ul, .chip-list, .timeline, .state-flow { margin: 0; padding-left: 1rem; }
   .chip-list { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding-left: 0; }
   .chip-list li { background: #eff6ff; color: #1e3a8a; border-radius: 999px; padding: 0.35rem 0.7rem; }
   .timeline { list-style: none; padding-left: 0; display: grid; gap: 0.75rem; }
@@ -539,8 +509,7 @@
   .state-flow li.active { border-color: #2563eb; background: #eff6ff; }
   .state-flow li.done { border-color: #86efac; background: #f0fdf4; }
   .state-flow p { margin-top: 0.25rem; }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
   .restricted { padding: 1rem; }
   @media (max-width: 1200px) { .content-grid { grid-template-columns: 1fr; } .detail-panel { position: static; } .filters-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
-  @media (max-width: 720px) { .filters-grid, .meta-grid, .accountability-strip, .two-columns { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .filters-grid, .meta-grid, .accountability-strip { grid-template-columns: 1fr; } }
 </style>

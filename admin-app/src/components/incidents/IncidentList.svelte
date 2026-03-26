@@ -22,7 +22,7 @@
 
   function actionLabel(item) {
     if (item.status === 'new') return 'Взять в работу';
-    if (item.status === 'in_progress') return 'Открыть форму закрытия';
+    if (item.status === 'in_progress') return 'Подготовить закрытие';
     return 'Закрыт';
   }
 
@@ -31,18 +31,6 @@
     if (item.status === 'in_progress') return 'close';
     return 'closed';
   }
-
-
-  function formatCountdown(deadlineAt) {
-    if (!deadlineAt) return 'SLA —';
-    const diffMs = new Date(deadlineAt).getTime() - Date.now();
-    const totalMinutes = Math.floor(Math.abs(diffMs) / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-    return diffMs >= 0 ? `до breach ${formatted}` : `breach +${formatted}`;
-  }
-
 
   function guardFor(actionKey, extraAllowed, extraReason = '') {
     return getCriticalActionGuard(actionKey, permissions, { extraAllowed, extraDeniedReason: extraReason });
@@ -76,7 +64,7 @@
         <div class="group-head">
           <div>
             <h2>{group.label}</h2>
-            <p>{group.key === 'closed' ? 'Закрытые инциденты доступны для справки и разбора.' : `${group.items.length} шт.`}</p>
+            <p>{group.key === 'closed' ? 'Закрытые карточки остаются для справки и передачи контекста смене.' : `${group.items.length} шт.`}</p>
           </div>
         </div>
 
@@ -105,25 +93,20 @@
                     <p>{item.summary}</p>
                   </div>
                   <div class="badges-col">
-                    <div class={`severity severity-${String(item.severity || 'S4').toLowerCase()}`}>{item.severity || 'S4'}</div>
-                    <div class={`priority ${item.priority}`}>{item.priorityLabel}</div>
+                    <div class={`severity ${item.uiSeverity}`}>{item.uiSeverityLabel}</div>
+                    <div class={`aging ${item.agingCue}`}>{item.agingCueLabel}</div>
                   </div>
                 </div>
 
                 <div class="card-meta">
                   <span><strong>Кран:</strong> {item.tapLabel}</span>
                   <span><strong>Создан:</strong> {formatDateTimeRu(item.created_at)}</span>
-                  <span><strong>SLA:</strong> {formatCountdown(item.acknowledge_deadline_at)}</span>
                   <span><strong>Ответственный:</strong> {item.accountability.ownerLabel}</span>
-                  <span><strong>Источник:</strong> {item.sourceLabel}</span>
                 </div>
 
                 <div class="state-row">
                   <span class={`status-badge ${item.status}`}>{item.statusLabel}</span>
-                  <span class={`ownership-badge ${item.accountability.ownerState}`}>{item.accountability.ownerBadge}</span>
-                  {#if item.accountability.lastEscalatedAt}
-                    <span class="signal-badge">Эскалация {formatDateTimeRu(item.accountability.lastEscalatedAt)}</span>
-                  {/if}
+                  <span class={`entry-badge ${item.entryKind}`}>{item.entryKind === 'incident' ? 'Требует действия' : 'Событие'}</span>
                   {#if readOnly}
                     <span class="signal-badge warning">{INCIDENT_COPY.readOnly}</span>
                   {/if}
@@ -157,12 +140,6 @@
                     >
                       {actionLabel(item)}
                     </GuardedActionButton>
-                    {#if actionType(item) === 'claim' && !actionCapabilities.claim && actionCapabilityReasons.claim}
-                      <small class="action-reason">{resolveReason(actionCapabilityReasons.claim)}</small>
-                    {/if}
-                    {#if actionType(item) === 'close' && !actionCapabilities.close && !actionCapabilities.note && (actionCapabilityReasons.close || actionCapabilityReasons.note)}
-                      <small class="action-reason">{resolveReason(actionCapabilityReasons.close, actionCapabilityReasons.note)}</small>
-                    {/if}
                   {/if}
 
                   <GuardedActionButton
@@ -172,9 +149,6 @@
                     reason={guardFor('escalate_incident', !readOnly && actionCapabilities.escalate, resolveReason(actionCapabilityReasons.escalate)).reason}
                     on:click={(event) => { event.stopPropagation(); emit('escalateIncident', item); }}
                   >Эскалировать</GuardedActionButton>
-                  {#if !actionCapabilities.escalate && actionCapabilityReasons.escalate}
-                    <small class="action-reason">{resolveReason(actionCapabilityReasons.escalate)}</small>
-                  {/if}
 
                   <button
                     class="primary"
@@ -186,6 +160,7 @@
                         : '')}
                     on:click|stopPropagation={() => emit('openActionForm', item)}
                   >{INCIDENT_COPY.actionForm}</button>
+
                   {#if (readOnly && readOnlyReason) || (!actionCapabilities.note && !actionCapabilities.close && (actionCapabilityReasons.note || actionCapabilityReasons.close))}
                     <small class="action-reason">{resolveReason(actionCapabilityReasons.note, actionCapabilityReasons.close)}</small>
                   {/if}
@@ -212,15 +187,13 @@
   .incident-card.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; background: #f8fbff; }
   .incident-card:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   .card-head p, .eyebrow, .empty, .small { color: var(--text-secondary, #64748b); }
-  .severity, .priority { align-self: flex-start; border-radius: 999px; padding: 0.35rem 0.7rem; font-weight: 700; }
-  .severity-s1 { background: #fee2e2; color: #991b1b; }
-  .severity-s2 { background: #ffedd5; color: #9a3412; }
-  .severity-s3 { background: #fef9c3; color: #854d0e; }
-  .severity-s4 { background: #e2e8f0; color: #334155; }
-  .priority.low { background: #e2e8f0; }
-  .priority.medium { background: #dbeafe; color: #1d4ed8; }
-  .priority.high { background: #fef3c7; color: #92400e; }
-  .priority.critical { background: #fee2e2; color: #b91c1c; }
+  .severity, .aging { align-self: flex-start; border-radius: 999px; padding: 0.35rem 0.7rem; font-weight: 700; }
+  .severity.info { background: #e2e8f0; color: #334155; }
+  .severity.warning { background: #fef3c7; color: #92400e; }
+  .severity.critical { background: #fee2e2; color: #b91c1c; }
+  .aging.new { background: #eff6ff; color: #1d4ed8; }
+  .aging.aging { background: #fff7ed; color: #c2410c; }
+  .aging.overdue { background: #fee2e2; color: #b91c1c; }
   .card-meta, .state-row { flex-wrap: wrap; color: var(--text-secondary, #64748b); font-size: 0.92rem; }
   .operator-next-step { display: grid; gap: 0.25rem; padding: 0.8rem; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
   .operator-next-step strong, .operator-next-step p, .operator-next-step small { margin: 0; }
@@ -232,12 +205,12 @@
   .card-actions .primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
   .card-actions :global(.warning) { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
   .card-actions button:disabled { opacity: 0.55; cursor: not-allowed; }
-  .status-badge, .ownership-badge, .signal-badge { border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.84rem; font-weight: 700; }
+  .status-badge, .entry-badge, .signal-badge { border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.84rem; font-weight: 700; }
   .status-badge.new { background: #eff6ff; color: #1d4ed8; }
   .status-badge.in_progress { background: #fff7ed; color: #c2410c; }
   .status-badge.closed { background: #ecfdf3; color: #166534; }
-  .ownership-badge.unassigned { background: #f8fafc; color: #475569; }
-  .ownership-badge.assigned { background: #eef2ff; color: #3730a3; }
+  .entry-badge.incident { background: #eef2ff; color: #3730a3; }
+  .entry-badge.event { background: #f8fafc; color: #475569; }
   .signal-badge { background: #f8fafc; color: #475569; }
   .signal-badge.warning { background: #fff7ed; color: #9a3412; }
 </style>

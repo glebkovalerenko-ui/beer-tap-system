@@ -51,27 +51,33 @@
  * tapContext: TapLike|null,
  * systemState: string,
  * openIncidentCount: number,
- * backendStatusIsAuthoritative: true
+ * backendStatusIsAuthoritative: true,
+ * uiSeverity: 'info'|'warning'|'critical',
+ * uiSeverityLabel: string,
+ * agingCue: 'new'|'aging'|'overdue',
+ * agingCueLabel: string,
+ * requiresAction: boolean,
+ * entryKind: 'incident'|'event',
+ * dedupeFingerprint: string
  * } & IncidentLike} IncidentViewModel
  */
 
 export const SECTION_ORDER = ['new', 'in_progress', 'closed'];
 
+const RAW_SEVERITY_WEIGHT = { S1: 0, S2: 1, S3: 2, S4: 3 };
+const UI_SEVERITY_WEIGHT = { critical: 0, warning: 1, info: 2 };
+const AGING_WEIGHT = { overdue: 0, aging: 1, new: 2 };
 
-const SEVERITY_WEIGHT = { S1: 0, S2: 1, S3: 2, S4: 3 };
+function parseTime(value) {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
 
 /** @param {IncidentLike} item */
 function incidentAgeMinutes(item) {
-  const createdAt = new Date(item.created_at || 0).getTime();
-  if (Number.isNaN(createdAt)) return 0;
+  const createdAt = parseTime(item.created_at);
+  if (createdAt == null) return 0;
   return Math.max(0, Math.floor((Date.now() - createdAt) / 60000));
-}
-
-/** @param {IncidentLike} left @param {IncidentLike} right */
-function compareBySeverityAndAge(left, right) {
-  const severityDiff = (SEVERITY_WEIGHT[left.severity] ?? 9) - (SEVERITY_WEIGHT[right.severity] ?? 9);
-  if (severityDiff !== 0) return severityDiff;
-  return incidentAgeMinutes(right) - incidentAgeMinutes(left);
 }
 
 /** @param {string|number|null|undefined} value */
@@ -91,6 +97,65 @@ function initials(name) {
     .join('');
 }
 
+function stableFingerprint(parts) {
+  return parts.map((part) => String(part || '').trim().toLowerCase()).join('|');
+}
+
+function resolveUiSeverity(incident) {
+  const priority = String(incident.priority || '').toLowerCase();
+  const severity = String(incident.severity || '').toUpperCase();
+
+  if (priority === 'critical' || severity === 'S1') return 'critical';
+  if (priority === 'high' || priority === 'medium' || ['S2', 'S3'].includes(severity)) return 'warning';
+  return 'info';
+}
+
+function resolveUiSeverityLabel(level) {
+  if (level === 'critical') return 'Критично';
+  if (level === 'warning') return 'Предупреждение';
+  return 'Инфо';
+}
+
+function resolveAgingCue(incident) {
+  if (String(incident.status) === 'closed') {
+    return 'new';
+  }
+
+  const deadlines = [incident.acknowledge_deadline_at, incident.closure_deadline_at]
+    .map(parseTime)
+    .filter((value) => value != null);
+
+  if (deadlines.some((value) => value < Date.now())) {
+    return 'overdue';
+  }
+
+  if (incident.sla_at_risk) {
+    return 'aging';
+  }
+
+  return 'new';
+}
+
+function resolveAgingCueLabel(level) {
+  if (level === 'overdue') return 'Просрочен';
+  if (level === 'aging') return 'Стареет';
+  return 'Новый';
+}
+
+/** @param {IncidentViewModel} left @param {IncidentViewModel} right */
+function compareBySeverityAndAge(left, right) {
+  const uiSeverityDiff = (UI_SEVERITY_WEIGHT[left.uiSeverity] ?? 9) - (UI_SEVERITY_WEIGHT[right.uiSeverity] ?? 9);
+  if (uiSeverityDiff !== 0) return uiSeverityDiff;
+
+  const agingDiff = (AGING_WEIGHT[left.agingCue] ?? 9) - (AGING_WEIGHT[right.agingCue] ?? 9);
+  if (agingDiff !== 0) return agingDiff;
+
+  const severityDiff = (RAW_SEVERITY_WEIGHT[left.severity] ?? 9) - (RAW_SEVERITY_WEIGHT[right.severity] ?? 9);
+  if (severityDiff !== 0) return severityDiff;
+
+  return incidentAgeMinutes(right) - incidentAgeMinutes(left);
+}
+
 /** @param {string|number|Date|null|undefined} createdAt @param {string} range */
 export function timeMatches(createdAt, range) {
   if (range === 'all') return true;
@@ -106,41 +171,68 @@ export function timeMatches(createdAt, range) {
 
 /** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {IncidentAccountability} accountability */
 function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
+  const tapLabel = tapMatch?.display_name || incident.tap || 'непривязанном кране';
   const happened = incident.status === 'closed'
     ? 'закрыт и подтверждён системой.'
     : incident.status === 'in_progress'
-      ? 'в работе и требует подтверждённого результата.'
-      : 'ещё ждёт назначения ответственного оператора.';
+      ? 'находится в работе и ждёт подтверждённого результата.'
+      : 'ждёт назначения ответственного и первого действия.';
 
   return [
-    `${titleCase(incident.type)} на ${tapMatch?.display_name || incident.tap || 'непривязанном кране'} ${happened}`,
+    `${titleCase(incident.type)} на ${tapLabel} ${happened}`,
     accountability.owner
-      ? `Ответственный оператор: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
-      : 'Ответственный оператор не назначен — это нужно исправить следующим действием в системе.',
+      ? `Ответственный: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
+      : 'Ответственный пока не назначен. Назначьте владельца кейса перед дальнейшим разбором.',
     tapMatch?.operations?.productStateLabel
-      ? `Сейчас кран в состоянии «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без уточнения от системы'}.`
-      : 'По крану не хватает сигналов системы, поэтому описание собрано из данных по инциденту, крану и визиту.',
+      ? `Сейчас кран в статусе «${tapMatch.operations.productStateLabel}», ${tapMatch.operations.liveStatus?.toLowerCase?.() || 'без дополнительных сигналов'}.`
+      : 'По крану не хватает подтверждённых сигналов, поэтому описание собрано из данных по инциденту, крану и визиту.',
     sessionMatch
-      ? `Связанный визит #${sessionMatch.visit_id} ${sessionMatch.guest_full_name ? `для гостя ${sessionMatch.guest_full_name}` : 'без имени гостя'} ${sessionMatch.operator_status ? `со статусом ${sessionMatch.operator_status}` : ''}.`
-      : 'Связанный визит не найден — стоит проверить журнал визитов и сигналы системы.',
+      ? `Связанный визит #${sessionMatch.visit_id}${sessionMatch.guest_full_name ? ` для гостя ${sessionMatch.guest_full_name}` : ''}${sessionMatch.operator_status ? ` со статусом ${sessionMatch.operator_status}` : ''}.`
+      : 'Связанный визит не найден. Проверьте журнал визитов и сигналы по крану.',
   ];
 }
 
 /** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch */
 function deriveImpact(incident, tapMatch, sessionMatch) {
   const impact = [];
-  if (incident.priority === 'critical') impact.push('риск остановки продаж или несанкционированного пролива');
+  if (incident.priority === 'critical') impact.push('есть риск остановки продаж или несанкционированного пролива');
   if (incident.priority === 'high') impact.push('требует быстрого вмешательства смены');
   if (tapMatch?.operations?.currentPour?.isActive) impact.push('по крану прямо сейчас фиксируется поток');
-  if (tapMatch?.operations?.heartbeat?.isStale) impact.push('heartbeat устарел');
+  if (tapMatch?.operations?.heartbeat?.isStale) impact.push('последний сигнал от крана устарел');
   if (sessionMatch?.has_incident || sessionMatch?.incident_count) impact.push(`в истории визита уже есть инцидент (${sessionMatch.incident_count || 1})`);
-  if (impact.length === 0) impact.push('локальное влияние ограничено одним краном и требует подтверждения оператором');
+  if (impact.length === 0) impact.push('локальное влияние пока ограничено и требует подтверждения оператором');
   return impact;
+}
+
+function dedupeRelatedEvents(events) {
+  const byFingerprint = new Map();
+
+  for (const event of events) {
+    const fingerprint = event.dedupeFingerprint || stableFingerprint([event.title, event.description, event.time, event.label]);
+    if (!byFingerprint.has(fingerprint)) {
+      byFingerprint.set(fingerprint, { ...event, duplicateCount: 1 });
+      continue;
+    }
+
+    const existing = byFingerprint.get(fingerprint);
+    byFingerprint.set(fingerprint, {
+      ...existing,
+      duplicateCount: (existing.duplicateCount || 1) + 1,
+      description: existing.description,
+    });
+  }
+
+  return Array.from(byFingerprint.values()).map((event) => (
+    event.duplicateCount > 1
+      ? { ...event, description: `${event.description} Повторилось ${event.duplicateCount} раза.` }
+      : event
+  ));
 }
 
 /** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {{openTap:string, openSystem:string}} incidentCopy */
 function deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy) {
   const events = [];
+
   for (const item of tapMatch?.operations?.operatorHistory || []) {
     events.push({
       id: `tap-${item.id}`,
@@ -149,17 +241,19 @@ function deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy) {
       description: item.description,
       href: item.sessionAction?.href || '#/taps',
       label: item.sessionAction?.label || incidentCopy.openTap,
+      dedupeFingerprint: stableFingerprint([item.title, item.description, item.happenedAt, item.sessionAction?.visitId || item.sessionAction?.href]),
     });
   }
 
   if (sessionMatch) {
     events.push({
-      id: `session-${sessionMatch.visit_id}`,
+      id: `visit-${sessionMatch.visit_id}`,
       time: sessionMatch.last_event_at || sessionMatch.opened_at,
       title: `Визит #${sessionMatch.visit_id}`,
-      description: `${sessionMatch.operator_status || 'Статус неизвестен'} · taps: ${sessionMatch.taps?.join(', ') || '—'}`,
+      description: `${sessionMatch.operator_status || 'Статус неизвестен'} · краны: ${sessionMatch.taps?.join(', ') || '—'}`,
       href: '#/visits',
       label: 'Открыть визит',
+      dedupeFingerprint: stableFingerprint([sessionMatch.visit_id, sessionMatch.operator_status, sessionMatch.last_event_at || sessionMatch.opened_at]),
     });
   }
 
@@ -168,25 +262,26 @@ function deriveRelatedEvents(incident, tapMatch, sessionMatch, incidentCopy) {
       id: `incident-${incident.incident_id}`,
       time: incident.created_at,
       title: 'Инцидент зарегистрирован',
-      description: 'Пока доступны только сводные данные системы по инциденту.',
+      description: 'Пока доступны только сводные данные системы по этому инциденту.',
       href: '#/system',
       label: incidentCopy.openSystem,
+      dedupeFingerprint: stableFingerprint([incident.incident_id, incident.created_at, incident.type, incident.source]),
     });
   }
 
-  return events.slice(0, 6);
+  return dedupeRelatedEvents(events).slice(0, 6);
 }
 
 /** @param {IncidentLike} incident @param {VisitLike|null} sessionMatch @returns {IncidentAccountability} */
 function deriveAccountability(incident, sessionMatch) {
   const owner = incident.owner || incident.operator || sessionMatch?.operator_name || null;
   const lastEscalatedAt = incident.escalated_at || (incident.source === 'system_state' ? incident.created_at : null);
-  const lastActionLabel = incident.last_action || incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено источником' : 'Действие не зафиксировано');
+  const lastActionLabel = incident.last_action || incident.note_action || (incident.status === 'closed' ? 'Закрытие подтверждено системой' : 'Действие ещё не зафиксировано');
   const nextStep = incident.status === 'new'
     ? 'Назначить ответственного и перевести инцидент в работу.'
     : incident.status === 'in_progress'
-      ? 'Зафиксировать действие, при необходимости передать на разбор и закрыть только после подтверждения системы.'
-      : 'Проверить, что closure note и таймлайн содержат итог разбора.';
+      ? 'Зафиксировать действие, при необходимости эскалировать и закрывать только после подтверждения системы.'
+      : 'Проверить, что итог и таймлайн закрытия понятны для следующей смены.';
 
   return {
     owner,
@@ -202,7 +297,7 @@ function deriveAccountability(incident, sessionMatch) {
       {
         key: 'new',
         label: 'Новый',
-        description: 'Инцидент поступил из системы и ждёт первичной обработки.',
+        description: 'Инцидент поступил из системы и ждёт первичного разбора.',
         active: incident.status === 'new',
         done: incident.status !== 'new',
       },
@@ -210,7 +305,7 @@ function deriveAccountability(incident, sessionMatch) {
         key: 'in_progress',
         label: 'В работе',
         description: owner
-          ? `Ответственный ${owner} ведёт разбор.`
+          ? `Разбор ведёт ${owner}.`
           : 'Нужно назначить ответственного, чтобы зафиксировать работу по инциденту.',
         active: incident.status === 'in_progress',
         done: incident.status === 'closed',
@@ -219,8 +314,8 @@ function deriveAccountability(incident, sessionMatch) {
         key: 'closed',
         label: 'Закрыт',
         description: incident.status === 'closed'
-          ? 'Система уже подтвердила закрытие — статус считается итоговым.'
-          : 'Закрытие допустимо только после подтверждения системы.',
+          ? 'Система уже подтвердила закрытие и считает кейс завершённым.'
+          : 'Закрывать инцидент можно только после подтверждения системы.',
         active: incident.status === 'closed',
         done: incident.status === 'closed',
       },
@@ -231,6 +326,7 @@ function deriveAccountability(incident, sessionMatch) {
 /** @param {IncidentLike} incident @param {TapLike|null} tapMatch @param {VisitLike|null} sessionMatch @param {IncidentAccountability} accountability */
 function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
   const actions = [];
+
   if (accountability.owner) {
     actions.push({
       kind: 'owner',
@@ -239,14 +335,16 @@ function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
       time: accountability.acknowledgedAt,
     });
   }
+
   if (accountability.lastEscalatedAt) {
     actions.push({
       kind: 'escalation',
-      title: 'Эскалация в system context',
-      detail: 'Передача на разбор видна как сигнал системы; без подтверждённого действия её нельзя считать завершённой.',
+      title: 'Кейс передан дальше',
+      detail: 'Эскалация зафиксирована как системный сигнал и требует подтверждённого следующего шага.',
       time: accountability.lastEscalatedAt,
     });
   }
+
   if (incident.note_action || incident.last_action) {
     actions.push({
       kind: 'note',
@@ -255,22 +353,25 @@ function deriveActionsTaken(incident, tapMatch, sessionMatch, accountability) {
       time: incident.last_action_at || incident.created_at,
     });
   }
+
   if (tapMatch?.operations?.heartbeat?.isStale) {
     actions.push({
       kind: 'signal',
-      title: 'Автоматический сигнал',
-      detail: `Последний heartbeat ${tapMatch.operations.heartbeat.minutesAgo} мин назад.`,
+      title: 'Системный сигнал',
+      detail: `Последний сигнал от крана был ${tapMatch.operations.heartbeat.minutesAgo} мин. назад.`,
       time: tapMatch.operations.heartbeat.at,
     });
   }
+
   if (sessionMatch?.incident_count) {
     actions.push({
       kind: 'history',
-      title: 'Есть след в истории визитов',
-      detail: `В связанном визите отмечен инцидент: ${sessionMatch.incident_count}.`,
+      title: 'След в истории визита',
+      detail: `В связанном визите уже отмечен инцидент: ${sessionMatch.incident_count}.`,
       time: sessionMatch.last_event_at || sessionMatch.opened_at,
     });
   }
+
   return actions;
 }
 
@@ -284,16 +385,29 @@ function matchSession(incident, tapMatch, activeVisits) {
   }) || null;
 }
 
+function uniqueIncidents(incidents = []) {
+  const byId = new Map();
+  for (const incident of incidents || []) {
+    if (!byId.has(String(incident.incident_id))) {
+      byId.set(String(incident.incident_id), incident);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 /**
  * @param {{ incidents: IncidentLike[], taps: TapLike[], activeVisits: VisitLike[], systemState: string, openIncidentCount: number, incidentCopy: {openTap:string, openSystem:string}, priorityLabels: Record<string,string>, statusLabels: Record<string,string> }} input
  * @returns {IncidentViewModel[]}
  */
 export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemState, openIncidentCount, incidentCopy, priorityLabels, statusLabels }) {
-  return (incidents || []).map((incident) => {
+  return uniqueIncidents(incidents).map((incident) => {
     const tapMatch = (taps || []).find((tap) => String(tap.tap_id) === String(incident.tap) || tap.display_name === incident.tap) || null;
     const sessionMatch = matchSession(incident, tapMatch, activeVisits);
     const accountability = deriveAccountability(incident, sessionMatch);
     const tapLabel = tapMatch?.display_name || incident.tap || '—';
+    const uiSeverity = resolveUiSeverity(incident);
+    const agingCue = resolveAgingCue(incident);
+    const requiresAction = String(incident.status) !== 'closed';
 
     return {
       ...incident,
@@ -301,7 +415,7 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       tapId: tapMatch?.tap_id || null,
       tapHref: tapMatch ? '#/taps' : null,
       sessionMatch,
-      sessionHref: sessionMatch ? '#/visits' : '#/visits',
+      sessionHref: '#/visits',
       systemHref: '#/system',
       sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
       typeLabel: titleCase(incident.type),
@@ -310,6 +424,12 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       operatorInitials: initials(accountability.owner),
       incidentAgeMinutes: incidentAgeMinutes(incident),
       isSlaAtRisk: Boolean(incident.sla_at_risk),
+      uiSeverity,
+      uiSeverityLabel: resolveUiSeverityLabel(uiSeverity),
+      agingCue,
+      agingCueLabel: resolveAgingCueLabel(agingCue),
+      requiresAction,
+      entryKind: requiresAction ? 'incident' : 'event',
       accountability,
       summary: buildNarrative(incident, tapMatch, sessionMatch, accountability)[0],
       narrative: buildNarrative(incident, tapMatch, sessionMatch, accountability),
@@ -320,6 +440,15 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       systemState,
       openIncidentCount,
       backendStatusIsAuthoritative: true,
+      dedupeFingerprint: stableFingerprint([
+        incident.type,
+        tapLabel,
+        incident.source,
+        incident.priority,
+        incident.severity,
+        incident.status,
+        incident.created_at,
+      ]),
     };
   });
 }
@@ -343,8 +472,16 @@ export function filterIncidents(enrichedItems, filters) {
       && (filters.type === 'all' || item.type === filters.type)
       && (filters.tap === 'all' || item.tapLabel === filters.tap)
       && timeMatches(item.created_at, filters.time)
-      && (filters.slaRisk !== 'at_risk' || item.isSlaAtRisk)
-      && (!query || [item.incident_id, item.typeLabel, item.tapLabel, item.accountability.ownerLabel, item.summary, item.severity].join(' ').toLowerCase().includes(query));
+      && (filters.slaRisk !== 'at_risk' || item.agingCue !== 'new')
+      && (!query || [
+        item.incident_id,
+        item.typeLabel,
+        item.tapLabel,
+        item.accountability.ownerLabel,
+        item.summary,
+        item.uiSeverityLabel,
+        item.agingCueLabel,
+      ].join(' ').toLowerCase().includes(query));
   });
 }
 

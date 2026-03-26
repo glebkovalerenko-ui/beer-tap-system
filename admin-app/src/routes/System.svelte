@@ -21,10 +21,27 @@
   /** @type {any} */
   let permissions = {};
 
+  const READ_ONLY_FALLBACK = 'Данные устарели или центральный контур недоступен. Рискованные действия останутся заблокированы, пока не вернётся свежая сводка.';
+
   function formatBlockedActionKey(value) {
-    if (!value) return 'Unknown action';
+    if (!value) return 'Неизвестное действие';
     const text = String(value).replaceAll('_', ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function formatModeLabel(value) {
+    const key = String(value || '').trim().toLowerCase();
+    if (!key || key === 'online') return 'Онлайн';
+    if (key === 'offline') return 'Офлайн';
+    if (key === 'degraded') return 'С деградацией';
+    if (key === 'read_only' || key === 'readonly') return 'Только просмотр';
+    if (key === 'demo') return 'Демо';
+    return value;
+  }
+
+  function formatSeconds(value) {
+    if (value == null || Number.isNaN(Number(value))) return '—';
+    return `${Math.round(Number(value))} с`;
   }
 
   $: permissions = /** @type {any} */ ($roleStore.permissions || {});
@@ -37,7 +54,7 @@
     const state = resolveActionBlockState(
       policy,
       $operatorConnectionStore.readOnly
-        ? ($operatorConnectionStore.reason || $systemStore.reason || 'Backend currently degraded. Risky actions stay blocked until fresh data returns.')
+        ? ($operatorConnectionStore.reason || $systemStore.reason || READ_ONLY_FALLBACK)
         : ''
     );
     return {
@@ -45,8 +62,8 @@
       label: formatBlockedActionKey(key),
       available: !state.disabled,
       reason: state.reason || (state.disabled
-        ? 'Wait for a fresh system snapshot before using this action.'
-        : 'This action can be used in the current context.'),
+        ? 'Дождитесь свежей сводки по системе перед выполнением этого действия.'
+        : 'Действие доступно в текущем состоянии системы.'),
     };
   });
 
@@ -60,18 +77,18 @@
 
 {#if !systemPermissions.canViewHealth}
   <section class="ui-card restricted">
-    <h1>System</h1>
-    <p>This operational health section is available only to roles with system health permissions.</p>
+    <h1>{ROUTE_COPY.system.title}</h1>
+    <p>Раздел доступен ролям, которым разрешено смотреть состояние системы и очереди синхронизации.</p>
   </section>
 {:else}
   <section class="page">
     <div class="page-header">
       <div>
         <h1>{ROUTE_COPY.system.title}</h1>
-        <p>{ROUTE_COPY.system.description} Deep engineering actions and settings remain permission-gated.</p>
+        <p>{ROUTE_COPY.system.description} Глубокие инженерные действия и настройки вынесены в отдельную зону по правам.</p>
       </div>
       <DataFreshnessChip
-        label="System"
+        label="Система"
         lastFetchedAt={$systemStore.lastFetchedAt}
         staleAfterMs={$systemStore.staleTtlMs}
         mode={$operatorConnectionStore.mode}
@@ -81,32 +98,32 @@
     </div>
 
     {#if incidentFocusSource}
-      <div class="ui-card incident-context">Opened from incident context: check source <strong>{incidentFocusSource}</strong> first, then inspect related devices and sync queues.</div>
+      <div class="ui-card incident-context">Открыто из инцидента: сначала проверьте источник <strong>{incidentFocusSource}</strong>, затем связанные устройства и очередь синхронизации.</div>
     {/if}
 
     {#if $operatorConnectionStore.readOnly}
       <section class="ui-card degraded-panel">
-        <strong>Read-only mode</strong>
-        <p>{$operatorConnectionStore.reason || $systemStore.reason || 'Backend currently degraded. Risky actions stay blocked until fresh data returns.'}</p>
+        <strong>Только просмотр.</strong>
+        <p>{$operatorConnectionStore.reason || $systemStore.reason || READ_ONLY_FALLBACK}</p>
       </section>
     {/if}
 
     <div class="hero-grid">
       <section class="ui-card panel hero-card">
         <div class="hero">
-          <div><span class="eyebrow">Overall state</span><strong>{$systemStore.health.overall === 'ok' ? 'Operating normally' : 'Needs operator attention'}</strong></div>
-          <div><span class="eyebrow">Mode</span><strong>{$systemStore.mode || 'online'}</strong></div>
-          <div><span class="eyebrow">Open incidents</span><strong>{$systemStore.openIncidentCount}</strong></div>
-          <div><span class="eyebrow">Emergency stop</span><strong>{$systemStore.emergencyStop ? 'Enabled' : 'Disabled'}</strong></div>
+          <div><span class="eyebrow">Общее состояние</span><strong>{$systemStore.health.overall === 'ok' ? 'Работает штатно' : 'Нужно внимание'}</strong></div>
+          <div><span class="eyebrow">Режим работы</span><strong>{formatModeLabel($systemStore.mode)}</strong></div>
+          <div><span class="eyebrow">Открытые инциденты</span><strong>{$systemStore.openIncidentCount}</strong></div>
+          <div><span class="eyebrow">Аварийная остановка</span><strong>{$systemStore.emergencyStop ? 'Включена' : 'Выключена'}</strong></div>
         </div>
       </section>
 
       <section class="ui-card panel hero-card">
         <div class="hero">
-          <div><span class="eyebrow">Queue backlog</span><strong>{$systemStore.queueSummary?.pending_items || 0}</strong></div>
-          <div><span class="eyebrow">Unsynced sessions</span><strong>{$systemStore.queueSummary?.unsynced_sessions || 0}</strong></div>
-          <div><span class="eyebrow">Oldest pending</span><strong>{$systemStore.queueSummary?.oldest_pending_age_seconds != null ? `${Math.round($systemStore.queueSummary.oldest_pending_age_seconds)} s` : '-'}</strong></div>
-          <div><span class="eyebrow">Stale devices</span><strong>{$systemStore.staleSummary?.stale_device_count || 0}</strong></div>
+          <div><span class="eyebrow">Очередь синхронизации</span><strong>{$systemStore.queueSummary?.pending_items || 0}</strong></div>
+          <div><span class="eyebrow">Несинхронизированные визиты</span><strong>{$systemStore.queueSummary?.unsynced_sessions || 0}</strong></div>
+          <div><span class="eyebrow">Старейшая задержка</span><strong>{formatSeconds($systemStore.queueSummary?.oldest_pending_age_seconds)}</strong></div>
+          <div><span class="eyebrow">Устройства без свежих данных</span><strong>{$systemStore.staleSummary?.stale_device_count || 0}</strong></div>
         </div>
       </section>
     </div>
@@ -114,15 +131,15 @@
       <section class="ui-card panel">
       <div class="section-head">
         <div>
-          <h2>What is blocked right now</h2>
-          <p>This section shows not only health state, but which actions are unsafe until backend freshness returns.</p>
+          <h2>Что сейчас ограничено</h2>
+          <p>Здесь видно не только общее состояние, но и какие действия пока небезопасно выполнять до возврата свежих данных.</p>
         </div>
       </div>
       <div class="blocked-grid">
         {#each blockedActions as action (action.key)}
           <article class="blocked-item">
             <span>{action.label}</span>
-            <strong>{action.available ? 'Available' : 'Blocked'}</strong>
+            <strong>{action.available ? 'Доступно' : 'Заблокировано'}</strong>
             <p>{action.reason}</p>
           </article>
         {/each}

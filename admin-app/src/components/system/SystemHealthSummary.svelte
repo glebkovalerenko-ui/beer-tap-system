@@ -16,7 +16,7 @@
   }
 
   function focusSystem(source) {
-    navigateWithFocus({ target: 'system', source: source || 'System details' });
+    navigateWithFocus({ target: 'system', source: source || 'Система' });
   }
 
   function focusIncidents(item, source) {
@@ -24,12 +24,12 @@
       target: 'incident',
       tapId: item?.tap_id || item?.tap || null,
       incidentId: item?.incident_id || item?.related_incident_id || item?.incident?.incident_id || null,
-      source: source || item?.label || item?.name || item?.subsystem || 'System details',
+      source: source || item?.label || item?.name || item?.subsystem || 'Система',
     });
   }
 
   function buildActionLink(type, item, fallbackLabel) {
-    const source = item?.label || item?.name || item?.subsystem || 'System details';
+    const source = item?.label || item?.name || item?.subsystem || 'Система';
     if (type === 'tap') {
       return {
         label: fallbackLabel || ACTION_LABELS.tap,
@@ -130,7 +130,7 @@
             whatBroken: issueCount ? `Есть проблемы со считывателями: ${summarizeIssueCount(issueCount, 'считыватель', 'считывателя')}.` : 'Считыватели работают нестабильно или не видны в сводке.',
             impact: 'Гости и операторы могут не пройти шаг идентификации у крана.',
             firstCheck: 'Сначала откройте проблемный кран и проверьте, видит ли точка карту или считыватель.',
-            escalate: 'Эскалируйте, если проблема повторяется на нескольких кранах или мешает началу сессий.',
+            escalate: 'Эскалируйте, если проблема повторяется на нескольких кранах или мешает открыть визит и начать налив.',
             nextStep: 'Откройте кран с проблемным считывателем и сверяйте ситуацию на месте.',
             detail: sourceDetail,
             primaryAction: buildActionLink('tap', item?.devices?.find((device) => isProblemState(device.state)) || item, ACTION_LABELS.tap),
@@ -281,9 +281,9 @@
   $: actionableDevices = buildIssueList(healthSections.accumulatedIssues?.devices, { kind: 'device' });
   $: actionableCount = (healthSections.accumulatedIssues?.subsystemCount || 0) + (healthSections.accumulatedIssues?.deviceCount || 0);
   $: engineeringDetails = [
-    summary?.branch ? { label: 'Branch', value: summary.branch } : null,
-    summary?.commit ? { label: 'Commit', value: summary.commit } : null,
-    summary?.build ? { label: 'Build', value: summary.build } : null,
+    summary?.branch ? { label: 'Ветка', value: summary.branch } : null,
+    summary?.commit ? { label: 'Коммит', value: summary.commit } : null,
+    summary?.build ? { label: 'Сборка', value: summary.build } : null,
     summary?.generatedAt ? { label: 'Последнее обновление', value: new Date(summary.generatedAt).toLocaleString('ru-RU') } : null,
   ].filter(Boolean);
 </script>
@@ -292,10 +292,10 @@
   <section class="card permission-block read-only-block">
     <div class="permission-head">
       <div>
-        <span class="eyebrow">Read-only overview</span>
-        <h2>Operational health для смены</h2>
+        <span class="eyebrow">Сводка для смены</span>
+        <h2>Состояние системы для смены</h2>
       </div>
-      <span class="permission-pill">operator / supervisor / engineer</span>
+      <span class="permission-pill">Оператор / старший смены / инженер</span>
     </div>
     <p class="permission-copy">Первый экран отвечает на четыре операторских вопроса: что сломано, на что это влияет, что проверить первым и когда эскалировать.</p>
   </section>
@@ -474,15 +474,15 @@
     <section class="card permission-block advanced-block">
       <div class="permission-head">
         <div>
-          <span class="eyebrow">Advanced access</span>
+          <span class="eyebrow">Расширенный доступ</span>
           <h2>Инженерная зона по отдельным правам</h2>
         </div>
-        <span class="permission-pill warn">permission gate</span>
+        <span class="permission-pill warn">по отдельным правам</span>
       </div>
-      <p class="permission-copy">Branch/commit, инженерные инструменты и глубокие настройки вынесены из первого экрана. Показывайте их только после отдельного permission gate.</p>
+      <p class="permission-copy">Ветка, коммит, инженерные инструменты и глубокие настройки вынесены из первого экрана. Показывайте их только после отдельной проверки прав.</p>
       {#if engineeringDetails.length}
         <details class="deep-details">
-          <summary>Показать branch / commit / build context</summary>
+          <summary>Показать технический контекст сборки</summary>
           <ul>
             {#each engineeringDetails as item (item.label)}
               <li><strong>{item.label}:</strong> <span>{item.value}</span></li>
@@ -500,7 +500,7 @@
         {#if canManageSystemSettings}
           <article class="advanced-card">
             <h3>Глубокие настройки</h3>
-            <p>Конфигурационные и management-изменения должны открываться отдельно от operator-friendly health overview.</p>
+            <p>Изменения настроек и сервисного контура должны открываться отдельно от обзорного операторского экрана.</p>
           </article>
         {/if}
       </div>
