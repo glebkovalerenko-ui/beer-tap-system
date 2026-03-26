@@ -90,9 +90,9 @@ export function buildDisplayContext(detailPayload) {
     return {
       available: false,
       title: 'Что видел гость',
-      placeholder: context?.note || 'Display context не был сохранён для этого визита.',
+      placeholder: context?.note || 'Экранный контекст не был сохранён для этого визита.',
       incidentLink: context?.incident_link || (detailPayload?.summary?.has_incident
-        ? 'По этому визиту есть incident narrative, но display context не был сохранён.'
+        ? 'По этому визиту есть описание инцидента, но экранный контекст не был сохранён.'
         : ''),
       fields: [],
       overrides: [],
@@ -101,11 +101,11 @@ export function buildDisplayContext(detailPayload) {
   }
 
   const fields = [
-    { label: 'Display state / availability', value: context.availability_label || context.display_state || '—' },
-    { label: 'Guest-facing title', value: context.title || '—' },
-    { label: 'Guest-facing subtitle', value: context.subtitle || '—' },
-    { label: 'Maintenance mode', value: context.maintenance_mode || 'Не использовался / не восстановлен' },
-    { label: 'Fallback mode', value: context.fallback_mode || 'Не использовался / не восстановлен' },
+    { label: 'Состояние экрана', value: context.availability_label || context.display_state || '—' },
+    { label: 'Заголовок для гостя', value: context.title || '—' },
+    { label: 'Подзаголовок для гостя', value: context.subtitle || '—' },
+    { label: 'Режим обслуживания', value: context.maintenance_mode || 'Не использовался / не восстановлен' },
+    { label: 'Резервный режим', value: context.fallback_mode || 'Не использовался / не восстановлен' },
   ];
 
   return {
@@ -116,7 +116,7 @@ export function buildDisplayContext(detailPayload) {
     note: context.note || '',
     fields,
     overrides: context.important_overrides || [],
-    tapLabel: context.tap_name ? `${context.tap_name}${context.tap_id ? ` · tap #${context.tap_id}` : ''}` : (context.tap_id ? `Tap #${context.tap_id}` : ''),
+    tapLabel: context.tap_name ? `${context.tap_name}${context.tap_id ? ` · кран #${context.tap_id}` : ''}` : (context.tap_id ? `Кран #${context.tap_id}` : ''),
   };
 }
 
@@ -135,7 +135,7 @@ export function groupedNarrative(detailPayload, formatMaybeDate, describeComplet
 
   const lifecycle = detailPayload.summary.lifecycle || {};
   const lifecycleCards = [
-    { label: 'Старт визита', value: formatMaybeDate(lifecycle.opened_at), note: 'Источник: открытие визита / старт operator workflow' },
+    { label: 'Старт визита', value: formatMaybeDate(lifecycle.opened_at), note: 'Источник: открытие визита / начало работы' },
     { label: 'Источник завершения', value: describeCompletionSource(detailPayload.summary.completion_source), note: 'Окончание визита или причина прерывания' },
     { label: 'Синхронизация', value: syncLabels[detailPayload.summary.sync_state] || detailPayload.summary.sync_state, note: formatMaybeDate(lifecycle.last_sync_at) },
     { label: 'Хвостовой долив', value: detailPayload.summary.contains_tail_pour ? 'Да' : 'Нет', note: detailPayload.summary.contains_tail_pour ? 'Нужна проверка хвостового долива' : 'Хвостовой долив не найден' },

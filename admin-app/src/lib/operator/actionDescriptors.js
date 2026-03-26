@@ -1,57 +1,57 @@
 function tapName(context = {}) {
-  return context.tap?.display_name || context.tapName || 'this tap';
+  return context.tap?.display_name || context.tapName || 'этот кран';
 }
 
 function sessionName(context = {}) {
-  return context.sessionLabel || (context.visitId ? `session #${context.visitId}` : 'this session');
+  return context.sessionLabel || (context.visitId ? `визит #${context.visitId}` : 'этот визит');
 }
 
 function guestName(context = {}) {
-  return context.guestName || 'this guest';
+  return context.guestName || 'этот гость';
 }
 
 function incidentName(context = {}) {
-  return context.incidentId ? `incident #${context.incidentId}` : 'this incident';
+  return context.incidentId ? `инцидент #${context.incidentId}` : 'этот инцидент';
 }
 
 const OPERATOR_ACTION_DESCRIPTORS = {
   'session.close': (context = {}) => ({
     mode: 'reason-code + comment',
-    title: 'Close session',
-    description: `Close ${sessionName(context)} and refresh it in the operator journal.`,
-    submitText: 'Close session',
-    successMessage: 'Session closed.',
+    title: 'Закрыть визит',
+    description: `Закройте ${sessionName(context)} и сразу обновите его в журнале визитов.`,
+    submitText: 'Закрыть визит',
+    successMessage: 'Визит закрыт.',
     danger: true,
     defaultReasonCode: 'incident-response',
   }),
   'session.force_unlock': (context = {}) => ({
     mode: 'reason-code + comment',
-    title: 'Force unlock session',
-    description: `Remove the lock from ${sessionName(context)} and record operator intervention.`,
-    submitText: 'Force unlock',
-    successMessage: 'Session unlocked.',
+    title: 'Снять блокировку с визита',
+    description: `Снимите блокировку с ${sessionName(context)} и зафиксируйте вмешательство оператора.`,
+    submitText: 'Снять блокировку',
+    successMessage: 'Блокировка снята.',
     defaultReasonCode: 'hardware-fault',
   }),
   'session.mark_lost_card': (context = {}) => ({
     mode: 'reason-code + comment',
-    title: 'Mark card as lost',
-    description: `Move ${sessionName(context)} into the lost-card flow so the card can be restored or reissued safely.`,
-    submitText: 'Mark lost',
-    successMessage: 'Card marked as lost.',
+    title: 'Пометить карту как потерянную',
+    description: `Переведите ${sessionName(context)} в сценарий потерянной карты, чтобы безопасно продолжить перевыпуск или восстановление.`,
+    submitText: 'Пометить как потерянную',
+    successMessage: 'Карта помечена как потерянная.',
     danger: true,
     defaultReasonCode: 'security',
   }),
   'session.reconcile': (context = {}) => ({
     mode: 'reason-code + comment',
-    title: 'Reconcile pour manually',
-    description: `Store a manual reconcile entry for ${sessionName(context)}.`,
-    submitText: 'Save reconcile',
-    successMessage: 'Pour reconciled manually.',
+    title: 'Ручная сверка налива',
+    description: `Зафиксируйте ручную сверку для ${sessionName(context)}.`,
+    submitText: 'Сохранить сверку',
+    successMessage: 'Ручная сверка сохранена.',
     defaultReasonCode: 'incident-response',
     fields: [
       {
         name: 'tapId',
-        label: 'Tap ID',
+        label: 'Кран',
         type: 'number',
         required: true,
         min: 1,
@@ -60,15 +60,15 @@ const OPERATOR_ACTION_DESCRIPTORS = {
       },
       {
         name: 'shortId',
-        label: 'Short ID',
+        label: 'Короткий ID',
         type: 'text',
         required: true,
-        placeholder: '6-8 chars',
+        placeholder: '6-8 символов',
         initialValue: '',
       },
       {
         name: 'volumeMl',
-        label: 'Volume, ml',
+        label: 'Объём, мл',
         type: 'number',
         required: true,
         min: 1,
@@ -77,7 +77,7 @@ const OPERATOR_ACTION_DESCRIPTORS = {
       },
       {
         name: 'amount',
-        label: 'Amount',
+        label: 'Сумма',
         type: 'text',
         required: true,
         placeholder: '175.00',
@@ -88,168 +88,168 @@ const OPERATOR_ACTION_DESCRIPTORS = {
     validate(values = {}) {
       const errors = {};
       if (!/^[A-Za-z0-9_-]{6,8}$/.test(String(values.shortId || '').trim())) {
-        errors.shortId = 'Use 6-8 letters or numbers.';
+        errors.shortId = 'Используйте 6-8 букв или цифр.';
       }
       const amount = Number(values.amount);
       if (!Number.isFinite(amount) || amount < 0) {
-        errors.amount = 'Enter a valid amount.';
+        errors.amount = 'Введите корректную сумму.';
       }
       return errors;
     },
   }),
   'tap.stop': (context = {}) => ({
     mode: 'reason-code + comment',
-    title: 'Stop pour and lock tap',
-    description: `Stop the active pour on ${tapName(context)} and move the tap to a locked state.`,
-    submitText: 'Stop pour',
-    successMessage: 'Tap status updated.',
+    title: 'Остановить налив и заблокировать кран',
+    description: `Остановите текущий налив на ${tapName(context)} и переведите кран в заблокированное состояние.`,
+    submitText: 'Остановить налив',
+    successMessage: 'Статус крана обновлён.',
     danger: true,
     defaultReasonCode: 'safety',
   }),
   'tap.lock': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Lock tap',
-    description: `Block ${tapName(context)} until the issue is resolved.`,
-    submitText: 'Lock tap',
-    successMessage: 'Tap status updated.',
+    title: 'Заблокировать кран',
+    description: `Заблокируйте ${tapName(context)} до устранения проблемы.`,
+    submitText: 'Заблокировать кран',
+    successMessage: 'Статус крана обновлён.',
   }),
   'tap.unlock': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Unlock tap',
-    description: `Return ${tapName(context)} to an active state.`,
-    submitText: 'Unlock tap',
-    successMessage: 'Tap status updated.',
+    title: 'Разблокировать кран',
+    description: `Верните ${tapName(context)} в рабочее состояние.`,
+    submitText: 'Разблокировать кран',
+    successMessage: 'Статус крана обновлён.',
   }),
   'tap.cleaning': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Move tap to cleaning',
-    description: `Switch ${tapName(context)} into cleaning mode.`,
-    submitText: 'Start cleaning',
-    successMessage: 'Tap status updated.',
+    title: 'Перевести кран в промывку',
+    description: `Переведите ${tapName(context)} в режим промывки.`,
+    submitText: 'Начать промывку',
+    successMessage: 'Статус крана обновлён.',
   }),
   'tap.mark_ready': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Return tap to ready',
-    description: `Return ${tapName(context)} to the ready state after service work.`,
-    submitText: 'Mark ready',
-    successMessage: 'Tap status updated.',
+    title: 'Вернуть кран в готовность',
+    description: `Верните ${tapName(context)} в статус «Готов» после обслуживания.`,
+    submitText: 'Вернуть в готовность',
+    successMessage: 'Статус крана обновлён.',
   }),
   'card.toggle_block': (context = {}) => ({
     mode: 'confirm-only',
-    title: context.isActive ? 'Block guest' : 'Unblock guest',
+    title: context.isActive ? 'Заблокировать гостя' : 'Разблокировать гостя',
     description: context.isActive
-      ? `Block ${guestName(context)} in the operator flow until the issue is reviewed.`
-      : `Restore ${guestName(context)} to active status.`,
-    submitText: context.isActive ? 'Block guest' : 'Unblock guest',
-    successMessage: context.isActive ? 'Guest blocked.' : 'Guest unblocked.',
+      ? `Ограничьте ${guestName(context)} в операторском потоке до завершения проверки.`
+      : `Верните ${guestName(context)} в активный статус.`,
+    submitText: context.isActive ? 'Заблокировать гостя' : 'Разблокировать гостя',
+    successMessage: context.isActive ? 'Гость заблокирован.' : 'Гость разблокирован.',
     danger: Boolean(context.isActive),
   }),
   'card.mark_lost': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Mark card as lost',
-    description: `Move ${guestName(context)} into the lost-card flow so the visit can be continued through reissue.`,
-    submitText: 'Mark lost',
-    successMessage: 'Card marked as lost.',
+    title: 'Пометить карту как потерянную',
+    description: `Переведите ${guestName(context)} в сценарий потерянной карты, чтобы безопасно продолжить визит через перевыпуск.`,
+    submitText: 'Пометить карту',
+    successMessage: 'Карта помечена как потерянная.',
     danger: true,
   }),
   'card.restore_lost': (context = {}) => ({
     mode: 'confirm-only',
-    title: 'Restore lost card',
-    description: `Remove the lost flag for ${guestName(context)} and return the card to the normal workflow.`,
-    submitText: 'Restore card',
-    successMessage: 'Lost mark removed.',
+    title: 'Снять отметку потери',
+    description: `Снимите отметку потери у ${guestName(context)} и верните карту в обычный рабочий сценарий.`,
+    submitText: 'Снять отметку',
+    successMessage: 'Отметка потери снята.',
   }),
   'incident.claim': (context = {}) => ({
     mode: 'incident-form',
-    title: 'Claim incident',
-    description: `Assign an owner and capture the first operator step for ${incidentName(context)}.`,
-    submitText: 'Save action',
-    successMessage: 'Incident action saved.',
+    title: 'Взять инцидент в работу',
+    description: `Назначьте ответственного и зафиксируйте первый шаг по ${incidentName(context)}.`,
+    submitText: 'Сохранить действие',
+    successMessage: 'Действие по инциденту сохранено.',
     fields: [
       {
         name: 'owner',
-        label: 'Owner',
+        label: 'Ответственный',
         type: 'text',
         required: true,
-        placeholder: 'Operator or shift lead',
+        placeholder: 'Оператор или старший смены',
         initialValue: context.owner || '',
       },
       {
         name: 'note',
-        label: 'First step',
+        label: 'Первый шаг',
         type: 'textarea',
         rows: 5,
-        placeholder: 'What did you already verify?',
+        placeholder: 'Что уже проверили?',
         initialValue: context.note || '',
       },
     ],
   }),
   'incident.note': (context = {}) => ({
     mode: 'incident-form',
-    title: 'Add incident note',
-    description: `Capture the latest operator observation for ${incidentName(context)}.`,
-    submitText: 'Save action',
-    successMessage: 'Incident action saved.',
+    title: 'Добавить заметку по инциденту',
+    description: `Зафиксируйте последнее наблюдение оператора по ${incidentName(context)}.`,
+    submitText: 'Сохранить действие',
+    successMessage: 'Действие по инциденту сохранено.',
     fields: [
       {
         name: 'note',
-        label: 'Operator note',
+        label: 'Заметка оператора',
         type: 'textarea',
         rows: 5,
         required: true,
-        placeholder: 'What changed and what should the next operator know?',
+        placeholder: 'Что изменилось и что должен знать следующий сотрудник?',
         initialValue: context.note || '',
       },
     ],
   }),
   'incident.escalate': (context = {}) => ({
     mode: 'incident-form',
-    title: 'Escalate incident',
-    description: `Explain what was checked and why ${incidentName(context)} needs escalation.`,
-    submitText: 'Save action',
-    successMessage: 'Incident action saved.',
+    title: 'Эскалировать инцидент',
+    description: `Опишите, что уже проверили и почему ${incidentName(context)} нужно передать дальше.`,
+    submitText: 'Сохранить действие',
+    successMessage: 'Действие по инциденту сохранено.',
     fields: [
       {
         name: 'note',
-        label: 'What was checked',
+        label: 'Что уже проверили',
         type: 'textarea',
         rows: 4,
-        placeholder: 'Checks already completed on shift.',
+        placeholder: 'Какие проверки уже выполнены на смене.',
         initialValue: context.note || '',
       },
       {
         name: 'escalationReason',
-        label: 'Escalation reason',
+        label: 'Причина эскалации',
         type: 'textarea',
         rows: 4,
         required: true,
-        placeholder: 'Why is the next level needed?',
+        placeholder: 'Почему нужен следующий уровень разбора?',
         initialValue: context.escalationReason || '',
       },
     ],
   }),
   'incident.close': (context = {}) => ({
     mode: 'incident-form',
-    title: 'Close incident',
-    description: `Record the final outcome for ${incidentName(context)}.`,
-    submitText: 'Save action',
-    successMessage: 'Incident action saved.',
+    title: 'Закрыть инцидент',
+    description: `Зафиксируйте итог решения по ${incidentName(context)}.`,
+    submitText: 'Сохранить действие',
+    successMessage: 'Действие по инциденту сохранено.',
     fields: [
       {
         name: 'note',
-        label: 'What was done',
+        label: 'Что сделали',
         type: 'textarea',
         rows: 4,
-        placeholder: 'Steps completed before closing.',
+        placeholder: 'Какие шаги выполнили перед закрытием.',
         initialValue: context.note || '',
       },
       {
         name: 'resolutionSummary',
-        label: 'Resolution summary',
+        label: 'Итог решения',
         type: 'textarea',
         rows: 4,
         required: true,
-        placeholder: 'Why can the incident be considered closed?',
+        placeholder: 'Почему инцидент можно считать закрытым?',
         initialValue: context.resolutionSummary || '',
       },
     ],

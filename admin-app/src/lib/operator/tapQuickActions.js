@@ -33,11 +33,11 @@ export function buildTapQuickActions({
   canControl = false,
   canDisplayOverride = false,
 }) {
-  const tapName = tap?.display_name || 'tap';
+  const tapName = tap?.display_name || 'кран';
   const isLocked = tap?.status === 'locked';
   const stopGuard = getCriticalActionGuard('stop_pour', permissions, {
     extraAllowed: canControl && Boolean(session),
-    extraDeniedReason: session ? '' : 'No active visit is available to stop on this tap.',
+    extraDeniedReason: session ? '' : 'На этом кране нет активного визита, который можно остановить.',
   });
   const lockGuard = getCriticalActionGuard('block_unblock_tap', permissions, {
     extraAllowed: canControl,
@@ -58,82 +58,82 @@ export function buildTapQuickActions({
   return orderQuickActionDescriptors([
     withMeta(createQuickActionDescriptor({
       id: 'open',
-      title: 'Open',
-      description: 'Open tap details without losing the workspace overview.',
+      title: 'Открыть',
+      description: 'Открыть детали крана, не теряя общий обзор рабочей зоны.',
       tone: 'primary',
     }), {
       event: 'open-detail',
-      ariaLabel: `Open details for ${tapName}`,
+      ariaLabel: `Открыть детали для ${tapName}`,
       visible: true,
       guarded: false,
     }),
     withMeta(createQuickActionDescriptor({
       id: 'stop',
-      title: 'Stop',
+      title: 'Остановить',
       description: stopState.disabled
-        ? (stopState.reason || 'Stopping the pour is currently unavailable.')
-        : 'Stop the active pour on the selected tap.',
+        ? (stopState.reason || 'Остановить налив сейчас нельзя.')
+        : 'Остановить текущий налив на выбранном кране.',
       disabled: stopState.disabled,
       tone: 'danger',
     }), {
       event: 'stop-pour',
-      ariaLabel: `Stop the active pour on ${tapName}`,
+      ariaLabel: `Остановить текущий налив на ${tapName}`,
       visible: stopGuard.visible,
       guarded: true,
       reason: stopState.reason || stopGuard.reason,
     }),
     withMeta(createQuickActionDescriptor({
       id: 'toggle-lock',
-      title: isLocked ? 'Unlock' : 'Lock',
+      title: isLocked ? 'Разблокировать' : 'Заблокировать',
       description: blockState.disabled
-        ? (blockState.reason || 'Tap lock control is currently unavailable.')
-        : (isLocked ? 'Return the tap to an active state.' : 'Block the tap until the issue is resolved.'),
+        ? (blockState.reason || 'Управление блокировкой сейчас недоступно.')
+        : (isLocked ? 'Вернуть кран в рабочее состояние.' : 'Заблокировать кран до устранения проблемы.'),
       disabled: blockState.disabled,
     }), {
       event: 'toggle-lock',
-      ariaLabel: `${isLocked ? 'Unlock' : 'Lock'} ${tapName}`,
+      ariaLabel: `${isLocked ? 'Разблокировать' : 'Заблокировать'} ${tapName}`,
       visible: lockGuard.visible,
       guarded: true,
       reason: blockState.reason || lockGuard.reason,
     }),
     withMeta(createQuickActionDescriptor({
       id: 'screen',
-      title: 'Screen',
+      title: 'Экран',
       description: screenState.disabled
-        ? (screenState.reason || 'Tap screen settings are currently unavailable.')
-        : 'Open the guest-facing tap screen settings.',
+        ? (screenState.reason || 'Настройки экрана крана сейчас недоступны.')
+        : 'Открыть настройки гостевого экрана крана.',
       disabled: screenState.disabled,
     }), {
       event: 'display-settings',
-      ariaLabel: `Open the screen settings for ${tapName}`,
+      ariaLabel: `Открыть настройки экрана для ${tapName}`,
       visible: screenGuard.visible,
       guarded: true,
       reason: screenState.reason || screenGuard.reason,
     }),
     withMeta(createQuickActionDescriptor({
       id: 'keg',
-      title: 'Keg',
+      title: 'Кега',
       description: kegState.disabled
-        ? (kegState.reason || 'Keg actions are currently unavailable.')
-        : 'Open keg and beverage actions for this tap.',
+        ? (kegState.reason || 'Действия с кегой сейчас недоступны.')
+        : 'Открыть действия по кеге и напитку для этого крана.',
       disabled: kegState.disabled,
     }), {
       event: 'open-detail',
-      ariaLabel: `Open keg actions for ${tapName}`,
+      ariaLabel: `Открыть действия по кеге для ${tapName}`,
       visible: kegGuard.visible,
       guarded: true,
       reason: kegState.reason || kegGuard.reason,
     }),
     withMeta(createQuickActionDescriptor({
       id: 'history',
-      title: 'History',
+      title: 'История',
       description: historyState.disabled
-        ? (historyState.reason || 'Tap history is currently unavailable.')
-        : 'Open the related visit and recent events for this tap.',
+        ? (historyState.reason || 'История по крану сейчас недоступна.')
+        : 'Открыть связанный визит и недавние события по этому крану.',
       disabled: historyState.disabled,
     }), {
       event: 'open-history',
-      ariaLabel: `Open visit history for ${tapName}`,
+      ariaLabel: `Открыть историю визита для ${tapName}`,
       visible: Boolean(tap?.tap_id),
       guarded: historyState.disabled,
       reason: historyState.reason,

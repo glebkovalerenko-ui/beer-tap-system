@@ -9,7 +9,7 @@ test('getOperatorActionDescriptor adapts guest block copy to active state', () =
     isActive: true,
   });
 
-  assert.match(descriptor.title, /block guest/i);
+  assert.match(descriptor.title, /Заблокировать гостя/);
   assert.match(descriptor.description, /Alex Stone/);
   assert.equal(descriptor.danger, true);
 });
@@ -25,7 +25,7 @@ test('getOperatorActionDescriptor exposes reconcile fields and validation', () =
     shortId: 'bad',
     amount: '-1',
   }), {
-    shortId: 'Use 6-8 letters or numbers.',
-    amount: 'Enter a valid amount.',
+    shortId: 'Используйте 6-8 букв или цифр.',
+    amount: 'Введите корректную сумму.',
   });
 });

@@ -22,11 +22,11 @@
   }
 
   function nfcStateLabel(status) {
-    if (status === 'ok') return 'Ready';
-    if (status === 'recovering') return 'Recovering';
-    if (status === 'disconnected') return 'Disconnected';
-    if (status === 'scanning' || status === 'initializing') return 'Connecting';
-    return 'Error';
+    if (status === 'ok') return 'Готов';
+    if (status === 'recovering') return 'Восстановление';
+    if (status === 'disconnected') return 'Отключён';
+    if (status === 'scanning' || status === 'initializing') return 'Подключение';
+    return 'Ошибка';
   }
 
   function syncIndicator(summary = {}) {
@@ -61,32 +61,32 @@
   function connectionIndicator(connection = {}) {
     if (connection.mode === 'offline') {
       return {
-        text: 'Backend: Offline',
+        text: 'Связь с backend: нет',
         tone: 'error',
-      title: connection.reason || 'Backend connection is lost and risky actions are blocked.',
+      title: connection.reason || 'Связь с backend потеряна, рискованные действия заблокированы.',
       };
     }
 
     if (connection.mode !== 'online') {
       return {
-        text: `Backend: ${connection.transport === 'websocket' ? 'Degraded' : 'Read-only'}`,
+        text: `Данные: ${connection.transport === 'websocket' ? 'устарели' : 'только просмотр'}`,
         tone: 'warn',
-        title: connection.reason || 'Backend is currently in degraded mode.',
+        title: connection.reason || 'Backend сейчас работает в деградированном режиме.',
       };
     }
 
     if (connection.transport !== 'websocket') {
       return {
-        text: connection.transport === 'short_polling' ? 'Realtime: Polling' : 'Realtime: Reduced',
+        text: connection.transport === 'short_polling' ? 'Обновление: повторная синхронизация' : 'Обновление: редкая синхронизация',
         tone: 'warn',
-        title: connection.reason || 'Realtime временно переведён на polling.',
+        title: connection.reason || 'Обновление данных временно переведено в polling-режим.',
       };
     }
 
     return {
-      text: 'Realtime: Live',
+      text: 'Обновление: онлайн',
       tone: 'ok',
-      title: 'Data is updating over websocket.',
+      title: 'Данные обновляются через websocket.',
     };
   }
 
@@ -108,12 +108,12 @@
 
 <div class="pill-groups">
   {#if showOperational}
-    <div class="pills secondary" aria-label="Operational workstation statuses">
+    <div class="pills secondary" aria-label="Статусы рабочего места оператора">
       <span class="pill secondary-pill" class:ok={$shiftStore.isOpen} class:warn={!$shiftStore.isOpen}>
-        Shift: {$shiftStore.isOpen ? 'Open' : 'Closed'}
+        Смена: {$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}
       </span>
       <span class="pill secondary-pill" class:ok={online} class:error={!online}>
-        Network: {online ? 'Online' : 'Offline'}
+        Сеть: {online ? 'На связи' : 'Нет связи'}
       </span>
       <span class="pill secondary-pill" class:ok={connectionPill.tone === 'ok'} class:warn={connectionPill.tone === 'warn'} class:error={connectionPill.tone === 'error'} title={connectionPill.title}>
         {connectionPill.text}
@@ -123,9 +123,9 @@
         class:ok={$nfcReaderStore.status === 'ok'}
         class:warn={$nfcReaderStore.status === 'recovering' || $nfcReaderStore.status === 'disconnected' || $nfcReaderStore.status === 'scanning' || $nfcReaderStore.status === 'initializing'}
         class:error={$nfcReaderStore.status === 'error'}
-        title={$nfcReaderStore.message || $nfcReaderStore.error || 'NFC reader status'}
+        title={$nfcReaderStore.message || $nfcReaderStore.error || 'Статус NFC-считывателя'}
       >
-        NFC: {nfcLabel}
+        Считыватель: {nfcLabel}
       </span>
       <span class="pill secondary-pill" class:ok={syncPill.tone === 'ok'} class:warn={syncPill.tone === 'warn'} title={syncPill.title}>
         {syncPill.text}
@@ -134,7 +134,7 @@
   {/if}
 
   {#if showHealth}
-    <div class="pills primary" aria-label="Key subsystem statuses">
+    <div class="pills primary" aria-label="Ключевые статусы подсистем">
       {#each primaryHealthPills as item (item.key)}
         <span class="pill" class:ok={healthTone(item.state) === 'ok'} class:warn={warningStates.includes(item.state)} class:error={errorStates.includes(item.state)} title={item.detail}>
           {formatHealthPill(item)}

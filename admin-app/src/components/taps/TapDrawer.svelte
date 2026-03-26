@@ -34,7 +34,7 @@
     { label: 'Клапан', value: valveStatusLabel(tap, operations, currentPour), note: null },
     { label: 'Поток', value: currentPour.isActive ? 'Идёт налив' : 'Поток не зафиксирован', note: currentPour.volumeMl ? formatVolumeRu(currentPour.volumeMl) : null },
     { label: TAP_COPY.screen, value: operations.displayStatus?.label || 'Нет данных', note: displaySummary },
-    { label: 'Последний heartbeat', value: operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных', note: operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал heartbeat' },
+    { label: 'Последний сигнал', value: operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных', note: operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал свежий сигнал' },
     { label: 'Синхронизация', value: operations.syncState?.label || 'Нет данных', note: tap?.status || null },
     { label: TAP_COPY.activeSessionCard, value: activeVisitCardLabel(session), note: session?.guestName || null },
   ];

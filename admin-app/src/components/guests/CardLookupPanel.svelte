@@ -134,7 +134,7 @@
           {#if primaryAction}
             <div class="primary-cta-box compact">
               <span class="eyebrow">Быстрое действие</span>
-              <button class:danger-btn={primaryAction.tone === 'danger'} class="primary-cta" title={primaryAction.disabled ? (primaryAction.reason || 'Action unavailable') : ''} on:click={() => dispatch('scenario-action', { actionId: primaryAction.id })} disabled={primaryAction.disabled || loading}>
+              <button class:danger-btn={primaryAction.tone === 'danger'} class="primary-cta" title={primaryAction.disabled ? (primaryAction.reason || 'Действие сейчас недоступно') : ''} on:click={() => dispatch('scenario-action', { actionId: primaryAction.id })} disabled={primaryAction.disabled || loading}>
                 {primaryAction.title}
               </button>
             </div>
@@ -190,7 +190,7 @@
               class:selected={selectedActionId === action.id}
               class:warning={action.tone === 'danger'}
               class="scenario-chip"
-              title={action.disabled ? (action.reason || 'Action unavailable') : ''}
+              title={action.disabled ? (action.reason || 'Действие сейчас недоступно') : ''}
               on:click={() => dispatch('scenario-action', { actionId: action.id })}
               disabled={action.disabled || loading}
             >
@@ -203,12 +203,12 @@
 
       <div class="lookup-actions">
         {#if allowRestoreLost && result.is_lost}
-          <button class="danger-btn" title={restoreLostDisabled ? (restoreLostReason || 'Action unavailable') : ''} on:click={() => dispatch('restore-lost', { uid: result.card_uid || result.card?.uid })} disabled={loading || restoreLostDisabled}>
-            Снять отметку lost
+          <button class="danger-btn" title={restoreLostDisabled ? (restoreLostReason || 'Действие сейчас недоступно') : ''} on:click={() => dispatch('restore-lost', { uid: result.card_uid || result.card?.uid })} disabled={loading || restoreLostDisabled}>
+            Снять отметку потери
           </button>
         {/if}
         {#if allowOpenVisit && hasVisitTarget}
-          <button title={openVisitDisabled ? (openVisitReason || 'Action unavailable') : ''} on:click={() => dispatch('open-visit', { visitId: result.active_visit?.visit_id || result.lost_card?.visit_id })} disabled={openVisitDisabled}>{openVisitLabel}</button>
+          <button title={openVisitDisabled ? (openVisitReason || 'Действие сейчас недоступно') : ''} on:click={() => dispatch('open-visit', { visitId: result.active_visit?.visit_id || result.lost_card?.visit_id })} disabled={openVisitDisabled}>{openVisitLabel}</button>
         {/if}
         {#if allowOpenGuest && result.guest?.guest_id}
           <button on:click={() => dispatch('open-guest', { guestId: result.guest.guest_id })}>{openGuestLabel}</button>

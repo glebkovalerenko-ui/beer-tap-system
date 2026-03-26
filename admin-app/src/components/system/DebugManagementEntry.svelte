@@ -16,23 +16,23 @@
 </script>
 
 {#if canRenderEntry}
-  <section class="debug-entry ui-card" aria-label="Скрытая debug / management точка входа">
+  <section class="debug-entry ui-card" aria-label="Скрытая сервисная точка входа">
     <button
       class="debug-toggle"
       type="button"
       aria-expanded={isOpen}
       on:click={() => (isOpen = !isOpen)}
     >
-      {isOpen ? 'Скрыть management' : 'Debug / management'}
+      {isOpen ? 'Скрыть сервисный вход' : 'Показать сервисный вход'}
     </button>
 
     {#if isOpen}
       <div class="debug-panel">
         <p class="debug-copy">
           {#if canAccessDebugTools}
-            Сервисные и demo-инструменты вынесены из operator top bar и открываются только по скрытому debug flag.
+            Сервисные и демонстрационные инструменты вынесены из верхней панели оператора и открываются только по отдельному скрытому доступу.
           {:else}
-            В этой сборке role switch оставлен доступным отдельно от demo/server settings, чтобы не потерять инженерный доступ.
+            В этой сборке переключение роли оставлено отдельно от настроек подключения, чтобы не потерять инженерный доступ.
           {/if}
         </p>
 

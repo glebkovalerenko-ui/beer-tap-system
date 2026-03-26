@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   TAP_OPERATOR_STATES,
   deriveOperatorState,
+  labelFromState,
 } from './tapStateModel.js';
 
 test('deriveOperatorState returns no_keg when tap has no keg', () => {
@@ -39,4 +40,10 @@ test('deriveOperatorState returns unavailable for locked tap', () => {
 test('deriveOperatorState returns ready for active tap with healthy context', () => {
   const result = deriveOperatorState({ tap_id: 5, status: 'active', keg_id: 50 }, null, []);
   assert.equal(result.state, TAP_OPERATOR_STATES.READY);
+});
+
+test('labelFromState exposes canonical operator-facing tap labels', () => {
+  assert.equal(labelFromState(TAP_OPERATOR_STATES.READY), 'Готов');
+  assert.equal(labelFromState(TAP_OPERATOR_STATES.POURING), 'Льёт');
+  assert.equal(labelFromState(TAP_OPERATOR_STATES.NEEDS_HELP), 'Нужна помощь');
 });

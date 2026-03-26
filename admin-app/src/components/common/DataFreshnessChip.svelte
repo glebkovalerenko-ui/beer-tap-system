@@ -21,19 +21,19 @@
       ? 'warning'
       : 'neutral';
   $: modeLabel = mode === 'offline'
-    ? 'offline'
+    ? 'не в сети'
     : mode === 'backend_degraded'
-      ? 'degraded'
+      ? 'данные устарели'
       : mode === 'controller_only'
-        ? 'controller only'
+        ? 'локальный контур'
         : transport === 'websocket'
-          ? 'live'
+          ? 'онлайн'
           : transport === 'short_polling'
-            ? 'polling'
+            ? 'повторная синхронизация'
             : transport === 'reduced_polling'
-              ? 'reduced'
-              : 'snapshot';
-  $: title = reason || `${label}: ${ageLabel(lastFetchedAt)}`;
+              ? 'редкая синхронизация'
+              : 'снимок';
+  $: title = reason || `${label}: обновлено ${ageLabel(lastFetchedAt)}`;
 </script>
 
 <span class="freshness-chip" data-tone={tone} title={title}>

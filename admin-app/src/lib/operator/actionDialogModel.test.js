@@ -17,12 +17,12 @@ test('buildOperatorActionRequest adds reason code fields for tap stop actions', 
   });
 
   assert.equal(request.mode, 'reason-code + comment');
-  assert.match(request.title, /stop pour/i);
+  assert.match(request.title, /остановить налив/i);
   assert.match(request.description, /Tap 7/);
   assert.deepEqual(request.fields.map((field) => field.name), ['reasonCode', 'comment']);
   assert.deepEqual(request.validate({ reasonCode: 'safety', comment: '' }), {});
   assert.deepEqual(request.validate({ reasonCode: 'other', comment: '' }), {
-    comment: 'Comment is required for "Other".',
+    comment: 'Для варианта «Другое» нужен комментарий.',
   });
 });
 

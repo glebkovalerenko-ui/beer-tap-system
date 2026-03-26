@@ -32,34 +32,34 @@
 {#if hasWarning}
   <section class="banner" class:error={!online || nfcStatus === 'error' || $operatorConnectionStore.mode === 'offline'}>
     {#if demoMode}
-      <strong>Demo mode:</strong> part of the data may be test data for a stable presentation.
+      <strong>Демо-режим:</strong> часть данных может быть тестовой для стабильного показа.
     {/if}
 
     {#if !online}
-      <span>Network is unavailable. Use only actions that do not require online confirmation.</span>
+      <span>Сеть недоступна. Выполняйте только те действия, которым не нужно онлайн-подтверждение.</span>
     {/if}
 
     {#if $operatorConnectionStore.mode !== 'online'}
       <span>
-        Backend: {$operatorConnectionStore.mode === 'offline' ? 'offline' : 'degraded'}.
-        {$operatorConnectionStore.reason || $systemStore.reason || 'Опасные действия временно переведены в read-only.'}
+        Backend {$operatorConnectionStore.mode === 'offline' ? 'недоступен' : 'работает нестабильно'}.
+        {$operatorConnectionStore.reason || $systemStore.reason || 'Опасные действия временно доступны только для просмотра.'}
       </span>
     {/if}
 
     {#if $operatorConnectionStore.transport !== 'websocket' && $operatorConnectionStore.mode === 'online'}
-      <span>Realtime переключён на {$operatorConnectionStore.transport === 'short_polling' ? 'short polling' : 'reduced polling'} до восстановления websocket.</span>
+      <span>Обновление данных переключено на {$operatorConnectionStore.transport === 'short_polling' ? 'повторную синхронизацию' : 'редкую синхронизацию'} до восстановления websocket.</span>
     {/if}
 
     {#if nfcStatus === 'disconnected'}
-      <span>NFC reader is disconnected. Reconnect the device and the app will pick it up automatically.</span>
+      <span>NFC-считыватель отключён. Подключите устройство, и приложение подхватит его автоматически.</span>
     {/if}
 
     {#if nfcStatus === 'recovering'}
-      <span>NFC is recovering after a disconnect. App restart is not required.</span>
+      <span>NFC-считыватель восстанавливает связь после отключения. Перезапуск приложения не нужен.</span>
     {/if}
 
     {#if nfcStatus === 'error'}
-      <span>NFC is unavailable because of a runtime error. Check the Admin App logs and PC/SC state.</span>
+      <span>NFC-считыватель недоступен из-за ошибки среды. Проверьте журнал Admin App и состояние PC/SC.</span>
     {/if}
   </section>
 {/if}

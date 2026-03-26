@@ -14,7 +14,7 @@ function buildReasonFields(descriptor = {}) {
   return [
     {
       name: 'reasonCode',
-      label: 'Reason code',
+      label: 'Причина',
       type: 'select',
       required: true,
       options: getOperatorReasonCodeOptions().map((option) => ({
@@ -26,10 +26,10 @@ function buildReasonFields(descriptor = {}) {
     },
     {
       name: 'comment',
-      label: 'Comment',
+      label: 'Комментарий',
       type: 'textarea',
       rows: 4,
-      placeholder: 'Operator context for the audit trail',
+      placeholder: 'Коротко зафиксируйте контекст для журнала действий',
       initialValue: '',
     },
   ];
@@ -54,8 +54,8 @@ export function buildOperatorActionRequest({
     normalizedPolicy: blockState.policy,
     title: descriptor.title,
     description: descriptor.description,
-    submitText: descriptor.submitText || 'Confirm',
-    cancelText: descriptor.cancelText || 'Cancel',
+    submitText: descriptor.submitText || 'Подтвердить',
+    cancelText: descriptor.cancelText || 'Отмена',
     danger: Boolean(descriptor.danger),
     successMessage: descriptor.successMessage || '',
     fields,
@@ -69,17 +69,17 @@ export function buildOperatorActionRequest({
         const rawValue = values[field.name];
         const normalizedValue = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
         if (field.required && `${normalizedValue ?? ''}` === '') {
-          errors[field.name] = 'This field is required.';
+          errors[field.name] = 'Поле обязательно.';
           continue;
         }
         if (field.type === 'number' && `${normalizedValue ?? ''}` !== '') {
           const parsed = Number(normalizedValue);
           if (!Number.isFinite(parsed)) {
-            errors[field.name] = 'Enter a valid number.';
+            errors[field.name] = 'Введите корректное число.';
             continue;
           }
           if (typeof field.min === 'number' && parsed < field.min) {
-            errors[field.name] = `Value must be at least ${field.min}.`;
+            errors[field.name] = `Значение должно быть не меньше ${field.min}.`;
           }
         }
       }
@@ -87,10 +87,10 @@ export function buildOperatorActionRequest({
       if (blockState.policy.reasonCodeRequired) {
         const reasonCode = trimString(values.reasonCode);
         if (!reasonCode) {
-          errors.reasonCode = 'Select a reason code.';
+          errors.reasonCode = 'Выберите причину.';
         }
         if (isOperatorCommentRequired(reasonCode) && !trimString(values.comment)) {
-          errors.comment = 'Comment is required for "Other".';
+          errors.comment = 'Для варианта «Другое» нужен комментарий.';
         }
       }
 

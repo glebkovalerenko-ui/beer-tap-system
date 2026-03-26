@@ -126,7 +126,7 @@ export const ROUTE_COPY = Object.freeze({
 
 export const SHELL_NAV_COPY = Object.freeze({
   primaryTitle: 'Основные разделы',
-  primaryIntroTitle: 'Operator flow',
+  primaryIntroTitle: 'Рабочий контур',
   primaryIntro: 'Навигация построена вокруг реальных рабочих ситуаций: гость, визит, кран, налив и требующие реакции проблемы.',
   supportTitle: 'Настройки и справка',
   supportIntro: 'Тихий блок для редких настроек, регламентов и вспомогательной информации.',

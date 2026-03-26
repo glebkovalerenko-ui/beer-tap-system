@@ -1,12 +1,12 @@
 const ROLE_LABELS = {
   operator: 'Оператор',
   shift_lead: 'Старший смены',
-  engineer_owner: 'Инженер / владелец',
+  engineer_owner: 'Инженер',
 };
 
 export const CRITICAL_ACTION_MATRIX = {
   stop_pour: {
-    label: 'Stop pour',
+    label: 'Остановить налив',
     permission: 'taps_control',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -15,7 +15,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Остановить налив может только старший смены или инженер.',
   },
   block_unblock_tap: {
-    label: 'Block/unblock tap',
+    label: 'Заблокировать или разблокировать кран',
     permission: 'taps_control',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -24,7 +24,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Блокировка и разблокировка крана доступны только ролям с taps_control.',
   },
   close_incident: {
-    label: 'Close incident',
+    label: 'Закрыть инцидент',
     permission: 'incidents_manage',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -33,7 +33,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Закрытие инцидента доступно только роли с incidents_manage.',
   },
   escalate_incident: {
-    label: 'Escalate incident',
+    label: 'Эскалировать инцидент',
     permission: 'incidents_manage',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -42,7 +42,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Эскалация инцидента доступна только роли с incidents_manage.',
   },
   mark_lost_reissue: {
-    label: 'Mark lost / reissue',
+    label: 'Потерянная карта / перевыпуск',
     permission: 'cards_reissue_manage',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -51,7 +51,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Lost/перевыпуск доступен только ролям с cards_reissue_manage.',
   },
   block_unblock_card: {
-    label: 'Block/unblock card',
+    label: 'Заблокировать или разблокировать карту',
     permission: 'cards_block_manage',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: false,
@@ -60,7 +60,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Блокировка карты доступна только ролям с cards_block_manage.',
   },
   keg_connect_disconnect: {
-    label: 'Keg connect/disconnect',
+    label: 'Подключить или отключить кегу',
     permission: 'taps_control',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -69,7 +69,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Подключать/отключать кеги могут только роли с taps_control.',
   },
   display_override: {
-    label: 'Display override',
+    label: 'Override экрана крана',
     permission: 'display_override',
     roles: ['engineer_owner'],
     requiresTwoStep: false,
@@ -78,7 +78,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Управление guest display доступно только инженеру/владельцу.',
   },
   maintenance_toggle: {
-    label: 'Maintenance state toggles',
+    label: 'Сервисный режим крана',
     permission: 'maintenance_actions',
     roles: ['shift_lead', 'engineer_owner'],
     requiresTwoStep: true,
@@ -87,7 +87,7 @@ export const CRITICAL_ACTION_MATRIX = {
     deniedReason: 'Сервисные переключения доступны только сервисным ролям.',
   },
   system_diagnostics_action: {
-    label: 'System diagnostics actions',
+    label: 'Инженерная диагностика',
     permission: 'system_engineering_actions',
     roles: ['engineer_owner'],
     requiresTwoStep: true,

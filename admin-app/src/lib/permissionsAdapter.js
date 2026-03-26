@@ -1,7 +1,7 @@
 const ROLE_LABELS = Object.freeze({
   operator: 'Оператор',
   shift_lead: 'Старший смены',
-  engineer_owner: 'Инженер / владелец',
+  engineer_owner: 'Инженер',
 });
 
 const FRONT_PERMISSION_KEYS = Object.freeze([

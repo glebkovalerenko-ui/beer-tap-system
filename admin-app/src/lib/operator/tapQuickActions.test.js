@@ -33,7 +33,7 @@ test('buildTapQuickActions explains why stop is unavailable without an active vi
   });
 
   assert.deepEqual(actions.map((action) => action.id), ['open', 'stop', 'toggle-lock', 'keg', 'history']);
-  assert.match(actions.find((action) => action.id === 'stop')?.reason || '', /no active visit/i);
+  assert.match(actions.find((action) => action.id === 'stop')?.reason || '', /нет активного визита/i);
   assert.equal(actions.find((action) => action.id === 'toggle-lock')?.disabled, false);
 });
 

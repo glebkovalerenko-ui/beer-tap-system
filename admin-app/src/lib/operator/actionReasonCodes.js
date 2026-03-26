@@ -1,28 +1,28 @@
 export const OPERATOR_REASON_CODE_OPTIONS = Object.freeze([
   {
     value: 'safety',
-    label: 'Safety',
-    description: 'Use when the action protects guests, staff, or equipment.',
+    label: 'Безопасность',
+    description: 'Используйте, когда действие защищает гостя, команду или оборудование.',
   },
   {
     value: 'incident-response',
-    label: 'Incident response',
-    description: 'Use when the action is part of incident handling on shift.',
+    label: 'Разбор инцидента',
+    description: 'Используйте, когда действие является частью разбора инцидента на смене.',
   },
   {
     value: 'hardware-fault',
-    label: 'Hardware fault',
-    description: 'Use when hardware or telemetry is degraded or inconsistent.',
+    label: 'Сбой оборудования',
+    description: 'Используйте, когда оборудование или телеметрия работают нестабильно.',
   },
   {
     value: 'security',
-    label: 'Security',
-    description: 'Use when the action is driven by fraud, card safety, or access concerns.',
+    label: 'Контроль доступа',
+    description: 'Используйте, когда действие связано с мошенничеством, безопасностью карты или доступом.',
   },
   {
     value: 'other',
-    label: 'Other',
-    description: 'Use only when none of the standard reason codes fit.',
+    label: 'Другое',
+    description: 'Используйте только если стандартные причины не подходят.',
   },
 ]);
 

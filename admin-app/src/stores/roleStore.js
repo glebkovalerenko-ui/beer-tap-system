@@ -32,7 +32,7 @@ const PERMISSIONS = {
 const ROLES = Object.freeze({
   operator: { label: 'Оператор' },
   shift_lead: { label: 'Старший смены' },
-  engineer_owner: { label: 'Инженер / владелец' },
+  engineer_owner: { label: 'Инженер' },
 });
 
 const EMPTY_ROLE_STATE = mapBackendClaimsToRoleState({ role: 'operator', permissions: [] });
