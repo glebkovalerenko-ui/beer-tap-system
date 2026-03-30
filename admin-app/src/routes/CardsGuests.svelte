@@ -182,23 +182,7 @@ async function handleRestoreLost(event) {
   }
 
   async function handleOpenNewVisit(event) {
-    if (!ensureWritable()) {
-      return;
-    }
-    if (!canOpenVisit) {
-      uiStore.notifyWarning('Открытие нового визита недоступно для текущей роли.');
-      return;
-    }
-    try {
-      const opened = await visitStore.openVisit({ guestId: event.detail.guestId });
-      sessionStorage.setItem('visits.lookupVisitId', opened.visit_id);
-      await visitStore.fetchActiveVisits();
-      cardsGuestsWorkflowStore.setPendingScenario('open-visit');
-      uiStore.notifySuccess('Открыт новый визит');
-      resolveVisitAndNavigate();
-    } catch (error) {
-      lookupError = normalizeError(error);
-    }
+    uiStore.notifyWarning('Открытие нового визита доступно только в flow выдачи карты на экране Sessions.');
   }
 
   function handleOpenTopUpModal() {
@@ -280,7 +264,7 @@ async function handleMarkLost() {
         reason: submission.values.reasonCode || 'operator_marked_lost',
         comment: submission.values.comment || null,
       });
-      const uid = selectedLookup?.card_uid || selectedGuest?.cards?.[0]?.card_uid;
+      const uid = selectedLookup?.card_uid;
       if (uid) cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(uid));
       await visitStore.fetchActiveVisits();
       cardsGuestsWorkflowStore.setPendingScenario('reissue');
@@ -331,23 +315,22 @@ async function handleMarkLost() {
     reissueError = '';
     cardsGuestsWorkflowStore.setReissueStatus('');
     try {
-      const currentUid = selectedLookup?.card_uid || selectedLookup?.card?.uid || selectedGuest?.cards?.[0]?.card_uid || '';
-      if (selectedLookup?.is_lost && currentUid) {
-        await lostCardStore.restoreLostCard(currentUid);
-      }
-      await guestStore.bindCardToGuest(selectedGuest.guest_id, nextUid);
       const targetVisitId = getReissueTargetVisitId({ selectedVisit, selectedLookup });
-      if (targetVisitId) {
-        await visitStore.assignCardToVisit({ visitId: targetVisitId, cardUid: nextUid });
+      if (!targetVisitId) {
+        throw new Error('Перевыпуск доступен только для активного blocked-lost визита.');
       }
+      await visitStore.reissueCard({
+        visitId: targetVisitId,
+        cardUid: nextUid,
+        reason: 'lost_card_reissue',
+        comment: null,
+      });
       await Promise.allSettled([guestStore.fetchGuests(), visitStore.fetchActiveVisits()]);
       cardsGuestsWorkflowStore.setSelectedLookup(await lostCardStore.resolveCard(nextUid));
       cardsGuestsWorkflowStore.setSelectedGuestId(selectedGuest.guest_id);
-      cardsGuestsWorkflowStore.setPendingScenario(targetVisitId ? 'open-visit' : 'check-card');
+      cardsGuestsWorkflowStore.setPendingScenario('open-visit');
       reissueUidInput = '';
-      cardsGuestsWorkflowStore.setReissueStatus(targetVisitId
-        ? 'Новая карта привязана, активная сессия переведена на неё. Можно открыть сессию дальше.'
-        : 'Новая карта привязана к гостю. Активного визита не было — контекст обновлён на новой карте.');
+      cardsGuestsWorkflowStore.setReissueStatus('Новая карта назначена этому активному визиту. Старый lost token остаётся в inventory state lost.');
       uiStore.notifySuccess('Перевыпуск карты завершён');
     } catch (error) {
       reissueError = normalizeError(error);
@@ -434,7 +417,7 @@ async function handleMarkLost() {
       openVisitDisabled={Boolean(actionGuards.openVisit?.disabled)}
       openVisitReason={actionGuards.openVisit?.reason || ''}
       allowOpenGuest={Boolean(selectedGuest)}
-      allowOpenNewVisit={canOpenVisit}
+      allowOpenNewVisit={false}
       openVisitLabel="Открыть активную сессию"
       openGuestLabel="Открыть контекст гостя"
       openNewVisitLabel="Открыть новый визит"
@@ -530,8 +513,8 @@ async function handleMarkLost() {
         </div>
         <ol class="reissue-steps">
           <li>Подтвердите гостя: <strong>{lookupGuestName}</strong>.</li>
-          <li>Если карта помечена как потерянная, система снимет отметку и привяжет новую карту.</li>
-          <li>Если визит активен, контекст сессии будет автоматически перенесён на новую карту.</li>
+          <li>Перевыпуск доступен только для blocked-lost активного визита.</li>
+          <li>Новая физическая карта будет назначена на тот же визит, а старая останется в состоянии lost.</li>
         </ol>
         {#if reissueStatus}
           <p class="reissue-status">{reissueStatus}</p>

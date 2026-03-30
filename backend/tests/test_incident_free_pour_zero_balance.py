@@ -200,6 +200,6 @@ def test_sync_without_authorize_returns_audit_only_not_accepted(client, db_sessi
         .one()
     )
     details = json.loads(audit.details)
-    assert details["card_uid"] == card_uid
+    assert details["card_uid"] == card_uid.lower()
     assert details["guest_id"] == guest_id
     assert details["tap_id"] == tap_id

@@ -30,9 +30,10 @@
   let openFlowVisible = false;
   let guestQuery = '';
   let openFlowError = '';
+  let pendingOpenGuest = null;
 
   let isNFCModalOpen = false;
-  let nfcMode = 'bind';
+  let nfcMode = 'lookup';
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
@@ -59,6 +60,13 @@
     if (guestLike.guest_full_name) return guestLike.guest_full_name;
     return [guestLike.last_name, guestLike.first_name, guestLike.patronymic].filter(Boolean).join(' ');
   };
+
+  const visitOperationalLabel = (operationalStatus) => ({
+    active_assigned: 'Активен, карта назначена',
+    active_blocked_lost_card: 'Заблокирован: карта потеряна',
+    closed_ok: 'Закрыт с подтверждённым возвратом карты',
+    closed_missing_card: 'Закрыт сервисно без возврата карты',
+  }[operationalStatus] || operationalStatus || '—');
 
   const matchesVisit = (item, query) => {
     const q = query.trim().toLowerCase();
@@ -132,18 +140,12 @@
     return fio.includes(q) || (g.phone_number || '').toLowerCase().includes(q);
   }).slice(0, 8);
 
-  async function openVisitWithoutCard(guest) {
+  function openVisitWithCard(guest) {
     openFlowError = '';
-    try {
-      const opened = await visitStore.openVisit({ guestId: guest.guest_id });
-      visitStore.setCurrentVisit(opened);
-      await refreshVisits();
-      uiStore.notifySuccess('Визит открыт.');
-      openFlowVisible = false;
-    } catch (error) {
-      const message = error?.message || error?.toString?.() || 'Ошибка открытия визита';
-      openFlowError = message;
-    }
+    pendingOpenGuest = guest;
+    nfcMode = 'open';
+    nfcError = '';
+    isNFCModalOpen = true;
   }
 
   function selectVisit(item) {
@@ -185,19 +187,9 @@
   async function handleCloseVisit() {
     actionError = '';
     if (!visit) return;
-
-    try {
-      const closed = await visitStore.closeVisit({
-        visitId: visit.visit_id,
-        closedReason: closeReason,
-        cardReturned: true,
-      });
-      visitStore.setCurrentVisit(closed);
-      await refreshVisits();
-      uiStore.notifySuccess('Визит закрыт.');
-    } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Ошибка закрытия визита';
-    }
+    nfcMode = 'close';
+    nfcError = '';
+    isNFCModalOpen = true;
   }
 
   async function handleReconcilePour() {
@@ -233,9 +225,9 @@
     }
   }
 
-  function handleBindCard() {
+  function handleReissueCard() {
     if (!visit) return;
-    nfcMode = 'bind';
+    nfcMode = 'reissue';
     nfcError = '';
     isNFCModalOpen = true;
   }
@@ -292,19 +284,7 @@
   }
 
   async function handleLookupOpenNewVisit() {
-    const guestId = cardLookupResult?.guest?.guest_id;
-    if (!guestId) return;
-    try {
-      const opened = await visitStore.openVisit({ guestId });
-      visitStore.setCurrentVisit(opened);
-      await refreshVisits();
-      if (cardLookupResult?.card_uid) {
-        await resolveByCardUid(cardLookupResult.card_uid);
-      }
-      uiStore.notifySuccess('Открыт новый визит для гостя');
-    } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Не удалось открыть новый визит';
-    }
+    uiStore.notifyWarning('Новый визит открывается только через flow "выбрать гостя -> считать карту из пула".');
   }
 
   async function handleUidRead(event) {
@@ -319,11 +299,46 @@
     }
 
     try {
-      await visitStore.assignCardToVisit({ visitId: visit.visit_id, cardUid: event.detail.uid });
-      await refreshVisits();
-      uiStore.notifySuccess('Карта успешно привязана к визиту.');
+      if (nfcMode === 'open') {
+        if (!pendingOpenGuest?.guest_id) throw new Error('Не выбран гость для открытия визита.');
+        const opened = await visitStore.openVisit({ guestId: pendingOpenGuest.guest_id, cardUid: event.detail.uid });
+        visitStore.setCurrentVisit(opened);
+        await refreshVisits();
+        openFlowVisible = false;
+        pendingOpenGuest = null;
+        isNFCModalOpen = false;
+        uiStore.notifySuccess('Визит открыт, карта выдана из пула.');
+        return;
+      }
+      if (nfcMode === 'close') {
+        const closed = await visitStore.closeVisit({
+          visitId: visit.visit_id,
+          closedReason: closeReason,
+          returnedCardUid: event.detail.uid,
+        });
+        visitStore.setCurrentVisit(closed);
+        await refreshVisits();
+        isNFCModalOpen = false;
+        uiStore.notifySuccess('Визит закрыт с подтверждённым возвратом карты.');
+        return;
+      }
+      if (nfcMode === 'reissue') {
+        const updated = await visitStore.reissueCard({
+          visitId: visit.visit_id,
+          cardUid: event.detail.uid,
+          reason: 'lost_card_reissue',
+          comment: null,
+        });
+        visitStore.setCurrentVisit(updated);
+        await refreshVisits();
+        await refreshCurrentLostStatus();
+        isNFCModalOpen = false;
+        uiStore.notifySuccess('Новая карта назначена активному визиту.');
+        return;
+      }
+      throw new Error('Неизвестный NFC flow.');
     } catch (error) {
-      nfcError = error?.message || error?.toString?.() || 'Не удалось привязать карту к визиту';
+      nfcError = error?.message || error?.toString?.() || 'Не удалось выполнить NFC-действие';
     }
   }
 
@@ -378,6 +393,28 @@
       actionError = error?.message || error?.toString?.() || 'Ошибка отметки потерянной карты';
     }
   }
+
+  async function handleServiceClose() {
+    actionError = '';
+    if (!visit) return;
+    if (!requirePermission('cards_manage', 'Service close визита без возврата карты доступен только сервисному оператору.')) return;
+    const rawComment = window.prompt('Комментарий к service-close (опционально)', '');
+    if (rawComment === null) return;
+    try {
+      const closed = await visitStore.serviceCloseVisit({
+        visitId: visit.visit_id,
+        closedReason: 'service_close_missing_card',
+        reasonCode: 'card_missing',
+        comment: rawComment.trim() || null,
+      });
+      visitStore.setCurrentVisit(closed);
+      await refreshVisits();
+      await refreshCurrentLostStatus();
+      uiStore.notifySuccess('Визит закрыт сервисным сценарием без возврата карты.');
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Не удалось сервисно закрыть визит';
+    }
+  }
 </script>
 
 {#if !$roleStore.permissions.sessions_view}
@@ -393,7 +430,7 @@
     {#if openFlowVisible}
       <div class="open-flow">
         <h2>Открытие визита</h2>
-        <p class="hint">Найдите гостя по ФИО или телефону и выберите его из списка.</p>
+        <p class="hint">Найдите гостя по ФИО или телефону, затем система попросит приложить карту из пула для открытия визита.</p>
         <input type="text" bind:value={guestQuery} placeholder="ФИО / телефон" />
 
         {#if guestQuery.trim() && openCandidates.length === 0}
@@ -403,15 +440,13 @@
         {#if openCandidates.length > 0}
           <div class="open-candidates">
             {#each openCandidates as candidate}
-              <button class="candidate-item" on:click={() => openVisitWithoutCard(candidate)} disabled={$visitStore.loading}>
+              <button class="candidate-item" on:click={() => openVisitWithCard(candidate)} disabled={$visitStore.loading}>
                 <div><strong>{fullName(candidate)}</strong></div>
                 <div>{candidate.phone_number} · Баланс: {formatRubAmount(candidate.balance)}</div>
               </button>
             {/each}
           </div>
         {/if}
-
-        <button disabled title="Выдача карты будет добавлена отдельным шагом">Выдача карты будет добавлена отдельным шагом</button>
 
         {#if openFlowError}
           <p class="error">{openFlowError}</p>
@@ -440,7 +475,7 @@
         allowRestoreLost={$roleStore.permissions.cards_manage}
         allowOpenVisit={hasLookupVisitTarget()}
         allowOpenGuest={false}
-        allowOpenNewVisit={true}
+        allowOpenNewVisit={false}
         on:lookup={(event) => resolveByCardUid(event.detail.uid).catch((error) => { nfcError = error?.message || error?.toString?.() || 'Не удалось выполнить поиск по карте'; })}
         on:restore-lost={handleLookupRestoreLost}
         on:open-visit={handleLookupOpenVisit}
@@ -457,7 +492,8 @@
             <button class="visit-item" on:click={() => selectVisit(item)}>
               <div><strong>{item.guest_full_name}</strong></div>
               <div>{item.phone_number}</div>
-              <div>{item.card_uid ? `Карта: ${item.card_uid}` : 'Без карты'}</div>
+              <div>Карта: {item.card_uid}</div>
+              <div>{visitOperationalLabel(item.operational_status)}</div>
               {#if item.active_tap_id}
                 <div class="sync-indicator">Идёт синхронизация налива на кране #{item.active_tap_id}</div>
               {/if}
@@ -473,8 +509,9 @@
         <div class="visit-fields">
           <div><strong>Гость:</strong> {fullName(selectedGuest || visit)}</div>
           <div><strong>Телефон:</strong> {selectedGuest?.phone_number || visit.phone_number || '—'}</div>
-          <div><strong>Карта:</strong> {visit.card_uid || 'Не привязана'}</div>
-          <div><strong>Статус:</strong> {formatVisitStatus(visit.status)}</div>
+          <div><strong>Карта:</strong> {visit.card_uid}</div>
+          <div><strong>Статус визита:</strong> {formatVisitStatus(visit.status)}</div>
+          <div><strong>Операционный статус:</strong> {visitOperationalLabel(visit.operational_status)}</div>
           <div><strong>Баланс:</strong> {formatRubAmount(selectedGuest?.balance ?? visit.balance ?? 0)}</div>
           {#if isCurrentCardLost}
             <div class="lost-status"><strong>Статус карты:</strong> {lostCardStatusText || 'Карта помечена как потерянная'}</div>
@@ -506,22 +543,23 @@
           <div class="action-panel">
             <h3>Закрыть визит</h3>
             <input type="text" bind:value={closeReason} placeholder="Причина закрытия" />
-            <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active'}>Закрыть визит</button>
+            <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active' || visit.operational_status !== 'active_assigned'}>Считать карту и закрыть визит</button>
+            {#if visit.operational_status === 'active_blocked_lost_card'}
+              <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading}>Service-close без возврата карты</button>
+            {/if}
           </div>
 
           <div class="action-panel">
             <h3>Операции</h3>
-            {#if !visit.card_uid}
-              <button on:click={handleBindCard} disabled={$visitStore.loading}>Привязать карту</button>
-            {/if}
-            {#if visit.card_uid}
-              <button
-                class="danger-btn"
-                on:click={handleReportLostCard}
-                disabled={$visitStore.loading || isCurrentCardLost || !$roleStore.permissions.cards_manage}
-              >
-                Отметить карту потерянной
-              </button>
+            <button
+              class="danger-btn"
+              on:click={handleReportLostCard}
+              disabled={$visitStore.loading || isCurrentCardLost || !$roleStore.permissions.cards_manage || visit.operational_status !== 'active_assigned'}
+            >
+              Отметить карту потерянной
+            </button>
+            {#if visit.operational_status === 'active_blocked_lost_card'}
+              <button on:click={handleReissueCard} disabled={$visitStore.loading}>Считать новую карту и перевыпустить</button>
             {/if}
             <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>Пополнить баланс</button>
           </div>
@@ -556,7 +594,7 @@
 
   {#if isNFCModalOpen}
     <NFCModal
-      on:close={() => { isNFCModalOpen = false; }}
+      on:close={() => { isNFCModalOpen = false; pendingOpenGuest = null; }}
       on:uid-read={handleUidRead}
       externalError={nfcError}
     />

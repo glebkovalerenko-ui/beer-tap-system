@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 import models
 import schemas
-from crud import controller_crud, visit_crud
+from crud import card_crud, controller_crud, visit_crud
 from pos_adapter import get_pos_adapter
 
 
@@ -180,12 +180,9 @@ def process_pour(db: Session, pour_data: schemas.PourData):
             "Invalid duration: provide duration_ms or valid start_ts/end_ts.",
         )
 
-    card = (
-        db.query(models.Card)
-        .options(joinedload(models.Card.guest))
-        .filter(models.Card.card_uid == pour_data.card_uid)
-        .first()
-    )
+    normalized_card_uid = card_crud.normalize_card_uid(pour_data.card_uid)
+    card = card_crud.get_card_by_uid(db=db, uid=normalized_card_uid)
+    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=normalized_card_uid)
     tap = (
         db.query(models.Tap)
         .options(joinedload(models.Tap.keg).joinedload(models.Keg.beverage))
@@ -193,30 +190,27 @@ def process_pour(db: Session, pour_data: schemas.PourData):
         .first()
     )
 
-    if not (card and card.guest and tap and tap.keg and tap.keg.beverage):
+    if not (card and active_visit and tap and tap.keg and tap.keg.beverage):
         return _result(
             "rejected",
             "rejected_invalid_card_or_tap",
-            f"Invalid data: Card UID {pour_data.card_uid} or Tap ID {pour_data.tap_id} not found or not fully configured.",
+            f"Invalid data: Card UID {normalized_card_uid} or Tap ID {pour_data.tap_id} not found or not fully configured.",
         )
 
-    guest = card.guest
+    guest = active_visit.guest
     keg = tap.keg
     beverage = keg.beverage
 
-    if not guest.is_active or card.status != "active":
+    if (
+        not guest
+        or not guest.is_active
+        or card.status not in {card_crud.CARD_STATUS_ASSIGNED}
+        or active_visit.operational_status != visit_crud.VISIT_OP_ACTIVE_ASSIGNED
+    ):
         return _result(
             "rejected",
             "rejected_inactive_guest_or_card",
-            f"Guest {guest.guest_id} or Card {card.card_uid} is not active.",
-        )
-
-    active_visit = visit_crud.get_active_visit_by_card_uid(db=db, card_uid=card.card_uid)
-    if not active_visit:
-        return _result(
-            "rejected",
-            "rejected_no_active_visit",
-            f"No active visit for Card {card.card_uid}.",
+            f"Guest {active_visit.guest_id} or Card {normalized_card_uid} is not in an authorizable state.",
         )
 
     # No double charge path: lock was already cleared (manual reconcile or prior accept).
@@ -262,17 +256,17 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     if active_visit.active_tap_id != pour_data.tap_id:
         _add_audit_log(
             db,
-            actor_id="internal_rpi",
-            action="sync_conflict",
-            target_entity="Visit",
-            target_id=str(active_visit.visit_id),
-            details={
-                "card_uid": card.card_uid,
-                "requested_tap_id": pour_data.tap_id,
-                "active_tap_id": active_visit.active_tap_id,
-                "client_tx_id": pour_data.client_tx_id,
-                "short_id": pour_data.short_id,
-                "duration_ms": duration_ms,
+                actor_id="internal_rpi",
+                action="sync_conflict",
+                target_entity="Visit",
+                target_id=str(active_visit.visit_id),
+                details={
+                    "card_uid": normalized_card_uid,
+                    "requested_tap_id": pour_data.tap_id,
+                    "active_tap_id": active_visit.active_tap_id,
+                    "client_tx_id": pour_data.client_tx_id,
+                    "short_id": pour_data.short_id,
+                    "duration_ms": duration_ms,
             },
         )
         return _result(
@@ -292,17 +286,17 @@ def process_pour(db: Session, pour_data: schemas.PourData):
     if not pending_pour:
         _add_audit_log(
             db,
-            actor_id="internal_rpi",
-            action="sync_missing_pending",
-            target_entity="Visit",
-            target_id=str(active_visit.visit_id),
-            details={
-                "card_uid": card.card_uid,
-                "guest_id": str(guest.guest_id),
-                "tap_id": pour_data.tap_id,
-                "client_tx_id": pour_data.client_tx_id,
-                "short_id": pour_data.short_id,
-                "volume_ml": pour_data.volume_ml,
+                actor_id="internal_rpi",
+                action="sync_missing_pending",
+                target_entity="Visit",
+                target_id=str(active_visit.visit_id),
+                details={
+                    "card_uid": normalized_card_uid,
+                    "guest_id": str(guest.guest_id),
+                    "tap_id": pour_data.tap_id,
+                    "client_tx_id": pour_data.client_tx_id,
+                    "short_id": pour_data.short_id,
+                    "volume_ml": pour_data.volume_ml,
                 "duration_ms": duration_ms,
             },
         )
@@ -354,7 +348,7 @@ def process_pour(db: Session, pour_data: schemas.PourData):
                 target_entity="Visit",
                 target_id=str(active_visit.visit_id),
                 details={
-                    "card_uid": card.card_uid,
+                    "card_uid": normalized_card_uid,
                     "guest_id": str(guest.guest_id),
                     "tap_id": pour_data.tap_id,
                     "client_tx_id": pour_data.client_tx_id,

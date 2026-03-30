@@ -146,12 +146,12 @@ def test_authorize_pour_for_lost_card_is_denied_and_audited(client):
     blocked = [entry for entry in audit_resp.json() if entry["action"] == "lost_card_blocked"]
     assert blocked
     details = json.loads(blocked[0]["details"])
-    assert details["card_uid"] == card_uid
+    assert details["card_uid"] == card_uid.lower()
     assert details["tap_id"] == tap_id
     assert "blocked_at" in details
 
 
-def test_restore_lost_card_allows_authorize_again(client):
+def test_restore_lost_card_requires_visit_resolution_before_reuse(client):
     headers, guest_id, visit_id, tap_id, card_uid = _prepare_active_visit_with_tap(
         client, suffix="96003", card_uid="CARD-M6-003"
     )
@@ -170,9 +170,29 @@ def test_restore_lost_card_allows_authorize_again(client):
     )
     assert denied.status_code == 403
 
-    restore = client.post(f"/api/lost-cards/{card_uid}/restore", headers=headers)
-    assert restore.status_code == 200
-    assert restore.json()["restored"] is True
+    restore_while_blocked = client.post(f"/api/lost-cards/{card_uid}/restore", headers=headers)
+    assert restore_while_blocked.status_code == 409
+
+    replacement_card_uid = "CARD-M6-003-REISSUE"
+    register_replacement = client.post(
+        "/api/cards/",
+        headers=headers,
+        json={"card_uid": replacement_card_uid},
+    )
+    assert register_replacement.status_code == 201
+
+    reissue = client.post(
+        f"/api/visits/{visit_id}/reissue-card",
+        headers=headers,
+        json={
+            "card_uid": replacement_card_uid,
+            "reason": "lost_card_reissue",
+            "comment": "replacement card issued from pool",
+        },
+    )
+    assert reissue.status_code == 200
+    assert reissue.json()["card_uid"] == replacement_card_uid.lower()
+    assert reissue.json()["operational_status"] == "active_assigned"
 
     topup = client.post(
         f"/api/guests/{guest_id}/topup",
@@ -181,14 +201,26 @@ def test_restore_lost_card_allows_authorize_again(client):
     )
     assert topup.status_code == 200
 
-    authorized = client.post(
+    old_card_still_denied = client.post(
         "/api/visits/authorize-pour",
         headers=headers,
         json={"card_uid": card_uid, "tap_id": tap_id},
     )
+    assert old_card_still_denied.status_code == 403
+    assert old_card_still_denied.json()["detail"]["reason"] == "lost_card"
+
+    authorized = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": replacement_card_uid, "tap_id": tap_id},
+    )
     assert authorized.status_code == 200
     assert authorized.json()["allowed"] is True
     assert authorized.json()["visit"]["active_tap_id"] == tap_id
+
+    restore = client.post(f"/api/lost-cards/{card_uid}/restore", headers=headers)
+    assert restore.status_code == 200
+    assert restore.json()["restored"] is True
 
 
 def test_resolve_lost_card_returns_lost_payload(client):
@@ -207,10 +239,18 @@ def test_resolve_lost_card_returns_lost_payload(client):
     assert resolve.status_code == 200
     body = resolve.json()
     assert body["is_lost"] is True
+    assert body["lookup_outcome"] == "active_blocked_lost_card"
     assert body["lost_card"] is not None
     assert body["lost_card"]["visit_id"] == visit_id
     assert body["lost_card"]["comment"] == "found near entrance"
-    assert body["recommended_action"] == "lost_restore"
+    assert body["active_visit"] is not None
+    assert body["active_visit"]["operational_status"] == "active_blocked_lost_card"
+    assert body["recommended_action"] == "open_visit_workspace"
+    assert set(body["allowed_next_actions"]) == {
+        "open_visit_workspace",
+        "reissue_card_for_visit",
+        "service_close_missing_card",
+    }
 
 
 def test_resolve_card_in_active_visit_returns_active_visit(client):
@@ -222,13 +262,20 @@ def test_resolve_card_in_active_visit_returns_active_visit(client):
     assert resolve.status_code == 200
     body = resolve.json()
     assert body["is_lost"] is False
+    assert body["lookup_outcome"] == "active_visit"
     assert body["active_visit"] is not None
     assert body["active_visit"]["visit_id"] == visit_id
     assert body["active_visit"]["guest_id"] == guest_id
-    assert body["recommended_action"] == "open_active_visit"
+    assert body["active_visit"]["operational_status"] == "active_assigned"
+    assert body["recommended_action"] == "open_visit_workspace"
+    assert set(body["allowed_next_actions"]) == {
+        "open_visit_workspace",
+        "mark_lost",
+        "normal_close_scan",
+    }
 
 
-def test_resolve_card_bound_to_guest_without_active_visit(client):
+def test_resolve_available_pool_card_without_active_visit(client):
     headers = _login(client)
     guest_id = _create_guest(client, headers, suffix="96006")
     card_uid = "CARD-M6-006"
@@ -238,11 +285,13 @@ def test_resolve_card_bound_to_guest_without_active_visit(client):
     assert resolve.status_code == 200
     body = resolve.json()
     assert body["is_lost"] is False
+    assert body["lookup_outcome"] == "available_pool_card"
     assert body["active_visit"] is None
-    assert body["guest"] is not None
-    assert body["guest"]["guest_id"] == guest_id
+    assert body["guest"] is None
     assert body["card"] is not None
-    assert body["recommended_action"] == "open_new_visit"
+    assert body["card"]["status"] == "available"
+    assert body["recommended_action"] == "issue_on_open_visit"
+    assert body["allowed_next_actions"] == ["issue_on_open_visit"]
 
 
 def test_resolve_unknown_card_returns_empty_payload(client):
@@ -256,4 +305,6 @@ def test_resolve_unknown_card_returns_empty_payload(client):
     assert body["active_visit"] is None
     assert body["guest"] is None
     assert body["card"] is None
-    assert body["recommended_action"] == "unknown"
+    assert body["lookup_outcome"] == "unknown_card"
+    assert body["recommended_action"] == "register_into_pool_if_inventory_flow_allows"
+    assert body["allowed_next_actions"] == ["register_into_pool_if_inventory_flow_allows"]

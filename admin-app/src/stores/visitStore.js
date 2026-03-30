@@ -108,12 +108,12 @@ function createVisitStore() {
       update((s) => ({ ...s, currentVisit: visit }));
     },
 
-    openVisit: async ({ guestId, cardUid = undefined }) => {
+    openVisit: async ({ guestId, cardUid }) => {
       const token = withAuth();
+      if (!cardUid?.trim()) throw new Error('Для открытия визита требуется карта из пула.');
       update((s) => ({ ...s, loading: true, error: null }));
       try {
-        const payload = cardUid ? { token, guestId, cardUid } : { token, guestId };
-        const visit = await invoke('open_visit', payload);
+        const visit = await invoke('open_visit', { token, guestId, cardUid: cardUid.trim() });
         update((s) => ({ ...s, currentVisit: visit, loading: false }));
         return visit;
       } catch (error) {
@@ -151,15 +151,49 @@ function createVisitStore() {
       }
     },
 
-    closeVisit: async ({ visitId, closedReason, cardReturned = true }) => {
+    closeVisit: async ({ visitId, closedReason, returnedCardUid }) => {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null }));
       try {
-        const closedVisit = await invoke('close_visit', { token, visitId, closedReason, cardReturned });
+        if (!returnedCardUid?.trim()) throw new Error('Для normal close нужно отсканировать возвращённую карту.');
+        const closedVisit = await invoke('close_visit', {
+          token,
+          visitId,
+          closedReason,
+          returnedCardUid: returnedCardUid.trim(),
+        });
         update((s) => ({ ...s, currentVisit: closedVisit, loading: false }));
         return closedVisit;
       } catch (error) {
         const message = toErrorMessage('visitStore.closeVisit', error);
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
+
+    serviceCloseVisit: async ({ visitId, closedReason, reasonCode, comment = null }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const closedVisit = await invoke('service_close_visit', { token, visitId, closedReason, reasonCode, comment });
+        update((s) => ({ ...s, currentVisit: closedVisit, loading: false }));
+        return closedVisit;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.serviceCloseVisit', error);
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
+
+    reissueCard: async ({ visitId, cardUid, reason, comment = null }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const visit = await invoke('reissue_card_for_visit', { token, visitId, cardUid, reason, comment });
+        update((s) => ({ ...s, currentVisit: visit, loading: false }));
+        return visit;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.reissueCard', error);
         update((s) => ({ ...s, loading: false, error: message }));
         throw new Error(message);
       }

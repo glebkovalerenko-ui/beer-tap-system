@@ -357,12 +357,18 @@ class CardStatusUpdate(BaseModel):
 
 class VisitOpenRequest(BaseModel):
     guest_id: uuid.UUID
-    card_uid: Optional[str] = Field(default=None, json_schema_extra={'example': "04AB7815CD6B80"})
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
 
 
 class VisitCloseRequest(BaseModel):
     closed_reason: str = Field(..., min_length=1, json_schema_extra={'example': "guest_checkout"})
-    card_returned: bool = Field(default=True)
+    returned_card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+
+
+class VisitServiceCloseRequest(BaseModel):
+    closed_reason: str = Field(..., min_length=1, json_schema_extra={'example': "service_close_missing_card"})
+    reason_code: str = Field(..., min_length=1, json_schema_extra={'example': "card_missing"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Card not returned by guest"})
 
 
 class VisitReportLostCardRequest(BaseModel):
@@ -373,14 +379,18 @@ class VisitReportLostCardRequest(BaseModel):
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
-    card_uid: Optional[str]
+    card_uid: str
     status: str
+    operational_status: str
     opened_at: datetime
     closed_at: Optional[datetime] = None
     closed_reason: Optional[str] = None
     active_tap_id: Optional[int] = None
     lock_set_at: Optional[datetime] = None
     card_returned: bool
+    returned_at: Optional[datetime] = None
+    returned_by: Optional[str] = None
+    return_method: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -469,6 +479,12 @@ class VisitAssignCardRequest(BaseModel):
     card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
 
 
+class VisitReissueCardRequest(BaseModel):
+    card_uid: str = Field(..., min_length=1, json_schema_extra={'example': "04AB7815CD6B80"})
+    reason: str = Field(..., min_length=1, json_schema_extra={'example': "lost_card_reissue"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Replacement card issued from operator desk"})
+
+
 class VisitActiveListItem(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
@@ -476,7 +492,8 @@ class VisitActiveListItem(BaseModel):
     phone_number: str
     balance: Decimal
     status: str
-    card_uid: Optional[str] = None
+    operational_status: str
+    card_uid: str
     active_tap_id: Optional[int] = None
     lock_set_at: Optional[datetime] = None
     opened_at: datetime
@@ -545,7 +562,8 @@ class CardResolveActiveVisit(BaseModel):
     guest_full_name: str
     phone_number: str
     status: str
-    card_uid: Optional[str] = None
+    operational_status: str
+    card_uid: str
     active_tap_id: Optional[int] = None
     opened_at: datetime
 
@@ -566,11 +584,21 @@ class CardResolveCard(BaseModel):
 class CardResolveResponse(BaseModel):
     card_uid: str
     is_lost: bool
+    lookup_outcome: Literal[
+        "active_visit",
+        "active_blocked_lost_card",
+        "available_pool_card",
+        "returned_to_pool_card",
+        "lost_card",
+        "retired_card",
+        "unknown_card",
+    ]
     lost_card: Optional[CardResolveLostCard] = None
     active_visit: Optional[CardResolveActiveVisit] = None
     guest: Optional[CardResolveGuest] = None
     card: Optional[CardResolveCard] = None
-    recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
+    recommended_action: str
+    allowed_next_actions: list[str] = []
 
 
 
@@ -1252,8 +1280,9 @@ class CardGuestContextActiveVisit(BaseModel):
     guest_full_name: str
     phone_number: str
     status: str
+    operational_status: str
     canonical_visit_status: Literal["active", "awaiting_action", "pouring_now", "completed", "needs_attention", "blocked"] = "active"
-    card_uid: Optional[str] = None
+    card_uid: str
     active_tap_id: Optional[int] = None
     opened_at: datetime
     balance: Optional[Decimal] = None
@@ -1263,11 +1292,21 @@ class CardGuestContextActiveVisit(BaseModel):
 class CardGuestContextModel(BaseModel):
     card_uid: str
     is_lost: bool
+    lookup_outcome: Literal[
+        "active_visit",
+        "active_blocked_lost_card",
+        "available_pool_card",
+        "returned_to_pool_card",
+        "lost_card",
+        "retired_card",
+        "unknown_card",
+    ]
     lost_card: Optional[CardResolveLostCard] = None
     active_visit: Optional[CardGuestContextActiveVisit] = None
     guest: Optional[CardGuestContextGuest] = None
     card: Optional[CardResolveCard] = None
-    recommended_action: Literal["lost_restore", "open_active_visit", "open_new_visit", "bind_card", "unknown"]
+    recommended_action: str
+    allowed_next_actions: list[str] = []
     recent_events: list[CardGuestEventItem] = []
     last_tap_label: Optional[str] = None
     lookup_summary_items: list[CardGuestSummaryItem] = []
@@ -1362,7 +1401,7 @@ class OperatorSearchResultItem(BaseModel):
     title: str
     subtitle: Optional[str] = None
     meta: Optional[str] = None
-    route: Literal["guests", "visits", "taps", "lost-cards", "pours", "kegs-beverages", "incidents", "system"]
+    route: Literal["guests", "visits", "taps", "lost-cards", "cards-guests", "pours", "kegs-beverages", "incidents", "system"]
     href: str
     guest_id: Optional[uuid.UUID] = None
     visit_id: Optional[uuid.UUID] = None

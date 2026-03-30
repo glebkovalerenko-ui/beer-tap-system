@@ -285,21 +285,32 @@ pub struct VisitGuest {
 pub struct Visit {
     pub visit_id: String,
     pub guest_id: String,
-    pub card_uid: Option<String>,
+    pub card_uid: String,
     pub status: String,
+    pub operational_status: String,
     pub opened_at: String,
     pub closed_at: Option<String>,
     pub closed_reason: Option<String>,
     pub active_tap_id: Option<i32>,
     pub lock_set_at: Option<String>,
     pub card_returned: bool,
+    pub returned_at: Option<String>,
+    pub returned_by: Option<String>,
+    pub return_method: Option<String>,
     pub guest: Option<VisitGuest>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VisitClosePayload {
     pub closed_reason: String,
-    pub card_returned: bool,
+    pub returned_card_uid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitServiceClosePayload {
+    pub closed_reason: String,
+    pub reason_code: String,
+    pub comment: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -311,7 +322,7 @@ pub struct VisitForceUnlockPayload {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VisitOpenPayload {
     pub guest_id: String,
-    pub card_uid: Option<String>,
+    pub card_uid: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -322,7 +333,8 @@ pub struct VisitActiveListItem {
     pub phone_number: String,
     pub balance: String,
     pub status: String,
-    pub card_uid: Option<String>,
+    pub operational_status: String,
+    pub card_uid: String,
     pub active_tap_id: Option<i32>,
     pub lock_set_at: Option<String>,
     pub opened_at: String,
@@ -331,6 +343,13 @@ pub struct VisitActiveListItem {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VisitAssignCardPayload {
     pub card_uid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitReissueCardPayload {
+    pub card_uid: String,
+    pub reason: String,
+    pub comment: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -482,7 +501,8 @@ pub struct CardResolveActiveVisit {
     pub guest_full_name: String,
     pub phone_number: String,
     pub status: String,
-    pub card_uid: Option<String>,
+    pub operational_status: String,
+    pub card_uid: String,
     pub active_tap_id: Option<i32>,
     pub opened_at: String,
 }
@@ -506,11 +526,13 @@ pub struct CardResolveCard {
 pub struct CardResolveResponse {
     pub card_uid: String,
     pub is_lost: bool,
+    pub lookup_outcome: String,
     pub lost_card: Option<CardResolveLostCard>,
     pub active_visit: Option<CardResolveActiveVisit>,
     pub guest: Option<CardResolveGuest>,
     pub card: Option<CardResolveCard>,
     pub recommended_action: String,
+    pub allowed_next_actions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -1686,12 +1708,40 @@ pub async fn force_unlock_visit(
     }
 }
 
+pub async fn reissue_card_for_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitReissueCardPayload,
+) -> Result<Visit, String> {
+    let url = build_api_url(&format!("visits/{}/reissue-card", visit_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
 pub async fn close_visit(
     token: &str,
     visit_id: &str,
     payload: &VisitClosePayload,
 ) -> Result<Visit, String> {
     let url = build_api_url(&format!("visits/{}/close", visit_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn service_close_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitServiceClosePayload,
+) -> Result<Visit, String> {
+    let url = build_api_url(&format!("visits/{}/service-close", visit_id));
     let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
     if response.status().is_success() {
         response.json::<Visit>().await.map_err(|e| e.to_string())

@@ -8,10 +8,8 @@
   import { buildLostCardAccess } from '../lib/operator/lostCardAccess.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
-  import { ensureOperatorShellData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { uiStore } from '../stores/uiStore.js';
-  import { visitStore } from '../stores/visitStore.js';
 
   let uidFilter = '';
   let reportedFrom = '';
@@ -107,25 +105,8 @@
     navigateWithFocus({ target: 'visit', visitId: targetVisitId, cardUid: cardLookupResult?.card_uid });
   }
 
-  function handleLookupOpenGuest() {
-    const guestId = cardLookupResult?.guest?.guest_id || cardLookupResult?.lost_card?.guest_id;
-    if (!guestId && !cardLookupResult?.card_uid) return;
-    navigateWithFocus({ target: 'guest', guestId, cardUid: cardLookupResult?.card_uid });
-  }
-
   async function handleLookupOpenNewVisit() {
-    const guestId = cardLookupResult?.guest?.guest_id;
-    if (!guestId) return;
-    try {
-      const opened = await visitStore.openVisit({ guestId });
-      await Promise.allSettled([
-        visitStore.fetchActiveVisits({ force: true }),
-        ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
-      ]);
-      navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId, cardUid: cardLookupResult?.card_uid });
-    } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Не удалось открыть новый визит';
-    }
+    uiStore.notifyWarning('Новый визит открывается только из normal flow выдачи карты на экране визитов.');
   }
 
   onMount(async () => {
@@ -161,12 +142,11 @@
       loading={$lostCardStore.loading}
       allowRestoreLost={access.canManage}
       allowOpenVisit={hasLookupVisitTarget()}
-      allowOpenGuest={Boolean(cardLookupResult?.guest?.guest_id || cardLookupResult?.lost_card?.guest_id || cardLookupResult?.card_uid)}
-      allowOpenNewVisit={true}
+      allowOpenGuest={false}
+      allowOpenNewVisit={false}
       on:lookup={handleLookup}
       on:restore-lost={handleLookupRestoreLost}
       on:open-visit={handleLookupOpenVisit}
-      on:open-guest={handleLookupOpenGuest}
       on:open-new-visit={handleLookupOpenNewVisit}
     />
 
@@ -194,7 +174,6 @@
               {#if item.visit_id}
                 <button class="secondary" on:click={() => navigateWithFocus({ target: 'visit', visitId: item.visit_id, cardUid: item.card_uid, guestId: item.guest_id })}>Открыть визит</button>
               {/if}
-              <button class="secondary" on:click={() => navigateWithFocus({ target: 'guest', guestId: item.guest_id, cardUid: item.card_uid })}>Открыть гостя</button>
             </div>
           </div>
         {/each}

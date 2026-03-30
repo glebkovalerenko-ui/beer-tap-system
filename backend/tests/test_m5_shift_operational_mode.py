@@ -77,8 +77,10 @@ def _create_tap_with_keg(client, headers, suffix: str):
 def test_cannot_open_visit_without_open_shift(client):
     headers = _login(client)
     guest_id = _create_guest(client, headers, suffix="93001")
+    card_uid = "CARD-M5-93001"
+    _bind_card(client, headers, guest_id, card_uid)
 
-    open_visit = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
+    open_visit = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id, "card_uid": card_uid})
     assert open_visit.status_code == 403
     assert open_visit.json()["detail"] == "Shift is closed"
 
@@ -102,7 +104,9 @@ def test_cannot_close_shift_with_active_visit(client):
     assert open_shift.status_code == 200
 
     guest_id = _create_guest(client, headers, suffix="93003")
-    visit_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
+    card_uid = "CARD-M5-93003"
+    _bind_card(client, headers, guest_id, card_uid)
+    visit_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id, "card_uid": card_uid})
     assert visit_resp.status_code == 200
 
     close_shift = client.post("/api/shifts/close", headers=headers)
@@ -145,7 +149,7 @@ def test_cannot_close_shift_with_pending_sync(client, db_session):
     close_visit = client.post(
         f"/api/visits/{visit_id}/close",
         headers=headers,
-        json={"closed_reason": "checkout", "card_returned": True},
+        json={"closed_reason": "checkout", "returned_card_uid": card_uid},
     )
     assert close_visit.status_code == 409
     assert close_visit.json()["detail"] == "pending_sync_exists_for_visit"

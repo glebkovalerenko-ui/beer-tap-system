@@ -261,12 +261,15 @@ def test_display_snapshot_masks_processing_sync_while_active_visit_holds_tap(cli
         status="in_use",
     )
     tap = models.Tap(display_name="Tap Active Visit", status="processing_sync", keg=keg)
-    db_session.add_all([guest, beverage, keg, tap])
+    card = models.Card(card_uid="display-sync-card", status="assigned_to_visit")
+    db_session.add_all([guest, beverage, keg, tap, card])
     db_session.flush()
 
     visit = models.Visit(
         guest_id=guest.guest_id,
+        card_uid="display-sync-card",
         status="active",
+        operational_status="active_assigned",
         active_tap_id=tap.tap_id,
         card_returned=False,
     )

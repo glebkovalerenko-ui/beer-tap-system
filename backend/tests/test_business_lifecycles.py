@@ -120,7 +120,7 @@ def test_guest_and_finance_lifecycle(client):
     card_uid = "1122334455"
     card_response = client.post("/api/cards/", headers=headers, json={"card_uid": card_uid})
     assert card_response.status_code == 201
-    assert card_response.json()["status"] == "inactive"
+    assert card_response.json()["status"] == "available"
 
     # --- Шаг 3: Привязка Карты к Гостю ---
     assign_response = client.post(
@@ -131,7 +131,7 @@ def test_guest_and_finance_lifecycle(client):
     assert assign_response.status_code == 200
     # В M2 карта становится operational-active только в рамках открытого визита.
     updated_guest = client.get(f"/api/guests/{guest_id}", headers=headers).json()
-    assert updated_guest['cards'][0]['status'] == 'inactive'
+    assert updated_guest['cards'][0]['status'] == 'available'
 
     open_visit_response = client.post(
         "/api/visits/open",
@@ -153,7 +153,7 @@ def test_guest_and_finance_lifecycle(client):
     close_visit_response = client.post(
         f"/api/visits/{visit_id}/close",
         headers=headers,
-        json={"closed_reason": "demo_checkout", "card_returned": True},
+        json={"closed_reason": "demo_checkout", "returned_card_uid": card_uid},
     )
     assert close_visit_response.status_code == 200
 

@@ -43,11 +43,33 @@ def close_visit(
         db=db,
         visit_id=visit_id,
         closed_reason=payload.closed_reason,
-        card_returned=payload.card_returned,
+        returned_card_uid=payload.returned_card_uid,
+        actor_id=current_user["username"] if current_user else "operator",
     )
     operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_closed")
     operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_closed")
     operator_stream_hub.emit_invalidation(resource="taps", reason="visit_closed")
+    return visit
+
+
+@router.post("/{visit_id}/service-close", response_model=schemas.Visit, summary="Service close active visit without confirmed card return")
+def service_close_visit(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitServiceCloseRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    visit = visit_crud.service_close_missing_card(
+        db=db,
+        visit_id=visit_id,
+        closed_reason=payload.closed_reason,
+        reason_code=payload.reason_code,
+        comment=payload.comment,
+        actor_id=current_user["username"] if current_user else "operator",
+    )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_service_closed")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_service_closed")
+    operator_stream_hub.emit_invalidation(resource="taps", reason="visit_service_closed")
     return visit
 
 
@@ -316,4 +338,24 @@ def assign_card_to_visit(
     visit = visit_crud.assign_card_to_active_visit(db=db, visit_id=visit_id, card_uid=payload.card_uid)
     operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_assign_card")
     operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_assign_card")
+    return visit
+
+
+@router.post("/{visit_id}/reissue-card", response_model=schemas.Visit, summary="Reissue card for blocked-lost active visit")
+def reissue_card_for_visit(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitReissueCardRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    visit = visit_crud.reissue_card_for_visit(
+        db=db,
+        visit_id=visit_id,
+        new_card_uid=payload.card_uid,
+        reason=payload.reason,
+        comment=payload.comment,
+        actor_id=current_user["username"] if current_user else "operator",
+    )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_card_reissued")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_card_reissued")
     return visit

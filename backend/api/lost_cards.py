@@ -59,7 +59,10 @@ def restore_lost_card(
     _permission_guard: Annotated[dict, Depends(security.require_permissions("cards_reissue_manage"))] = None,
     current_user: Annotated[dict, Depends(security.get_current_user)] = None,
 ):
-    restored_uid = lost_card_crud.restore_lost_card(db=db, card_uid=card_uid)
+    try:
+        restored_uid = lost_card_crud.restore_lost_card(db=db, card_uid=card_uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not restored_uid:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lost card not found")
     return schemas.LostCardRestoreResponse(card_uid=restored_uid, restored=True)

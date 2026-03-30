@@ -222,8 +222,8 @@
 
       <div>
         <div class="section-head compact">
-          <h5>Карты гостя</h5>
-          <button class="ghost-btn" on:click={() => dispatch('bind-card')}>Привязать карту</button>
+          <h5>Legacy card bindings</h5>
+          <button class="ghost-btn" on:click={() => dispatch('bind-card')}>Открыть service reissue flow</button>
         </div>
         {#if cards.length > 0}
           <ul class="card-list">
@@ -235,7 +235,7 @@
             {/each}
           </ul>
         {:else}
-          <p class="hint">Карт пока нет.</p>
+          <p class="hint">Операционная карта теперь живёт на визите; здесь остаются только legacy compatibility записи.</p>
         {/if}
       </div>
     </section>

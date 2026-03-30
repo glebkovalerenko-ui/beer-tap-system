@@ -142,7 +142,13 @@ export function formatVisitStatus(status) {
 }
 
 export function formatCardStatus(status) {
-  return CARD_STATUS_LABELS[status] || status || '-';
+  const inventoryLabels = {
+    available: 'Доступна в пуле',
+    assigned_to_visit: 'Назначена на визит',
+    returned_to_pool: 'Возвращена в пул',
+    retired: 'Выведена из пула',
+  };
+  return inventoryLabels[status] || CARD_STATUS_LABELS[status] || status || '-';
 }
 
 export function formatKegStatus(status) {

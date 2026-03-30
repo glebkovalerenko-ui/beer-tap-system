@@ -25,77 +25,73 @@ def _create_guest(client, headers, suffix: str, dob: str = "1990-01-15"):
     return response.json()["guest_id"]
 
 
-def _bind_card(client, headers, guest_id: str, card_uid: str):
+def _register_card(client, headers, card_uid: str) -> str:
+    response = client.post("/api/cards/", headers=headers, json={"card_uid": card_uid})
+    assert response.status_code == 201
+    return response.json()["card_uid"]
+
+
+def _open_visit(client, headers, guest_id: str, card_uid: str):
     response = client.post(
-        f"/api/guests/{guest_id}/cards",
+        "/api/visits/open",
         headers=headers,
-        json={"card_uid": card_uid},
+        json={"guest_id": guest_id, "card_uid": card_uid},
     )
     assert response.status_code == 200
+    return response.json()
 
 
-def test_visit_invariants_and_card_deactivation(client):
+def test_open_visit_requires_registered_pool_card_and_normal_close_returns_it(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81001")
-    card_uid = "CARD-M2-001"
-    _bind_card(client, headers, guest_id, card_uid)
+    guest_1 = _create_guest(client, headers, suffix="81001")
+    guest_2 = _create_guest(client, headers, suffix="81002")
+    card_uid = _register_card(client, headers, "CARD-M2-001")
 
-    open_resp = client.post(
-        "/api/visits/open",
-        headers=headers,
-        json={"guest_id": guest_id, "card_uid": card_uid},
-    )
-    assert open_resp.status_code == 200
-    visit_id = open_resp.json()["visit_id"]
-
-    second_for_guest = client.post(
-        "/api/visits/open",
-        headers=headers,
-        json={"guest_id": guest_id, "card_uid": card_uid},
-    )
-    assert second_for_guest.status_code == 409
+    opened = _open_visit(client, headers, guest_1, card_uid)
+    assert opened["card_uid"] == "card-m2-001"
+    assert opened["operational_status"] == "active_assigned"
 
     close_resp = client.post(
-        f"/api/visits/{visit_id}/close",
+        f"/api/visits/{opened['visit_id']}/close",
         headers=headers,
-        json={"closed_reason": "end", "card_returned": False},
+        json={"closed_reason": "guest_checkout", "returned_card_uid": "CARD-M2-001"},
     )
     assert close_resp.status_code == 200
     assert close_resp.json()["status"] == "closed"
-    assert close_resp.json()["card_returned"] is False
+    assert close_resp.json()["operational_status"] == "closed_ok"
+    assert close_resp.json()["card_returned"] is True
+    assert close_resp.json()["return_method"] == "operator_nfc"
 
-    guest_resp = client.get(f"/api/guests/{guest_id}", headers=headers)
-    assert guest_resp.status_code == 200
-    assert guest_resp.json()["cards"][0]["status"] == "inactive"
+    card_resp = client.get("/api/cards/", headers=headers)
+    assert card_resp.status_code == 200
+    card = next(item for item in card_resp.json() if item["card_uid"] == "card-m2-001")
+    assert card["status"] == "returned_to_pool"
+
+    reopened = _open_visit(client, headers, guest_2, "CARD-M2-001")
+    assert reopened["card_uid"] == "card-m2-001"
+    assert reopened["operational_status"] == "active_assigned"
 
 
 def test_second_guest_cannot_open_active_visit_with_busy_card(client):
     headers = _login(client)
-    guest_1 = _create_guest(client, headers, suffix="81002")
-    guest_2 = _create_guest(client, headers, suffix="81003")
+    guest_1 = _create_guest(client, headers, suffix="81003")
+    guest_2 = _create_guest(client, headers, suffix="81004")
+    card_uid = _register_card(client, headers, "CARD-M2-002")
 
-    card_uid = "CARD-M2-002"
-    _bind_card(client, headers, guest_1, card_uid)
+    open_resp = _open_visit(client, headers, guest_1, card_uid)
+    assert open_resp["operational_status"] == "active_assigned"
 
-    open_resp = client.post(
+    second_open = client.post(
         "/api/visits/open",
         headers=headers,
-        json={"guest_id": guest_1, "card_uid": card_uid},
+        json={"guest_id": guest_2, "card_uid": card_uid},
     )
-    assert open_resp.status_code == 200
-
-    # Re-assign card to another guest is blocked by existing guest binding.
-    bind_resp = client.post(
-        f"/api/guests/{guest_2}/cards",
-        headers=headers,
-        json={"card_uid": card_uid},
-    )
-    assert bind_resp.status_code == 409
+    assert second_open.status_code == 409
 
 
 def test_topup_allowed_without_active_visit(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81004")
+    guest_id = _create_guest(client, headers, suffix="81005")
 
     topup_resp = client.post(
         f"/api/guests/{guest_id}/topup",
@@ -106,211 +102,125 @@ def test_topup_allowed_without_active_visit(client):
     assert float(topup_resp.json()["balance"]) == 100.0
 
 
-def test_open_visit_without_card_and_search_by_guest_query(client):
+def test_open_visit_without_card_is_rejected(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81005")
+    guest_id = _create_guest(client, headers, suffix="81006")
 
     open_resp = client.post(
         "/api/visits/open",
         headers=headers,
         json={"guest_id": guest_id},
     )
-    assert open_resp.status_code == 200
-    assert open_resp.json()["card_uid"] is None
-    assert open_resp.json()["active_tap_id"] is None
-
-    search_resp = client.get("/api/visits/active/search", headers=headers, params={"q": "Guest81005"})
-    assert search_resp.status_code == 200
-    assert search_resp.json()["guest_id"] == guest_id
+    assert open_resp.status_code == 422
 
 
 def test_open_visit_conflict_includes_existing_visit_id(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81006")
+    guest_id = _create_guest(client, headers, suffix="81007")
+    card_uid = _register_card(client, headers, "CARD-M2-003")
 
-    first_open = client.post(
-        "/api/visits/open",
-        headers=headers,
-        json={"guest_id": guest_id},
-    )
-    assert first_open.status_code == 200
+    first_open = _open_visit(client, headers, guest_id, card_uid)
 
     second_open = client.post(
         "/api/visits/open",
         headers=headers,
-        json={"guest_id": guest_id},
+        json={"guest_id": guest_id, "card_uid": card_uid},
     )
     assert second_open.status_code == 409
     assert second_open.json()["detail"]["message"] == "Guest already has an active visit"
-    assert second_open.json()["detail"]["visit_id"] == first_open.json()["visit_id"]
+    assert second_open.json()["detail"]["visit_id"] == first_open["visit_id"]
 
 
-def test_active_visits_list_includes_cardless_visit(client):
+def test_active_visits_list_includes_operational_status_and_card_uid(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81007")
+    guest_id = _create_guest(client, headers, suffix="81008")
+    card_uid = _register_card(client, headers, "CARD-M2-004")
 
-    open_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
-    assert open_resp.status_code == 200
-
-    list_resp = client.get("/api/visits/active", headers=headers)
-    assert list_resp.status_code == 200
-    assert any(v["guest_id"] == guest_id for v in list_resp.json())
-
-
-def test_active_visits_list_returns_projected_remaining_allowance_for_locked_tap(client):
-    headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="810071")
-    card_uid = "CARD-M2-ALLOWANCE"
-    _bind_card(client, headers, guest_id, card_uid)
-
-    topup_resp = client.post(
-        f"/api/guests/{guest_id}/topup",
-        headers=headers,
-        json={"amount": 100, "payment_method": "cash"},
-    )
-    assert topup_resp.status_code == 200
-
-    beverage_resp = client.post(
-        "/api/beverages/",
-        headers=headers,
-        json={"name": "Allowance Lager", "sell_price_per_liter": 500},
-    )
-    assert beverage_resp.status_code == 201
-    beverage_id = beverage_resp.json()["beverage_id"]
-
-    keg_resp = client.post(
-        "/api/kegs/",
-        headers=headers,
-        json={"beverage_id": beverage_id, "initial_volume_ml": 30000, "purchase_price": 5000},
-    )
-    assert keg_resp.status_code == 201
-    keg_id = keg_resp.json()["keg_id"]
-
-    tap_resp = client.post("/api/taps/", headers=headers, json={"display_name": "Tap Allowance"})
-    assert tap_resp.status_code == 201
-    tap_id = tap_resp.json()["tap_id"]
-
-    assign_resp = client.put(f"/api/taps/{tap_id}/keg", headers=headers, json={"keg_id": keg_id})
-    assert assign_resp.status_code == 200
-
-    open_resp = client.post(
-        "/api/visits/open",
-        headers=headers,
-        json={"guest_id": guest_id, "card_uid": card_uid},
-    )
-    assert open_resp.status_code == 200
-
-    authorize_resp = client.post(
-        "/api/visits/authorize-pour",
-        headers=headers,
-        json={"card_uid": card_uid, "tap_id": tap_id},
-    )
-    assert authorize_resp.status_code == 200
+    _open_visit(client, headers, guest_id, card_uid)
 
     list_resp = client.get("/api/visits/active", headers=headers)
     assert list_resp.status_code == 200
     visit_item = next(v for v in list_resp.json() if v["guest_id"] == guest_id)
-    assert visit_item["active_tap_id"] == tap_id
-    assert visit_item["projected_remaining_allowance_ml"] == 198
-    assert visit_item["projected_remaining_allowance_source"] == "balance_price_policy"
-    assert visit_item["price_per_ml_cents"] == 50
-    assert "цены напитка" in visit_item["allowance_calculation_note"]
+    assert visit_item["card_uid"] == "card-m2-004"
+    assert visit_item["operational_status"] == "active_assigned"
 
 
-def test_assign_card_to_active_visit_in_single_flow(client):
+def test_assign_card_endpoint_is_not_available_for_normal_operator_flow(client):
     headers = _login(client)
-    guest_id = _create_guest(client, headers, suffix="81008")
+    guest_id = _create_guest(client, headers, suffix="81009")
+    card_uid = _register_card(client, headers, "CARD-M2-005")
+    visit = _open_visit(client, headers, guest_id, card_uid)
 
-    open_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_id})
-    assert open_resp.status_code == 200
-    visit_id = open_resp.json()["visit_id"]
-
-    assign_resp = client.post(f"/api/visits/{visit_id}/assign-card", headers=headers, json={"card_uid": "CARD-M35-81008"})
-    assert assign_resp.status_code == 200
-    assert assign_resp.json()["card_uid"] == "CARD-M35-81008"
-
-
-def test_assign_card_conflict_when_card_busy(client):
-    headers = _login(client)
-    guest_1 = _create_guest(client, headers, suffix="81009")
-    guest_2 = _create_guest(client, headers, suffix="81010")
-
-    visit_1 = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1}).json()["visit_id"]
-    visit_2 = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2}).json()["visit_id"]
-
-    ok = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": "CARD-M35-BUSY"})
-    assert ok.status_code == 200
-
-    conflict = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": "CARD-M35-BUSY"})
-    assert conflict.status_code == 409
-
-
-def test_close_visit_card_returned_true_releases_card_for_another_guest(client):
-    headers = _login(client)
-    guest_1 = _create_guest(client, headers, suffix="81011")
-    guest_2 = _create_guest(client, headers, suffix="81012")
-    card_uid = "CARD-M4-REL-TRUE"
-
-    visit_1_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1})
-    assert visit_1_resp.status_code == 200
-    visit_1 = visit_1_resp.json()["visit_id"]
-
-    bind_1 = client.post(f"/api/guests/{guest_1}/cards", headers=headers, json={"card_uid": card_uid})
-    assert bind_1.status_code == 200
-
-    assign_1 = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": card_uid})
-    assert assign_1.status_code == 200
-
-    close_1 = client.post(
-        f"/api/visits/{visit_1}/close",
+    assign_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/assign-card",
         headers=headers,
-        json={"closed_reason": "checkout", "card_returned": True},
+        json={"card_uid": "card-m2-other"},
     )
-    assert close_1.status_code == 200
-    assert close_1.json()["card_returned"] is True
-
-    bind_2 = client.post(f"/api/guests/{guest_2}/cards", headers=headers, json={"card_uid": card_uid})
-    assert bind_2.status_code == 200
-
-    visit_2_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2})
-    assert visit_2_resp.status_code == 200
-    visit_2 = visit_2_resp.json()["visit_id"]
-
-    assign_2 = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": card_uid})
-    assert assign_2.status_code == 200
-    assert assign_2.json()["card_uid"] == card_uid
+    assert assign_resp.status_code == 409
 
 
-def test_close_visit_card_returned_false_keeps_card_bound(client):
+def test_lost_card_blocks_normal_close_until_reissue_or_service_close(client):
     headers = _login(client)
-    guest_1 = _create_guest(client, headers, suffix="81013")
-    guest_2 = _create_guest(client, headers, suffix="81014")
-    card_uid = "CARD-M4-REL-FALSE"
+    guest_id = _create_guest(client, headers, suffix="81010")
+    old_card_uid = _register_card(client, headers, "CARD-M2-006")
+    new_card_uid = _register_card(client, headers, "CARD-M2-007")
+    visit = _open_visit(client, headers, guest_id, old_card_uid)
 
-    visit_1_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_1})
-    assert visit_1_resp.status_code == 200
-    visit_1 = visit_1_resp.json()["visit_id"]
-
-    bind_1 = client.post(f"/api/guests/{guest_1}/cards", headers=headers, json={"card_uid": card_uid})
-    assert bind_1.status_code == 200
-
-    assign_1 = client.post(f"/api/visits/{visit_1}/assign-card", headers=headers, json={"card_uid": card_uid})
-    assert assign_1.status_code == 200
-
-    close_1 = client.post(
-        f"/api/visits/{visit_1}/close",
+    lost_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/report-lost-card",
         headers=headers,
-        json={"closed_reason": "checkout", "card_returned": False},
+        json={"reason": "guest_reported_loss", "comment": "Lost on the way out"},
     )
-    assert close_1.status_code == 200
-    assert close_1.json()["card_returned"] is False
+    assert lost_resp.status_code == 200
+    assert lost_resp.json()["visit"]["operational_status"] == "active_blocked_lost_card"
 
-    bind_2 = client.post(f"/api/guests/{guest_2}/cards", headers=headers, json={"card_uid": card_uid})
-    assert bind_2.status_code == 409
+    close_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/close",
+        headers=headers,
+        json={"closed_reason": "guest_checkout", "returned_card_uid": old_card_uid},
+    )
+    assert close_resp.status_code == 409
 
-    visit_2_resp = client.post("/api/visits/open", headers=headers, json={"guest_id": guest_2})
-    assert visit_2_resp.status_code == 200
-    visit_2 = visit_2_resp.json()["visit_id"]
+    reissue_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/reissue-card",
+        headers=headers,
+        json={"card_uid": new_card_uid, "reason": "lost_card_reissue", "comment": "Replacement issued"},
+    )
+    assert reissue_resp.status_code == 200
+    assert reissue_resp.json()["card_uid"] == "card-m2-007"
+    assert reissue_resp.json()["operational_status"] == "active_assigned"
 
-    assign_2 = client.post(f"/api/visits/{visit_2}/assign-card", headers=headers, json={"card_uid": card_uid})
-    assert assign_2.status_code == 409
+
+def test_service_close_missing_card_keeps_visit_closed_missing_and_card_lost(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81011")
+    card_uid = _register_card(client, headers, "CARD-M2-008")
+    visit = _open_visit(client, headers, guest_id, card_uid)
+
+    service_close_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/service-close",
+        headers=headers,
+        json={
+            "closed_reason": "service_close_missing_card",
+            "reason_code": "card_missing",
+            "comment": "Guest left without returning card",
+        },
+    )
+    assert service_close_resp.status_code == 200
+    assert service_close_resp.json()["status"] == "closed"
+    assert service_close_resp.json()["operational_status"] == "closed_missing_card"
+    assert service_close_resp.json()["card_returned"] is False
+
+    resolve_resp = client.get(f"/api/cards/{card_uid}/resolve", headers=headers)
+    assert resolve_resp.status_code == 200
+    assert resolve_resp.json()["lookup_outcome"] == "lost_card"
+
+
+def test_card_registration_normalizes_uid_and_blocks_case_only_duplicates(client):
+    headers = _login(client)
+    created = client.post("/api/cards/", headers=headers, json={"card_uid": "CARD-M2-009"})
+    assert created.status_code == 201
+    assert created.json()["card_uid"] == "card-m2-009"
+
+    duplicate = client.post("/api/cards/", headers=headers, json={"card_uid": "card-m2-009"})
+    assert duplicate.status_code == 409

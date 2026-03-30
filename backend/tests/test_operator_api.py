@@ -61,13 +61,14 @@ def _seed_operator_fixture(db_session):
     card = models.Card(
         card_uid="04AB7815CD6B80",
         guest=guest,
-        status="active",
+        status="assigned_to_visit",
     )
     visit = models.Visit(
         guest=guest,
         card=card,
         card_uid=card.card_uid,
         status="active",
+        operational_status="active_assigned",
         active_tap_id=1,
         lock_set_at=now,
         card_returned=False,
@@ -155,19 +156,22 @@ def _seed_closed_timeout_visit(db_session):
     card = models.Card(
         card_uid="04AB7815CD6B81",
         guest=guest,
-        status="inactive",
+        status="returned_to_pool",
     )
     visit = models.Visit(
         guest=guest,
         card=card,
         card_uid=card.card_uid,
         status="closed",
+        operational_status="closed_ok",
         opened_at=now,
         closed_at=now,
         closed_reason="timeout_close",
         active_tap_id=None,
         lock_set_at=None,
         card_returned=True,
+        returned_at=now,
+        return_method="legacy_backfill",
     )
     db_session.add_all([guest, card, visit])
     db_session.commit()
@@ -270,7 +274,7 @@ def test_operator_card_lookup_returns_context_summary_and_recent_events(client, 
     assert response.status_code == 200
 
     payload = response.json()
-    assert payload["recommended_action"] == "open_active_visit"
+    assert payload["recommended_action"] == "open_visit_workspace"
     assert payload["last_tap_label"] == "Tap 1"
     assert any(item["key"] == "balance" for item in payload["lookup_summary_items"])
     assert len(payload["recent_events"]) >= 2
@@ -300,7 +304,7 @@ def test_operator_card_lookup_returns_action_policies_for_shift_lead(client, db_
     assert payload["action_policies"]["restore_lost"]["allowed"] is False
     assert payload["action_policies"]["open_history"]["allowed"] is True
     assert payload["action_policies"]["open_visit"]["allowed"] is True
-    assert payload["allowed_quick_actions"] == ["top-up", "toggle-block", "reissue", "open-history", "open-visit"]
+    assert payload["allowed_quick_actions"] == ["top-up", "toggle-block", "open-history", "open-visit"]
 
 
 def test_operator_sessions_return_projection_filters_and_detail(client, db_session):
@@ -414,10 +418,19 @@ def test_operator_search_returns_grouped_results_across_operator_entities(client
     groups = {group["key"]: group for group in payload["groups"]}
     assert "guests" in groups
     assert "visits" in groups
-    assert "cards" in groups
     assert "pours" in groups
     assert groups["visits"]["items"][0]["canonical_visit_status"]
     assert groups["pours"]["items"][0]["route"] == "pours"
+
+    card_response = client.get(
+        "/api/operator/search",
+        params={"query": "04AB7815CD6B80", "limit": 5},
+        headers=headers,
+    )
+    assert card_response.status_code == 200
+    card_groups = {group["key"]: group for group in card_response.json()["groups"]}
+    assert "cards" in card_groups
+    assert card_groups["cards"]["items"][0]["route"] == "cards-guests"
 
 
 def test_operator_system_health_returns_mode_queue_and_blocked_actions(client, db_session):

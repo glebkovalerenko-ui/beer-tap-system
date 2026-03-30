@@ -59,16 +59,23 @@
 
   $: hasVisitTarget = Boolean(result?.active_visit?.visit_id || result?.lost_card?.visit_id);
   $: primaryAction = actions.find((item) => item.id === selectedActionId && !item.disabled) || actions.find((item) => !item.disabled) || null;
-  $: statusText = result?.is_lost
-    ? 'Карта отмечена как потерянная'
-    : result?.active_visit
-      ? 'Карта участвует в активном визите'
-      : result?.guest
-        ? 'Карта привязана к гостю'
-        : result?.card
-          ? 'Карта зарегистрирована, но не привязана'
-          : 'Карта не зарегистрирована в системе';
-  $: statusClass = result?.is_lost ? statusTone('danger') : result?.active_visit ? statusTone('warning') : result?.guest ? statusTone('info') : statusTone();
+  $: lookupOutcome = result?.lookup_outcome || 'unknown_card';
+  $: statusText = {
+    active_visit: 'Карта назначена активному визиту',
+    active_blocked_lost_card: 'Активный визит заблокирован до reissue или service-close',
+    available_pool_card: 'Физическая карта доступна в пуле и может быть выдана на новый визит',
+    returned_to_pool_card: 'Карта подтверждённо возвращена в пул и готова к reuse',
+    lost_card: 'Физическая карта помечена как lost и не может использоваться',
+    retired_card: 'Карта выведена из эксплуатации',
+    unknown_card: 'Карта не зарегистрирована в inventory pool',
+  }[lookupOutcome] || 'Статус карты уточняется';
+  $: statusClass = lookupOutcome === 'lost_card'
+    ? statusTone('danger')
+    : lookupOutcome === 'active_visit' || lookupOutcome === 'active_blocked_lost_card'
+      ? statusTone('info')
+      : lookupOutcome === 'retired_card' || lookupOutcome === 'unknown_card'
+        ? statusTone('warning')
+        : statusTone();
 </script>
 
 <section class="lookup-shell ui-card">

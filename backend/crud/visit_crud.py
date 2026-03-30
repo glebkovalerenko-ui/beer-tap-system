@@ -10,8 +10,18 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from crud import display_crud, lost_card_crud, pour_policy, system_crud
+from crud import card_crud, display_crud, lost_card_crud, pour_policy, system_crud
 from pos_adapter import get_pos_adapter
+
+
+VISIT_OP_ACTIVE_ASSIGNED = "active_assigned"
+VISIT_OP_ACTIVE_BLOCKED_LOST = "active_blocked_lost_card"
+VISIT_OP_CLOSED_OK = "closed_ok"
+VISIT_OP_CLOSED_MISSING = "closed_missing_card"
+
+
+def _normalize_card_uid(card_uid: str) -> str:
+    return card_crud.normalize_card_uid(card_uid)
 
 
 def _is_adult(date_of_birth: date) -> bool:
@@ -39,6 +49,47 @@ def _add_audit_log(
             target_id=target_id,
             details=json.dumps(details, ensure_ascii=False),
         )
+    )
+
+
+def _add_visit_card_audit_event(
+    db: Session,
+    *,
+    actor_id: str | None,
+    event_type: str,
+    visit: models.Visit,
+    card_uid: str,
+    previous_state: dict,
+    next_state: dict,
+    source_channel: str,
+    reason_code: str | None = None,
+    comment: str | None = None,
+    request_id: str | None = None,
+    extra: dict | None = None,
+):
+    payload = {
+        "event_type": event_type,
+        "occurred_at": "db_timestamp",
+        "actor_id": actor_id,
+        "visit_id": str(visit.visit_id),
+        "guest_id": str(visit.guest_id),
+        "card_uid": card_uid,
+        "source_channel": source_channel,
+        "reason_code": reason_code,
+        "comment": comment,
+        "request_id": request_id,
+        "previous_state": previous_state,
+        "next_state": next_state,
+    }
+    if extra:
+        payload.update(extra)
+    _add_audit_log(
+        db,
+        actor_id=actor_id or "system",
+        action=event_type,
+        target_entity="Visit",
+        target_id=str(visit.visit_id),
+        details=payload,
     )
 
 
@@ -201,8 +252,9 @@ def get_active_visit_by_guest_id(db: Session, guest_id: uuid.UUID):
 
 
 def get_active_visit_by_card_uid(db: Session, card_uid: str):
+    normalized_uid = _normalize_card_uid(card_uid)
     return db.query(models.Visit).filter(
-        models.Visit.card_uid == card_uid,
+        func.lower(models.Visit.card_uid) == normalized_uid,
         models.Visit.status == "active",
     ).first()
 
@@ -334,6 +386,7 @@ def get_active_visits_list(db: Session):
             "phone_number": guest.phone_number if guest else "",
             "balance": balance,
             "status": visit.status,
+            "operational_status": visit.operational_status,
             "card_uid": visit.card_uid,
             "active_tap_id": visit.active_tap_id,
             "lock_set_at": visit.lock_set_at,
@@ -361,31 +414,52 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
             detail={"message": "Guest already has an active visit", "visit_id": str(existing_guest_visit.visit_id)},
         )
 
-    card = None
-    if card_uid is not None:
-        card = db.query(models.Card).filter(models.Card.card_uid == card_uid).first()
-        if not card:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    if card_uid is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Card UID is required for the normal visit open flow",
+        )
 
-        if card.guest_id != guest_id:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is not assigned to this guest")
+    normalized_uid = _normalize_card_uid(card_uid)
+    card = card_crud.get_card_by_uid(db, normalized_uid)
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found in inventory pool")
 
-        existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
-        if existing_card_visit:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+    if card.status in {card_crud.CARD_STATUS_LOST, card_crud.CARD_STATUS_RETIRED}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Card is not issuable from state {card.status}")
+    if card.status == card_crud.CARD_STATUS_ASSIGNED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is already assigned to an active visit")
+
+    existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=normalized_uid)
+    if existing_card_visit:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+
+    previous_card_status = card.status
 
     try:
         visit = models.Visit(
             guest_id=guest_id,
-            card_uid=card_uid,
+            card_uid=normalized_uid,
             status="active",
+            operational_status=VISIT_OP_ACTIVE_ASSIGNED,
             active_tap_id=None,
-            card_returned=True,
+            card_returned=False,
         )
         db.add(visit)
+        db.flush()
+        card.status = card_crud.CARD_STATUS_ASSIGNED
+        card.guest_id = None
 
-        if card is not None:
-            card.status = "active"
+        _add_visit_card_audit_event(
+            db,
+            actor_id="operator",
+            event_type="visit_card_issue",
+            visit=visit,
+            card_uid=normalized_uid,
+            previous_state={"card_status": previous_card_status},
+            next_state={"visit_status": visit.status, "operational_status": visit.operational_status, "card_status": card.status},
+            source_channel="operator_open_visit",
+        )
 
         db.commit()
         db.refresh(visit)
@@ -403,15 +477,16 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
 
 
 def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
-    if lost_card_crud.is_lost_card(db=db, card_uid=card_uid):
+    normalized_uid = _normalize_card_uid(card_uid)
+    if lost_card_crud.is_lost_card(db=db, card_uid=normalized_uid):
         _add_audit_log(
             db,
             actor_id=actor_id,
             action="lost_card_blocked",
             target_entity="Card",
-            target_id=card_uid,
+            target_id=normalized_uid,
             details={
-                "card_uid": card_uid,
+                "card_uid": normalized_uid,
                 "tap_id": tap_id,
                 "blocked_at": "db_timestamp",
             },
@@ -422,12 +497,17 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             detail={"reason": "lost_card", "message": "Card is marked as lost"},
         )
 
-    active_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
+    active_visit = get_active_visit_by_card_uid(db=db, card_uid=normalized_uid)
     if not active_visit:
         raise _authorize_error(
             status.HTTP_409_CONFLICT,
             reason="no_active_visit",
-            message=f"No active visit for Card {card_uid}.",
+            message=f"No active visit for Card {normalized_uid}.",
+        )
+    if active_visit.operational_status != VISIT_OP_ACTIVE_ASSIGNED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"reason": "visit_not_authorizable", "message": "Visit is not in an authorizable state"},
         )
 
     if active_visit.active_tap_id is not None and active_visit.active_tap_id != tap_id:
@@ -438,7 +518,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
-                "card_uid": card_uid,
+                "card_uid": normalized_uid,
                 "requested_tap_id": tap_id,
                 "active_tap_id": active_visit.active_tap_id,
                 "event": "authorize_conflict",
@@ -482,7 +562,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
-                "card_uid": card_uid,
+                "card_uid": normalized_uid,
                 "guest_id": str(active_visit.guest_id),
                 "visit_id": str(active_visit.visit_id),
                 "tap_id": tap_id,
@@ -534,7 +614,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
                 target_entity="Visit",
                 target_id=str(active_visit.visit_id),
                 details={
-                    "card_uid": card_uid,
+                    "card_uid": normalized_uid,
                     "guest_id": str(active_visit.guest_id),
                     "visit_id": str(active_visit.visit_id),
                     "tap_id": tap_id,
@@ -571,7 +651,7 @@ def authorize_pour_lock(db: Session, card_uid: str, tap_id: int, actor_id: str):
             target_entity="Visit",
             target_id=str(active_visit.visit_id),
             details={
-                "card_uid": card_uid,
+                "card_uid": normalized_uid,
                 "requested_tap_id": tap_id,
                 "active_tap_id": current_tap_id,
                 "event": "authorize_conflict",
@@ -822,6 +902,11 @@ def report_lost_card_from_visit(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can report lost card")
     if not visit.card_uid:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit has no card assigned")
+    if visit.operational_status == VISIT_OP_ACTIVE_BLOCKED_LOST:
+        lost_card = lost_card_crud.get_lost_card_by_uid(db=db, card_uid=visit.card_uid)
+        if not lost_card:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit is already blocked by lost-card flow")
+        return visit, lost_card, False
 
     lost_card, created = lost_card_crud.create_lost_card_idempotent(
         db=db,
@@ -831,7 +916,29 @@ def report_lost_card_from_visit(
         comment=comment,
         visit_id=visit.visit_id,
         guest_id=visit.guest_id,
+        auto_commit=False,
     )
+    card = card_crud.get_card_by_uid(db, visit.card_uid)
+    previous_card_status = card.status if card else None
+    previous_operational_status = visit.operational_status
+    if card:
+        card.status = card_crud.CARD_STATUS_LOST
+        card.guest_id = None
+    visit.operational_status = VISIT_OP_ACTIVE_BLOCKED_LOST
+    _add_visit_card_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="visit_card_lost",
+        visit=visit,
+        card_uid=visit.card_uid,
+        previous_state={"operational_status": previous_operational_status, "card_status": previous_card_status},
+        next_state={"operational_status": visit.operational_status, "card_status": card.status if card else card_crud.CARD_STATUS_LOST},
+        source_channel="operator_report_lost_card",
+        reason_code=reason,
+        comment=comment,
+    )
+    db.commit()
+    db.refresh(visit)
     return visit, lost_card, created
 
 
@@ -871,11 +978,147 @@ def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: s
     return visit
 
 
-def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_returned: bool):
+def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, returned_card_uid: str, actor_id: str):
     visit = get_visit(db, visit_id=visit_id)
     if not visit:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
 
+    if visit.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit is already closed")
+    if visit.operational_status != VISIT_OP_ACTIVE_ASSIGNED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only an active assigned visit can be normally closed with card return confirmation",
+        )
+
+    pending_sync = (
+        db.query(models.Pour.pour_id)
+        .filter(
+            models.Pour.visit_id == visit_id,
+            models.Pour.sync_status == "pending_sync",
+            models.Pour.is_manual_reconcile.is_(False),
+        )
+        .first()
+    )
+    if pending_sync:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="pending_sync_exists_for_visit")
+
+    normalized_returned_uid = _normalize_card_uid(returned_card_uid)
+    if normalized_returned_uid != visit.card_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Returned card UID does not match the active visit card")
+
+    visit.status = "closed"
+    visit.operational_status = VISIT_OP_CLOSED_OK
+    visit.closed_reason = closed_reason
+    visit.closed_at = func.now()
+    visit.card_returned = True
+    previous_tap_id = visit.active_tap_id
+    visit.active_tap_id = None
+    visit.lock_set_at = None
+    visit.return_method = "operator_nfc"
+    visit.returned_by = actor_id
+    visit.returned_at = func.now()
+
+    if previous_tap_id is not None:
+        tap = db.query(models.Tap).filter(models.Tap.tap_id == previous_tap_id).first()
+        if tap and tap.status == "processing_sync":
+            tap.status = "active"
+
+    card = card_crud.get_card_by_uid(db, visit.card_uid)
+    if card:
+        previous_card_status = card.status
+        card.status = card_crud.CARD_STATUS_RETURNED
+        card.guest_id = None
+        _add_visit_card_audit_event(
+            db,
+            actor_id=actor_id,
+            event_type="visit_card_return",
+            visit=visit,
+            card_uid=visit.card_uid,
+            previous_state={"operational_status": VISIT_OP_ACTIVE_ASSIGNED, "card_status": previous_card_status},
+            next_state={"operational_status": visit.operational_status, "card_status": card.status},
+            source_channel="operator_return_scan_close",
+            reason_code=closed_reason,
+            extra={"confirm_method": "nfc_scan_match", "matched": True, "returned_card_uid": normalized_returned_uid},
+        )
+
+    db.commit()
+    db.refresh(visit)
+    return visit
+
+
+def assign_card_to_active_visit(db: Session, visit_id: uuid.UUID, card_uid: str):
+    visit = get_visit(db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    if visit.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can be updated")
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Normal operator flow no longer supports separate card assignment; open with card or use reissue flow")
+
+
+def reissue_card_for_visit(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    new_card_uid: str,
+    reason: str,
+    comment: str | None,
+    actor_id: str,
+):
+    visit = get_visit(db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    if visit.status != "active" or visit.operational_status != VISIT_OP_ACTIVE_BLOCKED_LOST:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a blocked-lost active visit can be reissued")
+
+    normalized_uid = _normalize_card_uid(new_card_uid)
+    existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=normalized_uid)
+    if existing_card_visit and existing_card_visit.visit_id != visit.visit_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+
+    card = card_crud.get_card_by_uid(db, normalized_uid)
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replacement card not found in inventory pool")
+    if card.status not in {card_crud.CARD_STATUS_AVAILABLE, card_crud.CARD_STATUS_RETURNED}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Replacement card is not issuable from state {card.status}")
+
+    previous_card_uid = visit.card_uid
+    previous_card_status = card.status
+    visit.card_uid = normalized_uid
+    visit.operational_status = VISIT_OP_ACTIVE_ASSIGNED
+    card.status = card_crud.CARD_STATUS_ASSIGNED
+    card.guest_id = None
+
+    _add_visit_card_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="visit_card_reissue",
+        visit=visit,
+        card_uid=normalized_uid,
+        previous_state={"operational_status": VISIT_OP_ACTIVE_BLOCKED_LOST, "old_card_uid": previous_card_uid, "new_card_status": previous_card_status},
+        next_state={"operational_status": visit.operational_status, "card_status": card.status, "old_card_uid": previous_card_uid, "new_card_uid": normalized_uid},
+        source_channel="operator_reissue_card_for_visit",
+        reason_code=reason,
+        comment=comment,
+    )
+
+    db.commit()
+    db.refresh(visit)
+    return visit
+
+
+def service_close_missing_card(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    closed_reason: str,
+    reason_code: str,
+    comment: str | None,
+    actor_id: str,
+):
+    visit = get_visit(db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
     if visit.status != "active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit is already closed")
 
@@ -891,64 +1134,52 @@ def close_visit(db: Session, visit_id: uuid.UUID, closed_reason: str, card_retur
     if pending_sync:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="pending_sync_exists_for_visit")
 
-    visit.status = "closed"
-    visit.closed_reason = closed_reason
-    visit.closed_at = func.now()
-    visit.card_returned = card_returned
     previous_tap_id = visit.active_tap_id
-    visit.active_tap_id = None
-    visit.lock_set_at = None
-
     if previous_tap_id is not None:
         tap = db.query(models.Tap).filter(models.Tap.tap_id == previous_tap_id).first()
         if tap and tap.status == "processing_sync":
             tap.status = "active"
 
-    if visit.card_uid is not None:
-        card = db.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
-        if card:
-            card.status = "inactive"
-            if card_returned:
-                card.guest_id = None
+    card = card_crud.get_card_by_uid(db, visit.card_uid)
+    previous_card_status = card.status if card else None
+    if card:
+        card.status = card_crud.CARD_STATUS_LOST
+        card.guest_id = None
+    lost_card_crud.create_lost_card_idempotent(
+        db=db,
+        card_uid=visit.card_uid,
+        reported_by=actor_id,
+        reason=reason_code,
+        comment=comment,
+        visit_id=visit.visit_id,
+        guest_id=visit.guest_id,
+        auto_commit=False,
+    )
+
+    visit.status = "closed"
+    visit.operational_status = VISIT_OP_CLOSED_MISSING
+    visit.closed_reason = closed_reason
+    visit.closed_at = func.now()
+    visit.card_returned = False
+    visit.active_tap_id = None
+    visit.lock_set_at = None
+
+    _add_visit_card_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="visit_service_close",
+        visit=visit,
+        card_uid=visit.card_uid,
+        previous_state={"operational_status": VISIT_OP_ACTIVE_BLOCKED_LOST if previous_card_status == card_crud.CARD_STATUS_LOST else VISIT_OP_ACTIVE_ASSIGNED, "card_status": previous_card_status},
+        next_state={"operational_status": visit.operational_status, "card_status": card.status if card else card_crud.CARD_STATUS_LOST},
+        source_channel="operator_service_close_missing_card",
+        reason_code=reason_code,
+        comment=comment,
+    )
 
     db.commit()
     db.refresh(visit)
     return visit
-
-
-def assign_card_to_active_visit(db: Session, visit_id: uuid.UUID, card_uid: str):
-    visit = get_visit(db, visit_id=visit_id)
-    if not visit:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
-    if visit.status != "active":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active visit can be updated")
-    if visit.card_uid is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit already has a card")
-
-    existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=card_uid)
-    if existing_card_visit and existing_card_visit.visit_id != visit.visit_id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
-
-    card = db.query(models.Card).filter(models.Card.card_uid == card_uid).first()
-    if card:
-        if card.guest_id and card.guest_id != visit.guest_id:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is assigned to another guest")
-        if card.guest_id is None:
-            card.guest_id = visit.guest_id
-    else:
-        card = models.Card(card_uid=card_uid, guest_id=visit.guest_id, status="inactive")
-        db.add(card)
-
-    visit.card_uid = card_uid
-    card.status = "active"
-
-    try:
-        db.commit()
-        db.refresh(visit)
-        return visit
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
 
 
 def reconcile_pour(

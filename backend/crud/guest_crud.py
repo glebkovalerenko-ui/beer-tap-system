@@ -3,6 +3,7 @@ from typing import Optional
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -75,7 +76,8 @@ def assign_card_to_guest(db: Session, guest_id: uuid.UUID, uid: str):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card is already assigned to another guest")
 
     db_card.guest_id = guest_id
-    db_card.status = "active"
+    if db_card.status in {"inactive", "active"}:
+        db_card.status = card_crud.CARD_STATUS_AVAILABLE
     db.commit()
     db.refresh(db_guest)
     return db_guest
@@ -95,7 +97,8 @@ def unassign_card_from_guest(db: Session, guest_id: uuid.UUID, card_uid: str):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot unassign card during active visit")
 
     db_card.guest_id = None
-    db_card.status = "inactive"
+    if db_card.status not in {card_crud.CARD_STATUS_ASSIGNED, card_crud.CARD_STATUS_LOST, card_crud.CARD_STATUS_RETIRED}:
+        db_card.status = card_crud.CARD_STATUS_AVAILABLE
     db.commit()
     db.refresh(db_guest)
     return db_guest
@@ -150,6 +153,44 @@ def get_guest_history(
                 details=f"Налив: {beverage_name} {pour.volume_ml} мл",
             )
         )
+
+    visit_ids = [
+        visit_id
+        for (visit_id,) in db.query(models.Visit.visit_id).filter(models.Visit.guest_id == guest_id).all()
+    ]
+    if visit_ids:
+        audit_logs = (
+            db.query(models.AuditLog)
+            .filter(
+                models.AuditLog.target_entity == "Visit",
+                models.AuditLog.target_id.in_([str(visit_id) for visit_id in visit_ids]),
+                models.AuditLog.action.in_([
+                    "visit_card_issue",
+                    "visit_card_return",
+                    "visit_card_lost",
+                    "visit_card_reissue",
+                    "visit_service_close",
+                ]),
+            )
+            .order_by(models.AuditLog.timestamp.desc())
+            .all()
+        )
+        action_details = {
+            "visit_card_issue": "Выдача карты на визит",
+            "visit_card_return": "Возврат карты и нормальное закрытие визита",
+            "visit_card_lost": "Карта отмечена как потерянная во время визита",
+            "visit_card_reissue": "Карта перевыпущена внутри активного визита",
+            "visit_service_close": "Визит закрыт сервисным сценарием без возврата карты",
+        }
+        for log in audit_logs:
+            history_items.append(
+                schemas.HistoryItem(
+                    timestamp=log.timestamp,
+                    type=log.action,
+                    amount=Decimal("0.00"),
+                    details=action_details.get(log.action, log.action),
+                )
+            )
 
     history_items.sort(key=lambda item: item.timestamp, reverse=True)
     return schemas.GuestHistoryResponse(guest_id=guest_id, history=history_items)

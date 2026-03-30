@@ -241,13 +241,7 @@
         focusResolved = true;
         return;
       }
-
-      const opened = await visitStore.openVisit({ guestId: candidate.guestId });
-      await refreshVisitWorkspace({ visitId: opened.visit_id, refreshGuests: true });
-      focusVisitId = String(opened.visit_id);
-      selectedVisitId = String(opened.visit_id);
-      focusResolved = true;
-      uiStore.notifySuccess('Визит открыт.');
+      throw new Error('Новый визит теперь открывается только с картой из пула на экране Sessions.');
     } catch (error) {
       launcherError = normalizeError(error);
       uiStore.notifyError(launcherError);

@@ -819,7 +819,7 @@ async fn search_active_visit(token: String, query: String) -> Result<api_client:
 async fn open_visit(
     token: String,
     guest_id: String,
-    card_uid: Option<String>,
+    card_uid: String,
 ) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]     ID: {}", guest_id);
     let payload = api_client::VisitOpenPayload { guest_id, card_uid };
@@ -860,14 +860,52 @@ async fn close_visit(
     token: String,
     visit_id: String,
     closed_reason: String,
-    card_returned: bool,
+    returned_card_uid: String,
 ) -> Result<api_client::Visit, AppError> {
     info!("[COMMAND]   ID: {}", visit_id);
     let payload = api_client::VisitClosePayload {
         closed_reason,
-        card_returned,
+        returned_card_uid,
     };
     api_client::close_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn service_close_visit(
+    token: String,
+    visit_id: String,
+    closed_reason: String,
+    reason_code: String,
+    comment: Option<String>,
+) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] service close visit ID: {}", visit_id);
+    let payload = api_client::VisitServiceClosePayload {
+        closed_reason,
+        reason_code,
+        comment,
+    };
+    api_client::service_close_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+async fn reissue_card_for_visit(
+    token: String,
+    visit_id: String,
+    card_uid: String,
+    reason: String,
+    comment: Option<String>,
+) -> Result<api_client::Visit, AppError> {
+    info!("[COMMAND] reissue card for visit ID: {}", visit_id);
+    let payload = api_client::VisitReissueCardPayload {
+        card_uid,
+        reason,
+        comment,
+    };
+    api_client::reissue_card_for_visit(&token, &visit_id, &payload)
         .await
         .map_err(AppError::from)
 }
@@ -1048,8 +1086,10 @@ fn main() {
             search_active_visit,
             open_visit,
             assign_card_to_visit,
+            reissue_card_for_visit,
             force_unlock_visit,
             close_visit,
+            service_close_visit,
             reconcile_pour,
             report_lost_card_from_visit,
             list_lost_cards,

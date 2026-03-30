@@ -308,14 +308,10 @@ def _card_guest_action_policies(
     visit: models.Visit | None,
     base_resolution: dict,
 ) -> schemas.CardGuestActionPolicySet:
-    is_lost = bool(base_resolution.get("is_lost"))
+    outcome = str(base_resolution.get("lookup_outcome") or "")
+    allowed_next_actions = set(base_resolution.get("allowed_next_actions") or [])
     has_lookup_uid = bool(base_resolution.get("card_uid"))
-    has_visit_context = bool(
-        visit is not None
-        or base_resolution.get("active_visit")
-        or (base_resolution.get("lost_card") or {}).get("visit_id")
-    )
-    can_reissue = bool(guest is not None and (is_lost or has_visit_context))
+    has_visit_context = outcome in {"active_visit", "active_blocked_lost_card"} or bool((base_resolution.get("lost_card") or {}).get("visit_id"))
 
     return schemas.CardGuestActionPolicySet(
         top_up=_contextualize_policy(
@@ -330,20 +326,18 @@ def _card_guest_action_policies(
         ),
         mark_lost=_contextualize_policy(
             _action_policy(current_user, permission="cards_reissue_manage", confirm_required=True),
-            allowed=not is_lost and has_visit_context,
-            disabled_reason="An active visit is required before the card can be marked as lost."
-            if not is_lost
-            else "Card is already marked as lost.",
+            allowed="mark_lost" in allowed_next_actions,
+            disabled_reason="Only an active visit with an assigned card can be marked as lost.",
         ),
         restore_lost=_contextualize_policy(
             _action_policy(current_user, permission="cards_reissue_manage", confirm_required=True),
-            allowed=is_lost,
-            disabled_reason="Card is not currently marked as lost.",
+            allowed=outcome == "lost_card",
+            disabled_reason="Only inventory-lost cards outside blocked active visits can be restored.",
         ),
         reissue=_contextualize_policy(
             _action_policy(current_user, permission="cards_reissue_manage"),
-            allowed=can_reissue,
-            disabled_reason="Guest context with an active or lost card workflow is required to reissue the card.",
+            allowed="reissue_card_for_visit" in allowed_next_actions,
+            disabled_reason="Reissue is only available for blocked-lost active visits.",
         ),
         open_history=_contextualize_policy(
             _action_policy(current_user, permission="cards_history_view"),
@@ -353,7 +347,7 @@ def _card_guest_action_policies(
         open_visit=_contextualize_policy(
             _action_policy(current_user, permission="cards_open_active_session"),
             allowed=has_visit_context,
-            disabled_reason="There is no active visit linked to this card.",
+            disabled_reason="There is no active visit or visit-linked recovery context for this card.",
         ),
     )
 
@@ -1108,18 +1102,25 @@ def lookup_operator_card_context(
         else "—"
     )
 
-    if base_resolution.get("is_lost"):
-        card_state_value = "Lost / operator help required"
+    lookup_outcome = str(base_resolution.get("lookup_outcome") or "unknown_card")
+    if lookup_outcome == "active_blocked_lost_card":
+        card_state_value = "Blocked active visit: lost card"
         card_state_tone = "warning"
-    elif base_resolution.get("active_visit"):
-        card_state_value = "Card is part of an active visit"
+    elif lookup_outcome == "active_visit":
+        card_state_value = "Card is assigned to an active visit"
         card_state_tone = "info"
-    elif base_resolution.get("guest"):
-        card_state_value = "Card is assigned to a guest"
+    elif lookup_outcome == "available_pool_card":
+        card_state_value = "Card is available in the pool"
         card_state_tone = "neutral"
-    elif base_resolution.get("card"):
-        card_state_value = "Card exists, guest context missing"
+    elif lookup_outcome == "returned_to_pool_card":
+        card_state_value = "Card was returned to the pool"
+        card_state_tone = "neutral"
+    elif lookup_outcome == "lost_card":
+        card_state_value = "Card is lost and blocked"
         card_state_tone = "warning"
+    elif lookup_outcome == "retired_card":
+        card_state_value = "Card is retired from inventory"
+        card_state_tone = "critical"
     else:
         card_state_value = "Card is not registered"
         card_state_tone = "critical"
@@ -1173,7 +1174,7 @@ def lookup_operator_card_context(
             **base_resolution["active_visit"],
             canonical_visit_status=_visit_canonical_status(
                 visit_status=(base_resolution.get("active_visit") or {}).get("status"),
-                completion_source=None,
+                completion_source="blocked" if (base_resolution.get("active_visit") or {}).get("operational_status") == "active_blocked_lost_card" else None,
                 active_tap_id=(base_resolution.get("active_visit") or {}).get("active_tap_id"),
             ),
             balance=guest.balance if guest is not None else None,
@@ -1196,11 +1197,13 @@ def lookup_operator_card_context(
     return schemas.CardGuestContextModel(
         card_uid=base_resolution["card_uid"],
         is_lost=base_resolution["is_lost"],
+        lookup_outcome=lookup_outcome,
         lost_card=base_resolution.get("lost_card"),
         active_visit=active_visit_payload,
         guest=guest_payload,
         card=base_resolution.get("card"),
         recommended_action=base_resolution["recommended_action"],
+        allowed_next_actions=base_resolution.get("allowed_next_actions") or [],
         recent_events=recent_events,
         last_tap_label=last_tap_label,
         lookup_summary_items=lookup_summary_items,
@@ -1803,17 +1806,9 @@ def search_operator_workspace(
     ]
 
     card_rows = (
-        db.query(models.Card, models.Guest, models.LostCard)
-        .outerjoin(models.Guest, models.Card.guest_id == models.Guest.guest_id)
+        db.query(models.Card, models.LostCard)
         .outerjoin(models.LostCard, models.LostCard.card_uid == models.Card.card_uid)
-        .filter(
-            or_(
-                func.lower(models.Card.card_uid).like(pattern),
-                func.lower(func.coalesce(models.Guest.last_name, "")).like(pattern),
-                func.lower(func.coalesce(models.Guest.first_name, "")).like(pattern),
-                func.lower(func.coalesce(models.Guest.phone_number, "")).like(pattern),
-            )
-        )
+        .filter(func.lower(models.Card.card_uid).like(pattern))
         .order_by(models.Card.created_at.desc())
         .limit(resolved_limit)
         .all()
@@ -1823,14 +1818,14 @@ def search_operator_workspace(
             key=f"card:{card.card_uid}",
             kind="card",
             title=card.card_uid,
-            subtitle=_guest_full_name(guest) if guest is not None else "Unassigned card",
+            subtitle="Visit-bound operational card" if card.status == "assigned_to_visit" else "Inventory pool card",
             meta="Lost card" if lost_card is not None or card.status == "lost" else card.status,
-            route="guests",
-            href=f"/guests?card={card.card_uid}",
-            guest_id=guest.guest_id if guest is not None else None,
+            route="cards-guests",
+            href=f"/cards-guests?card={card.card_uid}",
+            guest_id=None,
             card_uid=card.card_uid,
         )
-        for card, guest, lost_card in card_rows
+        for card, lost_card in card_rows
     ]
 
     pour_rows = (

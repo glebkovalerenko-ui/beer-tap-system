@@ -363,7 +363,7 @@ def setup_for_insufficient_funds(client, db_session: Session, context: dict):
     initial_balance = Decimal("10.00") # Очень маленький баланс
     guest = Guest(last_name="Бедняков", first_name="Тест", phone_number=f"+7922{uuid.uuid4().hex[:7]}",
                   date_of_birth=date(1995, 5, 5), id_document=f"6666 {uuid.uuid4().hex[:6]}", balance=initial_balance)
-    card = Card(card_uid=f"NO-FUNDS-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="active")
+    card = Card(card_uid=f"NO-FUNDS-CARD-{uuid.uuid4().hex[:6]}", guest=guest, status="assigned_to_visit")
     # Напиток с высокой ценой
     beverage = Beverage(name=f"ExpensiveBeer-{uuid.uuid4()}", brewery="BDD", style="Barleywine", abv=12.0, sell_price_per_liter=Decimal("2000.00"))
     keg = Keg(beverage=beverage, initial_volume_ml=50000, current_volume_ml=50000, purchase_price=15000)
@@ -381,9 +381,10 @@ def setup_for_insufficient_funds(client, db_session: Session, context: dict):
         guest_id=guest.guest_id,
         card_uid=card.card_uid,
         status="active",
+        operational_status="active_assigned",
         active_tap_id=tap.tap_id,
         lock_set_at=datetime.now(timezone.utc),
-        card_returned=True,
+        card_returned=False,
     )
     db_session.add(visit)
     db_session.commit()

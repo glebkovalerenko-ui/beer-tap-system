@@ -144,15 +144,15 @@ export function buildCardsGuestsViewModel({
         {
           key: 'card-state',
           label: 'Статус карты',
-          value: selectedLookup?.is_lost
-            ? 'Lost / нужна помощь'
-            : selectedLookup?.active_visit
-              ? 'Карта участвует в активной сессии'
-              : selectedLookup?.guest
-                ? 'Карта привязана к гостю'
-                : selectedLookup?.card
-                  ? 'Карта есть, гость не найден'
-                  : 'Карта не найдена',
+          value: {
+            active_visit: 'Карта назначена активному визиту',
+            active_blocked_lost_card: 'Визит заблокирован: карта потеряна',
+            available_pool_card: 'Карта доступна в пуле',
+            returned_to_pool_card: 'Карта возвращена в пул',
+            lost_card: 'Карта потеряна',
+            retired_card: 'Карта выведена из эксплуатации',
+            unknown_card: 'Карта не найдена',
+          }[selectedLookup?.lookup_outcome] || 'Статус карты уточняется',
           tone: selectedLookup?.is_lost ? 'warning' : selectedLookup?.active_visit ? 'info' : 'neutral',
         },
         {

@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import models
+from crud import card_crud
 
 
 def _normalize_card_uid(card_uid: str) -> str:
@@ -33,6 +34,7 @@ def create_lost_card_idempotent(
     comment: str | None = None,
     visit_id: uuid.UUID | None = None,
     guest_id: uuid.UUID | None = None,
+    auto_commit: bool = True,
 ):
     normalized_uid = _normalize_card_uid(card_uid)
     existing = get_lost_card_by_uid(db=db, card_uid=normalized_uid)
@@ -54,7 +56,10 @@ def create_lost_card_idempotent(
             existing.comment = comment
             changed = True
         if changed:
-            db.commit()
+            if auto_commit:
+                db.commit()
+            else:
+                db.flush()
             db.refresh(existing)
         return existing, False
 
@@ -67,7 +72,10 @@ def create_lost_card_idempotent(
         guest_id=guest_id,
     )
     db.add(lost_card)
-    db.commit()
+    if auto_commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(lost_card)
     return lost_card, True
 
@@ -95,6 +103,27 @@ def restore_lost_card(db: Session, card_uid: str):
     lost_card = get_lost_card_by_uid(db=db, card_uid=card_uid)
     if not lost_card:
         return None
+    active_visit = None
+    if lost_card.visit_id:
+        active_visit = (
+            db.query(models.Visit)
+            .filter(
+                models.Visit.visit_id == lost_card.visit_id,
+                models.Visit.status == "active",
+            )
+            .first()
+        )
+    if active_visit and active_visit.operational_status == "active_blocked_lost_card":
+        raise ValueError("Cannot restore a lost card while the related visit is still blocked; reissue or service-close the visit first.")
+
+    card = (
+        db.query(models.Card)
+        .filter(func.lower(models.Card.card_uid) == _normalize_card_uid(card_uid))
+        .first()
+    )
+    if card:
+        if card.status == card_crud.CARD_STATUS_LOST:
+            card.status = card_crud.CARD_STATUS_RETURNED
     restored_uid = lost_card.card_uid
     db.delete(lost_card)
     db.commit()

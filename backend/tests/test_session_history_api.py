@@ -8,6 +8,15 @@ def _login(client):
     return headers
 
 
+def _register_card_for_guest(client, headers, guest_id: str, card_uid: str):
+    response = client.post(
+        f'/api/guests/{guest_id}/cards',
+        headers=headers,
+        json={'card_uid': card_uid},
+    )
+    assert response.status_code == 200
+
+
 def test_session_history_returns_active_and_detail(client):
     headers = _login(client)
     guest_resp = client.post(
@@ -24,8 +33,9 @@ def test_session_history_returns_active_and_detail(client):
     )
     assert guest_resp.status_code == 201
     guest_id = guest_resp.json()['guest_id']
+    _register_card_for_guest(client, headers, guest_id, 'HIST-CARD-001')
 
-    open_resp = client.post('/api/visits/open', headers=headers, json={'guest_id': guest_id})
+    open_resp = client.post('/api/visits/open', headers=headers, json={'guest_id': guest_id, 'card_uid': 'HIST-CARD-001'})
     assert open_resp.status_code == 200
     visit_id = open_resp.json()['visit_id']
 
@@ -59,7 +69,13 @@ def test_session_history_detail_returns_display_context_placeholder_when_not_sav
         },
     )
     assert guest_resp.status_code == 201
-    visit_id = client.post('/api/visits/open', headers=headers, json={'guest_id': guest_resp.json()['guest_id']}).json()['visit_id']
+    guest_id = guest_resp.json()['guest_id']
+    _register_card_for_guest(client, headers, guest_id, 'HIST-CARD-002')
+    visit_id = client.post(
+        '/api/visits/open',
+        headers=headers,
+        json={'guest_id': guest_id, 'card_uid': 'HIST-CARD-002'},
+    ).json()['visit_id']
 
     detail_resp = client.get(f'/api/visits/history/{visit_id}', headers=headers)
     assert detail_resp.status_code == 200

@@ -168,15 +168,22 @@ class Guest(Base):
 class Card(Base):
     """
     RFID-КАРТА.
-    Физический носитель, привязанный к гостю.
+    Физический носитель из пула, временно назначаемый на визит.
     """
     __tablename__ = "cards"
 
     card_uid = Column(String(50), primary_key=True, comment="Уникальный идентификатор, читаемый с карты")
+    # Legacy compatibility field only. Operational ownership now lives on Visit.card_uid.
     guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=True, index=True)
 
-    # ПРИНЦИП 2: Конечный автомат (статусы)
-    status = Column(String(20), nullable=False, default='inactive', index=True, comment="Статус: active, inactive, lost")
+    # Inventory lifecycle: available -> assigned_to_visit -> returned_to_pool / lost / retired.
+    status = Column(
+        String(32),
+        nullable=False,
+        default='available',
+        index=True,
+        comment="Статус: available, assigned_to_visit, returned_to_pool, lost, retired",
+    )
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Связь "многие к одному": многие карты могут принадлежать одному гостю
@@ -195,8 +202,15 @@ class Visit(Base):
 
     visit_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     guest_id = Column(UUID(as_uuid=True), ForeignKey("guests.guest_id"), nullable=False, index=True)
-    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=True, index=True)
+    card_uid = Column(String(50), ForeignKey("cards.card_uid"), nullable=False, index=True)
     status = Column(String(20), nullable=False, default="active", index=True)
+    operational_status = Column(
+        String(32),
+        nullable=False,
+        default="active_assigned",
+        index=True,
+        comment="Сервисное состояние: active_assigned, active_blocked_lost_card, closed_ok, closed_missing_card",
+    )
     opened_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)
     closed_reason = Column(Text, nullable=True)
@@ -204,6 +218,9 @@ class Visit(Base):
     active_tap_id = Column(Integer, nullable=True)
     lock_set_at = Column(DateTime(timezone=True), nullable=True)
     card_returned = Column(Boolean, nullable=False, default=True)
+    returned_at = Column(DateTime(timezone=True), nullable=True)
+    returned_by = Column(String(100), nullable=True)
+    return_method = Column(String(32), nullable=True)
 
     guest = relationship("Guest", back_populates="visits")
     card = relationship("Card", back_populates="visits")

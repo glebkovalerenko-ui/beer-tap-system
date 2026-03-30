@@ -26,6 +26,7 @@
   let nfcError = '';
   let isTopUpModalOpen = false;
   let topUpError = '';
+  let pendingOpenGuest = null;
 
   function fullName(guest) {
     return [guest?.last_name, guest?.first_name, guest?.patronymic].filter(Boolean).join(' ') || 'Гость без имени';
@@ -55,7 +56,12 @@
   }
   $: selectedGuest = ($guestStore.guests || []).find((guest) => String(guest.guest_id) === String(selectedGuestId)) || null;
   $: activeVisit = selectedGuest ? ($visitStore.activeVisits || []).find((visit) => visit.guest_id === selectedGuest.guest_id) : null;
-  $: primaryCard = selectedGuest?.cards?.[0] || null;
+  $: primaryCard = activeVisit
+    ? {
+      card_uid: activeVisit.card_uid,
+      status: activeVisit.operational_status === 'active_blocked_lost_card' ? 'lost' : 'assigned_to_visit',
+    }
+    : null;
   $: recentPours = (selectedGuest?.pours || []).slice().sort((left, right) => new Date(right.poured_at).getTime() - new Date(left.poured_at).getTime()).slice(0, 5);
   $: recentTransactions = (selectedGuest?.transactions || []).slice().sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()).slice(0, 4);
 
@@ -100,18 +106,23 @@
     }
   }
 
-  function handleBindCard() {
-    if (!selectedGuest) return;
-    nfcError = '';
-    isNfcModalOpen = true;
-  }
-
   async function handleUidRead(event) {
     nfcError = '';
+    if (!pendingOpenGuest?.guest_id) {
+      nfcError = 'Этот NFC scan path используется для открытия визита с выдачей карты.';
+      return;
+    }
     try {
-      await guestStore.bindCardToGuest(selectedGuest.guest_id, event.detail.uid);
-      await guestStore.fetchGuests({ force: true });
-      uiStore.notifySuccess('Карта привязана к гостю.');
+      const opened = await visitStore.openVisit({ guestId: pendingOpenGuest.guest_id, cardUid: event.detail.uid });
+      await Promise.allSettled([
+        visitStore.fetchActiveVisits({ force: true }),
+        guestStore.fetchGuests({ force: true }),
+        ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
+      ]);
+      pendingOpenGuest = null;
+      isNfcModalOpen = false;
+      uiStore.notifySuccess('Визит открыт, карта выдана из пула.');
+      navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId: opened.guest_id, cardUid: opened.card_uid });
     } catch (error) {
       nfcError = normalizeError(error);
     }
@@ -141,17 +152,14 @@
       navigateWithFocus({ target: 'visit', visitId: activeVisit.visit_id, guestId: selectedGuest.guest_id, cardUid: primaryCard?.card_uid });
       return;
     }
-    try {
-      const opened = await visitStore.openVisit({ guestId: selectedGuest.guest_id });
-      await Promise.allSettled([
-        visitStore.fetchActiveVisits({ force: true }),
-        guestStore.fetchGuests({ force: true }),
-        ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
-      ]);
-      navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId: selectedGuest.guest_id, cardUid: primaryCard?.card_uid });
-    } catch (error) {
-      uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть визит');
-    }
+    pendingOpenGuest = selectedGuest;
+    nfcError = '';
+    isNfcModalOpen = true;
+  }
+
+  function guestCardLabel(guest) {
+    const visit = ($visitStore.activeVisits || []).find((item) => item.guest_id === guest.guest_id);
+    return visit?.card_uid || 'Нет активного визита';
   }
 </script>
 
@@ -197,7 +205,7 @@
                     {/if}
                   </span>
                 </div>
-                <div class="row meta"><span>{guest.phone_number}</span><span>{guest.cards?.[0]?.card_uid || 'Без карты'}</span></div>
+                <div class="row meta"><span>{guest.phone_number}</span><span>{guestCardLabel(guest)}</span></div>
                 <div class="row meta"><span>Баланс: {formatRubAmount(guest.balance)}</span><span>{guest.is_active ? 'Активен' : 'Заблокирован'}</span></div>
               </button>
             {/each}
@@ -218,8 +226,8 @@
           <div class="summary-grid">
             <article>
               <span>Карта</span>
-              <strong>{primaryCard?.card_uid || 'Не привязана'}</strong>
-              <small>{primaryCard ? formatCardStatus(primaryCard.status) : 'Карта ещё не выдана'}</small>
+              <strong>{primaryCard?.card_uid || 'Нет активного визита'}</strong>
+              <small>{primaryCard ? formatCardStatus(primaryCard.status) : 'Карта выдаётся только при открытии активного визита'}</small>
             </article>
             <article>
               <span>Баланс</span>
@@ -239,9 +247,8 @@
           </div>
 
           <div class="action-row">
-            <button on:click={handleOpenVisit}>{activeVisit?.visit_id ? 'Продолжить визит' : 'Открыть визит'}</button>
+            <button on:click={handleOpenVisit}>{activeVisit?.visit_id ? 'Продолжить визит' : 'Выдать карту и открыть визит'}</button>
             <button class="secondary" on:click={handleOpenTopUp}>Пополнить</button>
-            <button class="secondary" on:click={handleBindCard}>Привязать / перевыпустить карту</button>
             <button class="secondary" on:click={() => (window.location.hash = '/lost-cards')}>Потерянная карта</button>
           </div>
 
@@ -306,7 +313,7 @@
 
   {#if isNfcModalOpen}
     <NFCModal
-      on:close={() => { isNfcModalOpen = false; }}
+      on:close={() => { isNfcModalOpen = false; pendingOpenGuest = null; }}
       on:uid-read={handleUidRead}
       externalError={nfcError}
     />
