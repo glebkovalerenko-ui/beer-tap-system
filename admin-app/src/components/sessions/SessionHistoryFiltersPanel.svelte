@@ -6,18 +6,25 @@
   export let onApply = () => {};
   export let onReset = () => {};
   export let onPeriodPresetChange = () => {};
+
+  let showAdvanced = false;
 </script>
 
 <section class="ui-card filters-panel">
   <div class="filters-title">
     <div>
       <h2>Журнал визитов</h2>
-      <p>Сверху остаются активные визиты, а ниже идёт плотный журнал для поиска гостя, статуса и следующего шага.</p>
+      <p>Сверху остаются активные визиты, ниже журнал для поиска гостя и следующего действия.</p>
     </div>
-    <button on:click={onRefresh} disabled={loading}>Обновить</button>
+    <div class="title-actions">
+      <button class="secondary" on:click={() => (showAdvanced = !showAdvanced)}>
+        {showAdvanced ? 'Скрыть доп. фильтры' : 'Ещё фильтры'}
+      </button>
+      <button on:click={onRefresh} disabled={loading}>Обновить</button>
+    </div>
   </div>
 
-  <div class="filters-grid period-grid">
+  <div class="filters-grid period-grid compact-grid">
     <label>
       <span>Период</span>
       <select bind:value={filters.periodPreset} on:change={(event) => onPeriodPresetChange(event.currentTarget.value)}>
@@ -39,6 +46,10 @@
       </select>
     </label>
     <label><span>Карта / UID / номер визита</span><input bind:value={filters.cardUid} placeholder="UID карты или номер визита" /></label>
+  </div>
+
+  {#if showAdvanced}
+    <div class="filters-grid advanced-grid">
     <label>
       <span>Как завершился визит</span>
       <select bind:value={filters.completionSource}>
@@ -55,9 +66,26 @@
     <label class="checkbox"><input type="checkbox" bind:checked={filters.unsyncedOnly} /> Только без синхронизации</label>
     <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeAbortOnly} /> Только без налива</label>
     <label class="checkbox"><input type="checkbox" bind:checked={filters.activeOnly} /> Только активные</label>
-  </div>
+    </div>
+  {/if}
   <div class="actions">
     <button on:click={onApply}>Применить</button>
     <button class="secondary" on:click={onReset}>Сбросить</button>
   </div>
 </section>
+
+<style>
+  .title-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .compact-grid {
+    align-items: end;
+  }
+
+  .advanced-grid {
+    padding-top: 0.15rem;
+  }
+</style>

@@ -253,24 +253,27 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    gap: 10px;
+    min-height: 0;
+    gap: 8px;
   }
 
   .workspace-grid {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 248px minmax(0, 1fr);
     gap: 12px;
-    height: calc(100vh - 88px);
+    flex: 1 1 auto;
+    min-height: 0;
     padding: 0 12px 12px;
     box-sizing: border-box;
   }
 
   .left-rail {
-    padding: var(--space-3);
+    min-height: 0;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    overflow: hidden;
+    gap: 12px;
+    overflow: auto;
   }
 
   .nav-group {
@@ -285,8 +288,8 @@
   .rail-intro p {
     margin: 0;
     color: var(--text-secondary);
-    line-height: 1.45;
-    font-size: 0.92rem;
+    line-height: 1.35;
+    font-size: 0.82rem;
   }
 
   .support-block {
@@ -296,7 +299,7 @@
   }
 
   .nav-title {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -314,20 +317,20 @@
     background: var(--bg-surface-muted);
     border: 1px solid var(--border-soft);
     border-radius: 10px;
-    padding: 12px;
+    padding: 9px 10px;
     display: grid;
-    gap: 4px;
+    gap: 2px;
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
   }
 
   nav a strong {
-    font-size: 0.96rem;
+    font-size: 0.92rem;
   }
 
   nav a span {
     color: var(--text-secondary);
-    font-size: 0.84rem;
-    line-height: 1.35;
+    font-size: 0.76rem;
+    line-height: 1.25;
   }
 
   nav a:hover,
@@ -336,5 +339,28 @@
   .support-link {
     background: color-mix(in srgb, var(--bg-surface-muted) 72%, transparent);
     border-style: dashed;
+  }
+
+  .main-content {
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .page-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 14px;
+  }
+
+  @media (max-width: 1100px) {
+    .workspace-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .left-rail {
+      max-height: 220px;
+    }
   }
 </style>

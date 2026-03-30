@@ -146,7 +146,7 @@
         <strong>{$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}</strong>
         <span class="overall-health" data-tone={overallState}>{overallStateLabel}</span>
       </div>
-      <p>{shiftStatusText()} · {activeVisitCount} активных визитов · {pouringCount} льют сейчас</p>
+      <p>{shiftStatusText()} · {activeVisitCount} активных · {pouringCount} льют</p>
     </button>
 
     <div class="status-strip">
@@ -154,12 +154,12 @@
     </div>
 
     <div class="quick-search">
-      <label for="operator-quick-search">Быстрый поиск</label>
+      <label class="sr-only" for="operator-quick-search">Быстрый поиск</label>
       <input
         id="operator-quick-search"
         type="text"
         bind:value={searchQuery}
-        placeholder="Гость, карта, визит, кран, кега, налив"
+        placeholder="Гость, карта, визит, кран"
         on:input={(event) => handleSearchInput(event.currentTarget.value)}
         on:focus={() => {
           if (searchQuery.trim()) searchOpen = true;
@@ -220,8 +220,8 @@
       {#if $roleStore.permissions.incidents_view}
         <button class="ghost critical" on:click={() => (window.location.hash = '/incidents')}>Инциденты</button>
       {/if}
-      <button class="ghost" on:click={() => (window.location.hash = '/taps')}>Все краны</button>
-      <button class="ghost" on:click={openQuickVisit}>Открыть визит</button>
+      <button class="ghost" on:click={() => (window.location.hash = '/taps')}>Краны</button>
+      <button class="ghost" on:click={openQuickVisit}>Визиты</button>
     </div>
 
     <div class="operator-card">
@@ -237,18 +237,18 @@
 
 <style>
   .topbar {
-    margin: 12px;
-    padding: 14px 16px;
+    margin: 0 12px;
+    padding: 10px 12px;
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
-    gap: 14px;
-    border-radius: 16px;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+    gap: 10px;
+    border-radius: 14px;
     align-items: start;
   }
-  .left-column, .right-column, .quick-search, .operator-card, .clock-card { display: grid; gap: 10px; }
+  .left-column, .right-column, .quick-search, .operator-card { display: grid; gap: 8px; }
   .shift-brand {
     display: grid;
-    gap: 6px;
+    gap: 4px;
     text-align: left;
     padding: 0;
     background: transparent;
@@ -263,7 +263,7 @@
     align-items: center;
   }
   .eyebrow {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-secondary);
@@ -272,8 +272,8 @@
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 0.78rem;
+    padding: 3px 9px;
+    font-size: 0.74rem;
     font-weight: 700;
     background: #eef2f8;
     border: 1px solid #d7e2f1;
@@ -288,17 +288,27 @@
   .overall-health[data-tone='offline'] { background: #ffeef0; border-color: #ffc6cc; color: #9e1f2c; }
   .status-strip { display: grid; }
   .quick-search { position: relative; }
-  .quick-search label { font-size: 0.82rem; color: var(--text-secondary); }
   .quick-search input { width: 100%; }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .search-popover {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
     right: 0;
     z-index: 20;
-    padding: 12px;
+    padding: 10px;
     display: grid;
-    gap: 12px;
+    gap: 10px;
     max-height: 420px;
     overflow: auto;
   }
@@ -335,18 +345,26 @@
     font-weight: 700;
   }
   .clock-card {
-    justify-items: end;
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 8px;
     text-align: right;
   }
   .time-value {
-    font-size: 1.5rem;
+    font-size: 1.15rem;
     font-weight: 800;
   }
+  .time-date { font-size: 0.8rem; }
   .action-cluster {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+  .action-cluster button,
+  .operator-card button {
+    padding: 0.55rem 0.75rem;
   }
   .ghost { background: #edf2fb; color: #23416b; }
   .ghost.critical {
@@ -355,8 +373,8 @@
     border: 1px solid #ffc6cc;
   }
   .operator-card {
-    padding: 12px;
-    border-radius: 14px;
+    padding: 8px 10px;
+    border-radius: 12px;
     background: var(--bg-surface-muted);
     border: 1px solid var(--border-soft);
     grid-template-columns: minmax(0, 1fr) auto;
@@ -365,7 +383,7 @@
   .error { color: var(--state-critical-text, #9e1f2c); }
   @media (max-width: 1100px) {
     .topbar { grid-template-columns: 1fr; }
-    .clock-card { justify-items: start; text-align: left; }
+    .clock-card { justify-content: flex-start; text-align: left; }
     .action-cluster { justify-content: flex-start; }
   }
   @media (max-width: 720px) {

@@ -61,15 +61,15 @@
   function connectionIndicator(connection = {}) {
     if (connection.mode === 'offline') {
       return {
-        text: 'Связь с backend: нет',
+        text: 'Сервер: нет связи',
         tone: 'error',
-      title: connection.reason || 'Связь с backend потеряна, рискованные действия заблокированы.',
+      title: connection.reason || 'Связь с центральным контуром потеряна, рискованные действия заблокированы.',
       };
     }
 
     if (connection.mode !== 'online') {
       return {
-        text: `Данные: ${connection.transport === 'websocket' ? 'устарели' : 'только просмотр'}`,
+        text: connection.transport === 'websocket' ? 'Данные: устарели' : 'Данные: только просмотр',
         tone: 'warn',
         title: connection.reason || 'Backend сейчас работает в деградированном режиме.',
       };
@@ -77,14 +77,14 @@
 
     if (connection.transport !== 'websocket') {
       return {
-        text: connection.transport === 'short_polling' ? 'Обновление: повторная синхронизация' : 'Обновление: редкая синхронизация',
+        text: 'Данные: с задержкой',
         tone: 'warn',
         title: connection.reason || 'Обновление данных временно переведено в polling-режим.',
       };
     }
 
     return {
-      text: 'Обновление: онлайн',
+      text: 'Данные: онлайн',
       tone: 'ok',
       title: 'Данные обновляются через websocket.',
     };
@@ -110,10 +110,10 @@
   {#if showOperational}
     <div class="pills secondary" aria-label="Статусы рабочего места оператора">
       <span class="pill secondary-pill" class:ok={$shiftStore.isOpen} class:warn={!$shiftStore.isOpen}>
-        Смена: {$shiftStore.isOpen ? 'Открыта' : 'Закрыта'}
+        {$shiftStore.isOpen ? 'Смена открыта' : 'Смена закрыта'}
       </span>
       <span class="pill secondary-pill" class:ok={online} class:error={!online}>
-        Сеть: {online ? 'На связи' : 'Нет связи'}
+        {online ? 'Сеть: онлайн' : 'Сеть: нет связи'}
       </span>
       <span class="pill secondary-pill" class:ok={connectionPill.tone === 'ok'} class:warn={connectionPill.tone === 'warn'} class:error={connectionPill.tone === 'error'} title={connectionPill.title}>
         {connectionPill.text}
@@ -125,7 +125,7 @@
         class:error={$nfcReaderStore.status === 'error'}
         title={$nfcReaderStore.message || $nfcReaderStore.error || 'Статус NFC-считывателя'}
       >
-        Считыватель: {nfcLabel}
+        NFC: {nfcLabel}
       </span>
       <span class="pill secondary-pill" class:ok={syncPill.tone === 'ok'} class:warn={syncPill.tone === 'warn'} title={syncPill.title}>
         {syncPill.text}
@@ -146,11 +146,11 @@
 
 <style>
   .pill-groups { display: grid; gap: 8px; }
-  .pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pills { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .pill {
     border-radius: 999px;
-    padding: 6px 10px;
-    font-size: 0.78rem;
+    padding: 4px 8px;
+    font-size: 0.74rem;
     background: #eef2f8;
     color: #29405f;
     border: 1px solid #d7e2f1;

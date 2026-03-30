@@ -276,17 +276,17 @@
   .header-actions { flex-wrap: wrap; justify-content: flex-end; }
   .banner { display: grid; gap: 0.35rem; padding: 0.9rem 1rem; border-radius: 16px; }
   .banner.warning { background: var(--state-warning-bg); border: 1px solid var(--state-warning-border); color: var(--state-warning-text); }
-  .kpi-strip { display: grid; gap: 0.85rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .kpi-strip { display: grid; gap: 0.65rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .kpi-card {
-    padding: 0.95rem 1rem;
-    border-radius: 14px;
+    padding: 0.7rem 0.85rem;
+    border-radius: 12px;
     border: 1px solid var(--border-soft);
     background: var(--bg-surface-muted);
     display: grid;
-    gap: 0.35rem;
+    gap: 0.2rem;
   }
   .kpi-card span, .category, .counter { color: var(--text-secondary); font-size: 0.82rem; }
-  .kpi-card strong { font-size: 1.2rem; }
+  .kpi-card strong { font-size: 1.05rem; }
   .main-grid { display: grid; gap: 1rem; grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.25fr); align-items: start; }
   .attention-panel, .feed-panel, .compact-panel { display: grid; gap: 1rem; }
   .section-head.compact { margin-bottom: 0; }
@@ -300,7 +300,7 @@
   .attention-item, .compact-item {
     border: 1px solid var(--border-soft);
     border-radius: 14px;
-    padding: 0.9rem;
+    padding: 0.8rem;
     background: #fff;
     color: inherit;
     text-align: left;

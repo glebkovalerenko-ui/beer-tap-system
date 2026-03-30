@@ -52,6 +52,7 @@
 
   let filters = { ...DEFAULT_FILTERS };
   let selectedIncidentId = null;
+  let showAdvancedFilters = false;
 
   onMount(() => {
     const token = get(sessionStore).token;
@@ -241,7 +242,17 @@
     </section>
 
     <section class="ui-card filters-panel">
-      <div class="filters-grid">
+      <div class="filters-head">
+        <div>
+          <h2>Фильтры очереди</h2>
+          <p>Частые условия остаются в первой строке, остальные фильтры можно открыть по необходимости.</p>
+        </div>
+        <button class="secondary" on:click={() => (showAdvancedFilters = !showAdvancedFilters)}>
+          {showAdvancedFilters ? 'Скрыть доп. фильтры' : 'Ещё фильтры'}
+        </button>
+      </div>
+
+      <div class="filters-grid primary-filters">
         <label><span>Поиск</span><input bind:value={filters.query} placeholder="ID, тип, кран, ответственный" /></label>
         <label>
           <span>Приоритет</span>
@@ -258,17 +269,21 @@
           </select>
         </label>
         <label>
-          <span>Тип</span>
-          <select bind:value={filters.type}>
-            <option value="all">Все</option>
-            {#each filterOptions.types as type}<option value={type}>{titleCase(type)}</option>{/each}
-          </select>
-        </label>
-        <label>
           <span>Кран</span>
           <select bind:value={filters.tap}>
             <option value="all">Все</option>
             {#each filterOptions.taps as tap}<option value={tap}>{tap}</option>{/each}
+          </select>
+        </label>
+      </div>
+
+      {#if showAdvancedFilters}
+        <div class="filters-grid advanced-filters">
+        <label>
+          <span>Тип</span>
+          <select bind:value={filters.type}>
+            <option value="all">Все</option>
+            {#each filterOptions.types as type}<option value={type}>{titleCase(type)}</option>{/each}
           </select>
         </label>
         <label>
@@ -287,7 +302,8 @@
             <option value="at_risk">Стареют / просрочены</option>
           </select>
         </label>
-      </div>
+        </div>
+      {/if}
       <div class="filters-actions">
         <button class="secondary" on:click={resetFilters}>Сбросить</button>
         <button on:click={() => ensureIncidentsData({ reason: 'manual-refresh', force: true })} disabled={$incidentStore.loading}>{INCIDENT_COPY.refreshQueue}</button>
@@ -467,14 +483,18 @@
 
 <style>
   .page, .filters-panel, .panel, .detail-panel, .detail-section, .banner-panel { display: grid; gap: 1rem; }
-  .page-header, .filters-actions, .detail-head, .section-head, .timeline li { display: flex; gap: 1rem; justify-content: space-between; }
+  .page-header, .filters-actions, .detail-head, .section-head, .timeline li, .filters-head { display: flex; gap: 1rem; justify-content: space-between; }
   .page-header { align-items: flex-start; flex-wrap: wrap; }
   .page-header h1, .page-header p, .detail-head h2, .detail-head p, .detail-section h3, .timeline p { margin: 0; }
   .header-meta, .header-stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .header-meta { align-items: flex-start; justify-content: flex-end; }
-  .header-stats article, .meta-grid article, .accountability-strip article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.85rem 1rem; background: #fff; min-width: 120px; display: grid; gap: 0.3rem; }
+  .header-stats article, .meta-grid article, .accountability-strip article { border: 1px solid #e2e8f0; border-radius: 14px; padding: 0.7rem 0.85rem; background: #fff; min-width: 110px; display: grid; gap: 0.25rem; }
   .filters-grid, .meta-grid, .form-grid { display: grid; gap: 0.75rem; }
   .filters-grid { grid-template-columns: repeat(6, minmax(120px, 1fr)); }
+  .filters-head h2, .filters-head p { margin: 0; }
+  .filters-head p { color: var(--text-secondary, #64748b); }
+  .primary-filters { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+  .advanced-filters { padding-top: 0.15rem; }
   .meta-grid, .accountability-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .accountability-strip { display: grid; gap: 0.75rem; }
   .banner-panel[data-tone='warning'] { border: 1px solid #fdba74; background: #fff7ed; }
@@ -510,6 +530,6 @@
   .state-flow li.done { border-color: #86efac; background: #f0fdf4; }
   .state-flow p { margin-top: 0.25rem; }
   .restricted { padding: 1rem; }
-  @media (max-width: 1200px) { .content-grid { grid-template-columns: 1fr; } .detail-panel { position: static; } .filters-grid { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
+  @media (max-width: 1200px) { .content-grid { grid-template-columns: 1fr; } .detail-panel { position: static; } .filters-grid, .primary-filters { grid-template-columns: repeat(2, minmax(120px, 1fr)); } .filters-head { flex-direction: column; align-items: stretch; } }
   @media (max-width: 720px) { .filters-grid, .meta-grid, .accountability-strip { grid-template-columns: 1fr; } }
 </style>
