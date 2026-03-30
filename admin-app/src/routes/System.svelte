@@ -85,7 +85,7 @@
     <div class="page-header">
       <div>
         <h1>{ROUTE_COPY.system.title}</h1>
-        <p>{ROUTE_COPY.system.description} Глубокие инженерные действия и настройки вынесены в отдельную зону по правам.</p>
+        <p>{ROUTE_COPY.system.description} Инженерные действия и глубокие настройки вынесены в отдельный блок по правам.</p>
       </div>
       <DataFreshnessChip
         label="Система"
@@ -120,7 +120,7 @@
 
       <section class="ui-card panel hero-card">
         <div class="hero">
-          <div><span class="eyebrow">Очередь синхронизации</span><strong>{$systemStore.queueSummary?.pending_items || 0}</strong></div>
+          <div><span class="eyebrow">Очередь обмена</span><strong>{$systemStore.queueSummary?.pending_items || 0}</strong></div>
           <div><span class="eyebrow">Несинхронизированные визиты</span><strong>{$systemStore.queueSummary?.unsynced_sessions || 0}</strong></div>
           <div><span class="eyebrow">Старейшая задержка</span><strong>{formatSeconds($systemStore.queueSummary?.oldest_pending_age_seconds)}</strong></div>
           <div><span class="eyebrow">Устройства без свежих данных</span><strong>{$systemStore.staleSummary?.stale_device_count || 0}</strong></div>
@@ -128,11 +128,11 @@
       </section>
     </div>
 
-      <section class="ui-card panel">
+    <section class="ui-card panel">
       <div class="section-head">
         <div>
-          <h2>Что сейчас ограничено</h2>
-          <p>Здесь видно не только общее состояние, но и какие действия пока небезопасно выполнять до возврата свежих данных.</p>
+          <h2>Что может мешать работе точки</h2>
+          <p>Здесь видно не только общее состояние, но и какие действия лучше отложить до возврата свежих данных.</p>
         </div>
       </div>
       <div class="blocked-grid">

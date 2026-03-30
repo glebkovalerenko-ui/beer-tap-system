@@ -228,8 +228,12 @@
     border: 1px solid var(--tap-status-icon-border, transparent);
   }
   .card-body { display: grid; gap: 0.9rem; }
-  .session-summary { display: grid; gap: 0.45rem; }
+  .session-summary { display: grid; gap: 0.45rem; order: -1; }
   .session-summary.empty { background: color-mix(in srgb, white 70%, var(--bg-surface-muted)); }
+  .status-hero { order: 0; }
+  .beverage-hero { order: 1; }
+  .meta-block p,
+  .footer-meta { font-size: 0.8rem; }
   .progress-container { height: 9px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
   .progress-bar { height: 100%; background: linear-gradient(90deg, var(--state-success-border), var(--state-success-text)); }
   .progress-bar.low { background: linear-gradient(90deg, var(--state-warning-border), var(--state-warning-text)); }

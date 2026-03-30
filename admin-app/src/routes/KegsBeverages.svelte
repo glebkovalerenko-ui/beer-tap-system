@@ -161,13 +161,13 @@
     <span class:enabled={canViewInventory}>Просмотр</span>
     <span class:enabled={canManageKegs}>Кеги</span>
     <span class:enabled={canManageBeveragesCatalog}>Каталог напитков</span>
-    <span class:enabled={canViewScreens}>Screens</span>
+    <span class:enabled={canViewScreens}>Экраны</span>
   </section>
 
   <section class="mode-switch-card">
     <div class="mode-switch-copy">
       <h2>Рабочий режим</h2>
-      <p>Разделяйте каталог напитков, физические кеги и экраны кранов, чтобы первый слой оставался понятным оператору.</p>
+      <p>Сначала выберите, с чем вы работаете сейчас: напитки, кеги или экраны кранов.</p>
     </div>
 
     <div class="mode-switch" role="tablist" aria-label="Режим раздела кеги и напитки">
@@ -197,7 +197,7 @@
           aria-selected={activeMode === VIEW_MODES.SCREENS}
           on:click={() => switchMode(VIEW_MODES.SCREENS)}
         >
-          Screens
+          Экраны
         </button>
       {/if}
     </div>
@@ -281,7 +281,7 @@
       <div class="section-header">
         <div>
           <h2 id="screens-mode-title">Экраны кранов</h2>
-          <p class="section-hint">Тихий secondary layer для старшего смены и инженерных ролей.</p>
+          <p class="section-hint">Второй слой для старшего смены и инженера: что сейчас видит гость на экране крана.</p>
         </div>
         <button type="button" class="ghost-link" on:click={() => switchMode(VIEW_MODES.KEGS)}>
           Вернуться к кегам
@@ -290,7 +290,7 @@
 
       <div class="context-note">
         <strong>В этом режиме:</strong>
-        управляйте guest-facing экраном как вторичным слоем, не смешивая его с базовыми действиями по напитку и кеге.
+        управляйте экраном крана отдельно от напитка и кеги, чтобы первый экран оставался проще.
       </div>
 
       <TapScreens embedded={true} />
@@ -344,7 +344,7 @@
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
   }
 
   .permission-hints span {
@@ -365,8 +365,8 @@
     border: 1px solid var(--border-soft, #e2e8f0);
     border-radius: var(--radius-md, 16px);
     background: var(--bg-surface, #fff);
-    padding: 1rem;
-    margin-bottom: 1rem;
+    padding: 0.85rem;
+    margin-bottom: 0.85rem;
   }
 
   .mode-switch-card {
@@ -383,7 +383,7 @@
     display: inline-grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.35rem;
-    padding: 0.35rem;
+    padding: 0.3rem;
     background: #f1f5f9;
     border-radius: 999px;
   }

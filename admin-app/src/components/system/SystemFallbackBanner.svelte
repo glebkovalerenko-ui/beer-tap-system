@@ -41,13 +41,13 @@
 
     {#if $operatorConnectionStore.mode !== 'online'}
       <span>
-        Backend {$operatorConnectionStore.mode === 'offline' ? 'недоступен' : 'работает нестабильно'}.
+        Центральный контур {$operatorConnectionStore.mode === 'offline' ? 'недоступен' : 'работает нестабильно'}.
         {$operatorConnectionStore.reason || $systemStore.reason || 'Опасные действия временно доступны только для просмотра.'}
       </span>
     {/if}
 
     {#if $operatorConnectionStore.transport !== 'websocket' && $operatorConnectionStore.mode === 'online'}
-      <span>Обновление данных переключено на {$operatorConnectionStore.transport === 'short_polling' ? 'повторную синхронизацию' : 'редкую синхронизацию'} до восстановления websocket.</span>
+      <span>Обновление данных временно идёт с задержкой, пока система не вернётся к обычному онлайн-обмену.</span>
     {/if}
 
     {#if nfcStatus === 'disconnected'}
@@ -59,7 +59,7 @@
     {/if}
 
     {#if nfcStatus === 'error'}
-      <span>NFC-считыватель недоступен из-за ошибки среды. Проверьте журнал Admin App и состояние PC/SC.</span>
+      <span>NFC-считыватель недоступен из-за ошибки среды. Проверьте рабочее место и службу считывателя.</span>
     {/if}
   </section>
 {/if}

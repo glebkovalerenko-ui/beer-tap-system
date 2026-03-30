@@ -13,43 +13,43 @@ export function buildQuickActions({ lookup, actionGuards }) {
   return orderQuickActionDescriptors([
     withReason(createQuickActionDescriptor({
       id: 'top-up',
-      title: 'Top up',
+      title: 'Пополнить',
       description: guards.topUp?.disabled
-        ? (guards.topUp.reason || 'Top-up is unavailable right now.')
-        : 'Quickly add funds after checking the card and guest context.',
+        ? (guards.topUp.reason || 'Пополнение сейчас недоступно.')
+        : 'Быстро пополнить баланс после проверки карты и гостя.',
       disabled: Boolean(guards.topUp?.disabled),
     }), guards.topUp?.reason),
     withReason(createQuickActionDescriptor({
       id: 'toggle-block',
-      title: guards.toggleBlock?.isActive ? 'Block' : 'Unblock',
+      title: guards.toggleBlock?.isActive ? 'Заблокировать' : 'Разблокировать',
       description: guards.toggleBlock?.disabled
-        ? (guards.toggleBlock.reason || 'Block status is unavailable right now.')
-        : 'Change guest active status from the operator workflow.',
+        ? (guards.toggleBlock.reason || 'Изменение статуса гостя сейчас недоступно.')
+        : 'Изменить статус гостя без выхода из рабочего сценария.',
       disabled: Boolean(guards.toggleBlock?.disabled),
     }), guards.toggleBlock?.reason),
     withReason(createQuickActionDescriptor({
       id: 'reissue',
-      title: lookup?.is_lost ? 'Restore / reissue' : 'Mark lost / reissue',
+      title: lookup?.is_lost ? 'Восстановить / перевыпустить' : 'Потеря / перевыпуск',
       description: guards.reissue?.disabled
-        ? (guards.reissue.reason || 'Reissue flow is unavailable right now.')
-        : 'Continue the lost-card or reissue workflow without leaving the operator context.',
+        ? (guards.reissue.reason || 'Сценарий перевыпуска сейчас недоступен.')
+        : 'Продолжить сценарий потерянной карты или перевыпуска без выхода из контекста.',
       disabled: Boolean(guards.reissue?.disabled),
       tone: lookup?.is_lost ? 'danger' : 'neutral',
     }), guards.reissue?.reason),
     withReason(createQuickActionDescriptor({
       id: 'open-history',
-      title: 'History',
+      title: 'История',
       description: guards.openHistory?.disabled
-        ? (guards.openHistory.reason || 'History is unavailable right now.')
-        : 'Open the card and guest history to explain the latest event.',
+        ? (guards.openHistory.reason || 'История сейчас недоступна.')
+        : 'Открыть историю карты и гостя, чтобы объяснить последнее событие.',
       disabled: Boolean(guards.openHistory?.disabled),
     }), guards.openHistory?.reason),
     withReason(createQuickActionDescriptor({
       id: 'open-visit',
-      title: 'Active session',
+      title: 'Активный визит',
       description: guards.openVisit?.disabled
-        ? (guards.openVisit.reason || 'Active session is unavailable right now.')
-        : 'Jump straight into the active session linked to this card.',
+        ? (guards.openVisit.reason || 'Активный визит сейчас недоступен.')
+        : 'Сразу открыть активный визит, связанный с этой картой.',
       disabled: Boolean(guards.openVisit?.disabled),
     }), guards.openVisit?.reason),
   ], ['top-up', 'toggle-block', 'reissue', 'open-history', 'open-visit']);

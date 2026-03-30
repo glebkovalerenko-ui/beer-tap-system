@@ -2,23 +2,23 @@ import { buildQuickActions } from '../../src/lib/cardsGuests/scenarios/quick_act
 
 const enabled = buildQuickActions({
   lookup: { active_visit: { visit_id: 'v1' } },
-  guest: { is_active: true },
-  visit: { visit_id: 'v1' },
-  canTopUp: true,
-  canToggleBlock: true,
-  canReissue: true,
-  canOpenVisit: true,
-  canViewHistory: true,
+  actionGuards: {
+    topUp: { disabled: false, reason: '' },
+    toggleBlock: { disabled: false, reason: '', isActive: true },
+    reissue: { disabled: false, reason: '' },
+    openHistory: { disabled: false, reason: '' },
+    openVisit: { disabled: false, reason: '' },
+  },
 });
 const denied = buildQuickActions({
   lookup: null,
-  guest: null,
-  visit: null,
-  canTopUp: false,
-  canToggleBlock: false,
-  canReissue: false,
-  canOpenVisit: false,
-  canViewHistory: false,
+  actionGuards: {
+    topUp: { disabled: true, reason: 'Top-up unavailable.' },
+    toggleBlock: { disabled: true, reason: 'Toggle unavailable.', isActive: false },
+    reissue: { disabled: true, reason: 'Reissue unavailable.' },
+    openHistory: { disabled: true, reason: 'History unavailable.' },
+    openVisit: { disabled: true, reason: 'Visit unavailable.' },
+  },
 });
 
 const checks = [

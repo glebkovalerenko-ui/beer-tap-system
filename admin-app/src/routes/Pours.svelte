@@ -4,6 +4,7 @@
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../lib/formatters.js';
+  import { buildOperatorPourPresentation, formatPourSyncState } from '../lib/operator/pourPresentation.js';
   import { canonicalPourStatusLabel, canonicalPourStatusTone, resolveCanonicalPourStatus } from '../lib/operator/pourStatus.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { operatorPoursStore } from '../stores/operatorPoursStore.js';
@@ -36,11 +37,13 @@
 
   let filters = { ...DEFAULT_FILTERS };
   let selectedPourRef = '';
+  let showAdvancedFilters = false;
 
   $: items = $operatorPoursStore.items || [];
   $: filteredItems = items.filter((item) => !filters.status || resolveCanonicalPourStatus(item) === filters.status);
   $: detail = $operatorPoursStore.detail || null;
   $: detailStatus = detail ? resolveCanonicalPourStatus(detail.summary) : '';
+  $: detailPresentation = detail ? buildOperatorPourPresentation(detail) : null;
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
     ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Журнал налива доступен, но действия лучше выполнять после обновления данных.')
     : '';
@@ -133,6 +136,10 @@
     if ((item?.sale_kind || item?.saleKind) === 'non_sale') return 'Без продажи';
     return 'Продажа';
   }
+
+  function syncStateLabel(value) {
+    return formatPourSyncState(value).label;
+  }
 </script>
 
 <section class="page">
@@ -159,7 +166,17 @@
   {/if}
 
   <section class="ui-card filters-panel">
-    <div class="filters-grid">
+    <div class="filters-head">
+      <div>
+        <h2>Фильтры налива</h2>
+        <p>Частые фильтры остаются сверху, редкие условия открываются по необходимости.</p>
+      </div>
+      <button class="secondary" on:click={() => (showAdvancedFilters = !showAdvancedFilters)}>
+        {showAdvancedFilters ? 'Скрыть доп. фильтры' : 'Ещё фильтры'}
+      </button>
+    </div>
+
+    <div class="filters-grid primary-filters">
       <label>
         <span>Период</span>
         <select bind:value={filters.periodPreset} on:change={() => refresh(true)}>
@@ -201,12 +218,17 @@
           <option value="non_sale">Только без продажи</option>
         </select>
       </label>
+    </div>
+
+    {#if showAdvancedFilters}
+      <div class="filters-grid advanced-filters">
       <label class="checkbox"><input type="checkbox" bind:checked={filters.problemOnly} /> Только проблемные</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.nonSaleOnly} /> Только без продажи</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.zeroVolumeOnly} /> Только без объёма</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.timeoutOnly} /> Только таймаут</label>
       <label class="checkbox"><input type="checkbox" bind:checked={filters.deniedOnly} /> Только отклонённые</label>
-    </div>
+      </div>
+    {/if}
     <div class="filters-actions">
       <button on:click={() => refresh(true)} disabled={$operatorPoursStore.loading}>Применить</button>
       <button class="secondary" on:click={resetFilters}>Сбросить</button>
@@ -249,8 +271,8 @@
               <div class="row meta-grid">
                 <span>{formatDateTimeRu(item.occurred_at)}</span>
                 <span>{item.visit_id ? `Визит #${item.visit_id}` : 'Без визита'}</span>
-                <span>{item.short_id ? `Short ID ${item.short_id}` : pourModeLabel(item)}</span>
-                <span>{item.sync_state || 'нет данных о синхронизации'}</span>
+                <span>{item.short_id ? `ID ${item.short_id}` : pourModeLabel(item)}</span>
+                <span>{syncStateLabel(item.sync_state)}</span>
               </div>
             </button>
           {/each}
@@ -271,7 +293,7 @@
 
         <section class="summary-grid">
           <article>
-            <span>Исход</span>
+            <span>Статус</span>
             <strong>{canonicalPourStatusLabel(detailStatus)}</strong>
           </article>
           <article>
@@ -292,12 +314,19 @@
           </article>
           <article>
             <span>Синхронизация</span>
-            <strong>{detail.summary.sync_state || '—'}</strong>
+            <strong>{detailPresentation?.sync.label || 'Нет данных о синхронизации'}</strong>
+            {#if detailPresentation?.sync.technicalDetail}
+              <small>{detailPresentation.sync.technicalDetail}</small>
+            {/if}
           </article>
         </section>
 
         <section class="summary-note">
-          <strong>Причина остановки:</strong> {detail.summary.completion_reason || 'не указана'}
+          <strong>{detail.summary.source_kind === 'denied' ? 'Почему налив не начался:' : 'Чем завершилось:'}</strong>
+          {detailPresentation?.completion.label || 'Причина не указана'}
+          {#if detailPresentation?.completion.technicalDetail}
+            <small>{detailPresentation.completion.technicalDetail}</small>
+          {/if}
         </section>
 
         <section class="action-row">
@@ -309,12 +338,15 @@
         <section class="detail-section">
           <h3>Ход налива</h3>
           <ul class="timeline">
-            {#each detail.lifecycle || [] as step}
+            {#each detailPresentation?.lifecycle || [] as step}
               <li>
                 <div class="time">{step.timestamp ? formatDateTimeRu(step.timestamp) : '—'}</div>
                 <div>
-                  <strong>{step.label}</strong>
-                  <p>{step.value || 'Без дополнительного значения'}</p>
+                  <strong>{step.operatorLabel}</strong>
+                  <p>{step.operatorValue || 'Без дополнительной отметки'}</p>
+                  {#if step.technicalDetail}
+                    <small>{step.technicalDetail}</small>
+                  {/if}
                 </div>
               </li>
             {/each}
@@ -366,12 +398,17 @@
 
 <style>
   .page { display: grid; gap: 1rem; }
-  .page-header, .list-head, .detail-head, .filters-actions, .action-row { display: flex; gap: 1rem; justify-content: space-between; align-items: flex-start; }
+  .page-header, .list-head, .detail-head, .filters-actions, .action-row, .filters-head { display: flex; gap: 1rem; justify-content: space-between; align-items: flex-start; }
   .page-header p, .list-head p, .detail-head p { margin: 0.25rem 0 0; color: var(--text-secondary); }
   .banner { display: grid; gap: 0.35rem; padding: 0.9rem 1rem; border-radius: 16px; }
   .banner.warning { background: var(--state-warning-bg); border: 1px solid var(--state-warning-border); color: var(--state-warning-text); }
   .filters-panel, .list-panel, .detail-panel { display: grid; gap: 1rem; }
   .filters-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .filters-head h2,
+  .filters-head p { margin: 0; }
+  .filters-head p { color: var(--text-secondary); }
+  .primary-filters { align-items: end; }
+  .advanced-filters { padding-top: 0.15rem; }
   .filters-grid label { display: grid; gap: 0.35rem; }
   .filters-grid label span { font-size: 0.85rem; color: var(--text-secondary); }
   .checkbox { align-self: end; grid-template-columns: auto 1fr; align-items: center; gap: 0.5rem; }
@@ -401,7 +438,7 @@
   .error { color: var(--state-critical-text); }
   @media (max-width: 1100px) {
     .filters-grid, .content-grid, .summary-grid, .context-grid { grid-template-columns: 1fr; }
-    .page-header, .list-head, .detail-head, .filters-actions, .action-row { flex-direction: column; align-items: stretch; }
+    .page-header, .list-head, .detail-head, .filters-actions, .action-row, .filters-head { flex-direction: column; align-items: stretch; }
     .timeline li { grid-template-columns: 1fr; }
   }
 </style>
