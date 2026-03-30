@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { logError, normalizeError } from '../lib/errorUtils.js';
 import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
+import { ensureOperatorShellData } from './operatorShellOrchestrator.js';
+import { guestStore } from './guestStore.js';
 import { sessionStore } from './sessionStore.js';
 
 function toErrorMessage(context, error) {
@@ -143,6 +145,8 @@ function createSessionsStore() {
         { force: true }
       ),
       visitId ? fetchDetail(visitId) : Promise.resolve(),
+      guestStore.fetchGuests({ force: true }),
+      ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
     ]);
   }
 

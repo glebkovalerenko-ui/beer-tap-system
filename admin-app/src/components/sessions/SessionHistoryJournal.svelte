@@ -10,6 +10,8 @@
   export let describeCompletionSourceDetails;
   export let isZeroVolumeAbort;
   export let onOpenDetail = () => {};
+  export let onContinueVisit = () => {};
+  export let onOpenGuest = () => {};
 
   function nextStep(item) {
     if (item.canonical_visit_status === 'blocked') return 'Проверить блокировку и карту';
@@ -40,7 +42,10 @@
     {:else}
       <div class="session-list compact-list">
         {#each pinnedActiveItems as item}
-          <button class:selected={String(item.visit_id) === String(selectedVisitId)} class="session-item pinned" on:click={() => onOpenDetail(item)}>
+          <article
+            class:selected={String(item.visit_id) === String(selectedVisitId)}
+            class="session-item pinned"
+          >
             <div class="row top">
               <strong>{item.guest_full_name}</strong>
               <span class="state active">{item.operator_status}</span>
@@ -61,7 +66,12 @@
                 <span data-tone={badge.tone}>{badge.label}</span>
               {/each}
             </div>
-          </button>
+            <div class="item-actions">
+              <button type="button" class="primary-action" on:click|stopPropagation={() => onContinueVisit(item)}>Продолжить</button>
+              <button type="button" class="secondary-action" on:click|stopPropagation={() => onOpenDetail(item)}>Детали</button>
+              <button type="button" class="secondary-action" on:click|stopPropagation={() => onOpenGuest(item)} disabled={!item.guest_id}>Гость</button>
+            </div>
+          </article>
         {/each}
       </div>
     {/if}
@@ -81,7 +91,10 @@
     {:else}
       <div class="session-list">
         {#each journalItems as item}
-          <button class:selected={String(item.visit_id) === String(selectedVisitId)} class="session-item" on:click={() => onOpenDetail(item)}>
+          <article
+            class:selected={String(item.visit_id) === String(selectedVisitId)}
+            class="session-item"
+          >
             <div class="row top">
               <strong>{item.guest_full_name}</strong>
               <span class:active={item.isActive} class="state">{item.operator_status}</span>
@@ -103,9 +116,43 @@
                 <span data-tone={badge.tone}>{badge.label}</span>
               {/each}
             </div>
-          </button>
+            <div class="item-actions">
+              <button type="button" class="primary-action" on:click|stopPropagation={() => onContinueVisit(item)}>
+                {item.isActive ? 'Продолжить' : 'Открыть'}
+              </button>
+              <button type="button" class="secondary-action" on:click|stopPropagation={() => onOpenDetail(item)}>Детали</button>
+              <button type="button" class="secondary-action" on:click|stopPropagation={() => onOpenGuest(item)} disabled={!item.guest_id}>Гость</button>
+            </div>
+          </article>
         {/each}
       </div>
     {/if}
   </section>
 </section>
+
+<style>
+  .item-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.1rem;
+  }
+
+  .item-actions button {
+    border-radius: 10px;
+    padding: 0.5rem 0.7rem;
+    font-weight: 600;
+  }
+
+  .primary-action {
+    background: #1d4ed8;
+    border: 1px solid #1d4ed8;
+    color: #fff;
+  }
+
+  .secondary-action {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+  }
+</style>

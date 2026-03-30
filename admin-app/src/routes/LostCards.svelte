@@ -5,8 +5,10 @@
   import CardLookupPanel from '../components/guests/CardLookupPanel.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
+  import { buildLostCardAccess } from '../lib/operator/lostCardAccess.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { lostCardStore } from '../stores/lostCardStore.js';
+  import { ensureOperatorShellData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { uiStore } from '../stores/uiStore.js';
   import { visitStore } from '../stores/visitStore.js';
@@ -17,8 +19,10 @@
   let actionError = '';
   let cardLookupResult = null;
 
+  $: access = buildLostCardAccess($roleStore.permissions || {});
+
   function requirePermission(permissionKey, message) {
-    if ($roleStore.permissions[permissionKey]) {
+    if (permissionKey === 'cards_reissue_manage' ? access.canManage : $roleStore.permissions[permissionKey]) {
       return true;
     }
     uiStore.notifyWarning(message);
@@ -43,7 +47,7 @@
 
   async function onRestore(item) {
     actionError = '';
-    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Снять отметку потери можно только ролям с перевыпуском и восстановлением карт.')) return;
     const ok = await uiStore.confirm({
       title: 'Снять отметку потери',
       message: `Снять отметку для карты ${item.card_uid}?`,
@@ -85,7 +89,7 @@
   }
 
   async function handleLookupRestoreLost() {
-    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Снять отметку потери можно только ролям с перевыпуском и восстановлением карт.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
     try {
@@ -114,6 +118,10 @@
     if (!guestId) return;
     try {
       const opened = await visitStore.openVisit({ guestId });
+      await Promise.allSettled([
+        visitStore.fetchActiveVisits({ force: true }),
+        ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
+      ]);
       navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId, cardUid: cardLookupResult?.card_uid });
     } catch (error) {
       actionError = error?.message || error?.toString?.() || 'Не удалось открыть новый визит';
@@ -121,11 +129,14 @@
   }
 
   onMount(async () => {
+    if (!access.canView) {
+      return;
+    }
     await refresh();
   });
 </script>
 
-{#if !$roleStore.permissions.cards_manage}
+{#if !access.canView}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает работу с потерянными картами.</p>
@@ -144,11 +155,11 @@
 
     <CardLookupPanel
       title="Проверка карты"
-      description="Единый lookup по UID/NFC для потерянной карты, гостя и связанного визита."
+      description="Проверка карты по UID или NFC: потеря, гость и связанный визит в одном окне."
       result={cardLookupResult}
       error={actionError}
       loading={$lostCardStore.loading}
-      allowRestoreLost={$roleStore.permissions.cards_manage}
+      allowRestoreLost={access.canManage}
       allowOpenVisit={hasLookupVisitTarget()}
       allowOpenGuest={Boolean(cardLookupResult?.guest?.guest_id || cardLookupResult?.lost_card?.guest_id || cardLookupResult?.card_uid)}
       allowOpenNewVisit={true}
@@ -177,7 +188,9 @@
             <div>Причина: {item.reason || '—'}</div>
             <div>Комментарий: {item.comment || '—'}</div>
             <div class="row-actions">
-              <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
+              {#if access.canManage}
+                <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
+              {/if}
               {#if item.visit_id}
                 <button class="secondary" on:click={() => navigateWithFocus({ target: 'visit', visitId: item.visit_id, cardUid: item.card_uid, guestId: item.guest_id })}>Открыть визит</button>
               {/if}

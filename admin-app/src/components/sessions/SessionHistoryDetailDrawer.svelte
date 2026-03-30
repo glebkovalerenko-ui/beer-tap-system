@@ -15,6 +15,9 @@
   export let onForceUnlock = () => {};
   export let onReconcileSession = () => {};
   export let onMarkLostCard = () => {};
+  export let onOpenGuest = () => {};
+  export let onOpenTap = () => {};
+  export let onOpenPours = () => {};
   export let onCloseDetail = () => {};
 
   $: syncSummaryItems = detail ? [
@@ -80,6 +83,17 @@
       {#if actionError}
         <p class="action-error">{actionError}</p>
       {/if}
+    </section>
+
+    <section class="summary-section route-shortcuts">
+      <div class="section-inline-head">
+        <h3>Быстрые переходы</h3>
+      </div>
+      <div class="shortcut-grid">
+        <button class="action-button" type="button" on:click={onOpenGuest} disabled={!detail.summary.guest_id && !detail.summary.card_uid}>Открыть гостя</button>
+        <button class="action-button" type="button" on:click={onOpenTap} disabled={!detail.summary.tap_id}>Открыть кран</button>
+        <button class="action-button" type="button" on:click={onOpenPours} disabled={!detail.summary.visit_id}>Открыть наливы визита</button>
+      </div>
     </section>
 
     <section class="summary-section">
@@ -210,11 +224,13 @@
 
 <style>
   .actions-summary,
-  .action-grid { display: grid; gap: 0.75rem; }
+  .action-grid,
+  .shortcut-grid { display: grid; gap: 0.75rem; }
   .section-inline-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: start; }
   .section-inline-head h3,
   .action-error { margin: 0; }
   .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .action-button {
     border-radius: 12px;
     border: 1px solid #cbd5e1;
@@ -232,5 +248,9 @@
   }
   .action-error {
     color: var(--state-critical-text, #9f1239);
+  }
+  @media (max-width: 820px) {
+    .action-grid,
+    .shortcut-grid { grid-template-columns: 1fr; }
   }
 </style>

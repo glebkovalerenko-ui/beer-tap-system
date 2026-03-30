@@ -6,10 +6,11 @@
   import NFCModal from '../components/modals/NFCModal.svelte';
   import TopUpModal from '../components/modals/TopUpModal.svelte';
   import { navigateWithFocus } from '../lib/actionRouting.js';
-  import { formatCardStatus, formatDateTimeRu, formatRubAmount } from '../lib/formatters.js';
+  import { formatCardStatus, formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../lib/formatters.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { normalizeError } from '../lib/errorUtils.js';
   import { guestStore } from '../stores/guestStore.js';
+  import { ensureOperatorShellData } from '../stores/operatorShellOrchestrator.js';
   import { roleStore } from '../stores/roleStore.js';
   import { sessionStore } from '../stores/sessionStore.js';
   import { uiStore } from '../stores/uiStore.js';
@@ -142,7 +143,11 @@
     }
     try {
       const opened = await visitStore.openVisit({ guestId: selectedGuest.guest_id });
-      await visitStore.fetchActiveVisits({ force: true });
+      await Promise.allSettled([
+        visitStore.fetchActiveVisits({ force: true }),
+        guestStore.fetchGuests({ force: true }),
+        ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
+      ]);
       navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId: selectedGuest.guest_id, cardUid: primaryCard?.card_uid });
     } catch (error) {
       uiStore.notifyError(error?.message || error?.toString?.() || 'Не удалось открыть визит');
@@ -150,7 +155,7 @@
   }
 </script>
 
-{#if !($roleStore.permissions.cards_lookup || $roleStore.permissions.cards_manage || $roleStore.permissions.sessions_view)}
+{#if !($roleStore.permissions.cards_lookup || $roleStore.permissions.cards_reissue_manage || $roleStore.permissions.sessions_view)}
   <section class="access-denied ui-card">
     <h2>Доступ ограничен</h2>
     <p>Текущая роль не предусматривает работу с гостями.</p>
@@ -319,18 +324,18 @@
 {/if}
 
 <style>
-  .page, .list-panel, .detail-panel, .detail-section { display: grid; gap: 1rem; }
+  .page, .list-panel, .detail-panel, .detail-section { display: grid; gap: 0.85rem; }
   .page-header, .search-row, .detail-head, .row, .action-row { display: flex; gap: 0.75rem; justify-content: space-between; align-items: flex-start; }
   .page-header p, .detail-head p, .muted { margin: 0.25rem 0 0; color: var(--text-secondary); }
-  .content-grid { display: grid; gap: 1rem; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); align-items: start; }
+  .content-grid { display: grid; gap: 0.9rem; grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); align-items: start; }
   .search-row { align-items: center; }
   .search-row input { flex: 1 1 auto; }
-  .guest-list, .event-list { display: grid; gap: 0.75rem; }
+  .guest-list, .event-list { display: grid; gap: 0.65rem; }
   .guest-item, .event-row {
     text-align: left;
     border: 1px solid var(--border-soft);
     border-radius: 14px;
-    padding: 0.9rem;
+    padding: 0.8rem;
     background: #fff;
     color: inherit;
     display: grid;
@@ -352,13 +357,13 @@
   .meta { color: var(--text-secondary); flex-wrap: wrap; }
   .summary-grid {
     display: grid;
-    gap: 0.85rem;
+    gap: 0.75rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .summary-grid article {
     display: grid;
     gap: 0.25rem;
-    padding: 0.9rem;
+    padding: 0.8rem;
     border-radius: 14px;
     background: var(--bg-surface-muted);
   }

@@ -3,15 +3,21 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
 
-  import { formatDateTimeRu } from '../../lib/formatters.js';
+  import { navigateWithFocus } from '../../lib/actionRouting.js';
+  import { normalizeError } from '../../lib/errorUtils.js';
+  import { formatDateTimeRu, formatRubAmount } from '../../lib/formatters.js';
   import { buildOperatorActionRequest } from '../../lib/operator/actionDialogModel.js';
   import { resolveActionBlockState } from '../../lib/operator/actionPolicyAdapter.js';
+  import { buildVisitLauncherCandidates, resolveVisitFocusTarget } from '../../lib/operator/visitWorkspace.js';
   import { resolveCanonicalVisitStatus } from '../../lib/operator/visitStatus.js';
+  import { guestStore } from '../../stores/guestStore.js';
   import { operatorConnectionStore } from '../../stores/operatorConnectionStore.js';
   import { operatorActionStore } from '../../stores/operatorActionStore.js';
+  import { ensureOperatorShellData } from '../../stores/operatorShellOrchestrator.js';
   import { sessionsStore } from '../../stores/sessionsStore.js';
   import { shiftStore } from '../../stores/shiftStore.js';
   import { uiStore } from '../../stores/uiStore.js';
+  import { visitStore } from '../../stores/visitStore.js';
   import DataFreshnessChip from '../common/DataFreshnessChip.svelte';
   import SessionHistoryDetailDrawer from './SessionHistoryDetailDrawer.svelte';
   import SessionHistoryFiltersPanel from './SessionHistoryFiltersPanel.svelte';
@@ -63,6 +69,9 @@
   let focusTapId = '';
   let focusResolved = false;
   let selectedVisitId = '';
+  let launcherQuery = '';
+  let launcherBusy = false;
+  let launcherError = '';
 
   $: header = $sessionsStore.header || null;
   $: pinnedActiveItems = ($sessionsStore.pinnedActiveSessions || []).map((item) => normalizeVisit(item, 'active'));
@@ -90,6 +99,12 @@
   $: detailDisplayContext = detail ? buildDisplayContext(detail) : null;
   $: detailOperatorActions = detail ? normalizedOperatorActions(detail.summary, describeCompletionSource, describeFlags) : [];
   $: detailWhatHappened = detail ? buildWhatHappened(detail.summary, describeCompletionSource) : [];
+  $: launcherCandidates = buildVisitLauncherCandidates({
+    guests: $guestStore.guests || [],
+    activeVisits: $visitStore.activeVisits || [],
+    query: launcherQuery,
+    limit: 6,
+  });
   $: routeReadOnlyReason = $operatorConnectionStore.readOnly
     ? ($operatorConnectionStore.reason || 'Сервер отвечает нестабильно. Действия по визитам временно доступны только для просмотра.')
     : '';
@@ -113,14 +128,21 @@
       filters = { ...filters, tapId: presetTapId };
     }
 
-    const presetVisitId = sessionStorage.getItem('visits.lookupVisitId') || sessionStorage.getItem('sessions.history.visitId');
+    const presetVisitId = sessionStorage.getItem('visits.focusVisitId')
+      || sessionStorage.getItem('visits.lookupVisitId')
+      || sessionStorage.getItem('sessions.history.visitId');
     if (presetVisitId) {
+      sessionStorage.removeItem('visits.focusVisitId');
       sessionStorage.removeItem('visits.lookupVisitId');
       sessionStorage.removeItem('sessions.history.visitId');
       focusVisitId = presetVisitId;
     }
 
-    await applyFilters();
+    await Promise.allSettled([
+      applyFilters(),
+      guestStore.fetchGuests({ force: ($guestStore.guests || []).length === 0 }),
+      visitStore.fetchActiveVisits({ force: ($visitStore.activeVisits || []).length === 0 }),
+    ]);
   });
 
   function isoDateLocal(value) {
@@ -169,7 +191,7 @@
   }
 
   async function resolveFocusVisit() {
-    const target = [...pinnedActiveItems, ...journalItems].find((item) => String(item.visit_id) === String(focusVisitId));
+    const target = resolveVisitFocusTarget([...pinnedActiveItems, ...journalItems], focusVisitId);
     if (target) {
       focusResolved = true;
       await openDetail(target);
@@ -190,6 +212,80 @@
   function closeDetail() {
     selectedVisitId = '';
     sessionsStore.clearDetail();
+  }
+
+  async function refreshVisitWorkspace({ visitId = null, refreshGuests = false } = {}) {
+    const tasks = [
+      sessionsStore.fetchJournal(filters, { force: true }),
+      ensureOperatorShellData({ reason: 'manual-refresh', force: true }),
+    ];
+    if (refreshGuests) {
+      tasks.push(guestStore.fetchGuests({ force: true }));
+    }
+    if (visitId) {
+      tasks.push(sessionsStore.fetchDetail(visitId));
+    }
+    await Promise.allSettled(tasks);
+  }
+
+  async function handleLauncherVisit(candidate) {
+    if (!candidate?.guestId || launcherBusy) return;
+    launcherBusy = true;
+    launcherError = '';
+
+    try {
+      if (candidate.activeVisitId) {
+        await refreshVisitWorkspace({ visitId: candidate.activeVisitId });
+        focusVisitId = String(candidate.activeVisitId);
+        selectedVisitId = String(candidate.activeVisitId);
+        focusResolved = true;
+        return;
+      }
+
+      const opened = await visitStore.openVisit({ guestId: candidate.guestId });
+      await refreshVisitWorkspace({ visitId: opened.visit_id, refreshGuests: true });
+      focusVisitId = String(opened.visit_id);
+      selectedVisitId = String(opened.visit_id);
+      focusResolved = true;
+      uiStore.notifySuccess('Визит открыт.');
+    } catch (error) {
+      launcherError = normalizeError(error);
+      uiStore.notifyError(launcherError);
+    } finally {
+      launcherBusy = false;
+    }
+  }
+
+  function openGuestContext(guestId, cardUid = null) {
+    navigateWithFocus({
+      target: 'guest',
+      guestId,
+      cardUid,
+      visitId: detail?.summary?.visit_id || focusVisitId || null,
+      tapId: detail?.summary?.tap_id || null,
+    });
+  }
+
+  function openTapContext(tapId) {
+    if (!tapId) return;
+    navigateWithFocus({
+      target: 'tap',
+      tapId,
+      visitId: detail?.summary?.visit_id || focusVisitId || null,
+      cardUid: detail?.summary?.card_uid || null,
+    });
+  }
+
+  function openVisitPours() {
+    if (!detail?.summary?.visit_id) return;
+    navigateWithFocus({
+      target: 'pour',
+      route: '/pours',
+      visitId: detail.summary.visit_id,
+      tapId: detail.summary.tap_id || null,
+      guestId: detail.summary.guest_id || null,
+      cardUid: detail.summary.card_uid || null,
+    });
   }
 
   function updatePeriodPreset(periodPreset) {
@@ -285,6 +381,62 @@
     onPeriodPresetChange={updatePeriodPreset}
   />
 
+  <section class="ui-card visit-launcher">
+    <div class="launcher-head">
+      <div>
+        <h2>Открыть или продолжить визит</h2>
+        <p>Найдите гостя по имени, телефону или карте и откройте нужный визит прямо из рабочего экрана.</p>
+      </div>
+      <button class="secondary" on:click={() => { launcherQuery = ''; launcherError = ''; }}>Очистить</button>
+    </div>
+
+    <div class="launcher-bar">
+      <input
+        type="text"
+        bind:value={launcherQuery}
+        placeholder="Гость, телефон или UID карты"
+      />
+    </div>
+
+    {#if launcherError}
+      <p class="launcher-error">{launcherError}</p>
+    {:else if launcherQuery.trim().length < 2}
+      <p class="muted">Введите минимум 2 символа, чтобы быстро найти гостя и открыть визит.</p>
+    {:else if launcherCandidates.length === 0}
+      <p class="muted">По этому запросу гость не найден.</p>
+    {:else}
+      <div class="launcher-list">
+        {#each launcherCandidates as candidate}
+          <article class="launcher-item">
+            <div class="launcher-copy">
+              <strong>{candidate.fullName}</strong>
+              <p>
+                {candidate.phoneNumber || 'Телефон не указан'}
+                · {candidate.cardUid || 'без карты'}
+                · баланс {formatRubAmount(candidate.balance)}
+              </p>
+              <small>
+                {#if candidate.activeVisitId}
+                  Активный визит #{candidate.activeVisitId}{candidate.activeTapId ? ` · кран #${candidate.activeTapId}` : ''}
+                {:else}
+                  Активного визита сейчас нет
+                {/if}
+              </small>
+            </div>
+            <div class="launcher-actions">
+              <button on:click={() => handleLauncherVisit(candidate)} disabled={launcherBusy}>
+                {candidate.actionLabel}
+              </button>
+              <button class="secondary" on:click={() => openGuestContext(candidate.guestId, candidate.cardUid)}>
+                Гость
+              </button>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {/if}
+  </section>
+
   <div class="summary-strip">
     <div class="summary-cards">
       {#each summaryCards as item}
@@ -325,6 +477,8 @@
       {describeCompletionSourceDetails}
       {isZeroVolumeAbort}
       onOpenDetail={openDetail}
+      onContinueVisit={openDetail}
+      onOpenGuest={(item) => openGuestContext(item.guest_id, item.card_uid)}
     />
 
     <SessionHistoryDetailDrawer
@@ -344,22 +498,51 @@
       onForceUnlock={handleForceUnlock}
       onReconcileSession={handleReconcile}
       onMarkLostCard={handleMarkLostCard}
+      onOpenGuest={() => openGuestContext(detail?.summary?.guest_id, detail?.summary?.card_uid)}
+      onOpenTap={() => openTapContext(detail?.summary?.tap_id)}
+      onOpenPours={openVisitPours}
       onCloseDetail={closeDetail}
     />
   </div>
 </div>
 
 <style>
-  .history-layout { display: grid; gap: 1rem; }
-  .content-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(380px, 0.9fr); gap: 1rem; align-items: start; }
-  .summary-strip { display: flex; justify-content: space-between; gap: 1rem; align-items: start; flex-wrap: wrap; }
-  .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; flex: 1 1 520px; }
+  .history-layout { display: grid; gap: 0.85rem; }
+  .content-grid { display: grid; grid-template-columns: minmax(320px, 1.2fr) minmax(380px, 0.9fr); gap: 0.9rem; align-items: start; }
+  .summary-strip { display: flex; justify-content: space-between; gap: 0.75rem; align-items: start; flex-wrap: wrap; }
+  .visit-launcher,
+  .launcher-list { display: grid; gap: 0.75rem; }
+  .launcher-head,
+  .launcher-actions,
+  .launcher-item { display: flex; gap: 0.75rem; justify-content: space-between; }
+  .launcher-head,
+  .launcher-item { align-items: flex-start; }
+  .launcher-head h2,
+  .launcher-head p,
+  .launcher-copy p,
+  .launcher-copy small { margin: 0; }
+  .launcher-bar input { width: 100%; }
+  .launcher-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.8rem 0.9rem;
+    background: #fff;
+    flex-wrap: wrap;
+  }
+  .launcher-copy { display: grid; gap: 0.2rem; }
+  .launcher-copy p,
+  .launcher-copy small,
+  .launcher-head p,
+  .launcher-error { color: var(--text-secondary, #64748b); }
+  .launcher-actions { flex-wrap: wrap; }
+  .launcher-error { margin: 0; color: var(--state-critical-text, #9f1239); }
+  .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 0.65rem; flex: 1 1 520px; }
   .summary-cards article,
   .focus-banner,
-  .degraded-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.85rem 1rem; }
+  .degraded-banner { border: 1px solid var(--state-neutral-border); border-radius: 12px; padding: 0.7rem 0.85rem; }
   .summary-cards article { background: #fff; display: grid; gap: 0.25rem; }
   .summary-cards article span { color: var(--text-secondary, #64748b); font-size: 0.82rem; }
-  .summary-secondary { margin: -0.35rem 0 0; color: var(--text-secondary, #64748b); }
+  .summary-secondary { margin: 0; color: var(--text-secondary, #64748b); }
   .degraded-banner { background: var(--state-warning-bg, #fff7ed); border-color: var(--state-warning-border, #fcd34d); color: var(--state-warning-text, #9a3412); }
   .focus-banner { color: var(--state-neutral-text); background: var(--state-neutral-bg); }
 
@@ -368,7 +551,7 @@
   :global(.drawer),
   :global(.timeline-section),
   :global(.summary-section),
-  :global(.list-stack) { display: grid; gap: 1rem; }
+  :global(.list-stack) { display: grid; gap: 0.85rem; }
 
   :global(.filters-title),
   :global(.actions),
@@ -387,14 +570,14 @@
   :global(.timeline li),
   :global(dl div) { justify-content: space-between; }
 
-  :global(.filters-grid) { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.75rem; }
+  :global(.filters-grid) { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.65rem; }
   :global(.period-grid) { align-items: end; }
   :global(label) { display: grid; gap: 0.35rem; font-size: 0.92rem; }
   :global(input), :global(select), :global(button), :global(textarea) { font: inherit; }
-  :global(input), :global(select), :global(textarea) { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.65rem 0.8rem; }
+  :global(input), :global(select), :global(textarea) { border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.58rem 0.72rem; }
   :global(.checkbox) { align-self: end; display: flex; gap: 0.5rem; align-items: center; }
   :global(.session-list), :global(.timeline) { display: grid; gap: 0.75rem; }
-  :global(.session-item), :global(.actions button), :global(.drawer-head button), :global(.filters-title button) { border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 0.9rem; text-align: left; }
+  :global(.session-item), :global(.actions button), :global(.drawer-head button), :global(.filters-title button) { border: 1px solid #cbd5e1; border-radius: 14px; background: #fff; padding: 0.8rem; text-align: left; }
   :global(.session-item) { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
   :global(.session-item:hover), :global(.session-item.selected) { border-color: #2563eb; box-shadow: 0 0 0 1px #bfdbfe; }
   :global(.session-item.pinned) { background: linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%); }
@@ -406,7 +589,7 @@
   :global(.chips span[data-tone='muted']) { background: #f8fafc; color: #475569; }
   :global(.meta-grid) { flex-wrap: wrap; }
   :global(.completion-pill) { font-weight: 600; color: #0f172a; }
-  :global(.drawer) { position: sticky; top: 0; min-height: 320px; max-height: 85vh; overflow: auto; }
+  :global(.drawer) { position: sticky; top: 0; min-height: 320px; max-height: 82vh; overflow: auto; }
   :global(.drawer-open) { border-color: var(--state-neutral-border); }
   :global(.stats-grid) { flex-wrap: wrap; }
   :global(.stats-grid article), :global(.summary-section), :global(.empty-drawer) { border: 1px solid #e2e8f0; border-radius: 12px; padding: 0.85rem; }
@@ -425,6 +608,8 @@
 
   @media (max-width: 1100px) {
     .content-grid { grid-template-columns: 1fr; }
+    .launcher-head,
+    .launcher-item { display: grid; }
     :global(.filters-grid) { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
     :global(.drawer) { position: static; max-height: none; }
   }
