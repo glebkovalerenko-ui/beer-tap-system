@@ -222,6 +222,52 @@ def test_restore_lost_card_requires_visit_resolution_before_reuse(client):
     assert restore.json()["restored"] is True
 
 
+def test_restore_lost_card_for_visit_unblocks_same_card_authorize(client):
+    headers, guest_id, visit_id, tap_id, card_uid = _prepare_active_visit_with_tap(
+        client, suffix="96007", card_uid="CARD-M6-007"
+    )
+
+    report = client.post(
+        f"/api/visits/{visit_id}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss", "comment": "card was found again"},
+    )
+    assert report.status_code == 200
+
+    listed = client.get(f"/api/lost-cards?uid={card_uid}", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["requires_visit_recovery"] is True
+
+    restore = client.post(
+        f"/api/visits/{visit_id}/restore-lost-card",
+        headers=headers,
+        json={"reason": "card_recovered", "comment": "cancel lost after verification"},
+    )
+    assert restore.status_code == 200
+    assert restore.json()["operational_status"] == "active_assigned"
+    assert restore.json()["card_uid"] == card_uid.lower()
+
+    listed_after = client.get(f"/api/lost-cards?uid={card_uid}", headers=headers)
+    assert listed_after.status_code == 200
+    assert listed_after.json() == []
+
+    topup = client.post(
+        f"/api/guests/{guest_id}/topup",
+        headers=headers,
+        json={"amount": 20, "payment_method": "cash"},
+    )
+    assert topup.status_code == 200
+
+    authorized = client.post(
+        "/api/visits/authorize-pour",
+        headers=headers,
+        json={"card_uid": card_uid, "tap_id": tap_id},
+    )
+    assert authorized.status_code == 200
+    assert authorized.json()["allowed"] is True
+    assert authorized.json()["visit"]["visit_id"] == visit_id
+
+
 def test_resolve_lost_card_returns_lost_payload(client):
     headers, _, visit_id, _, card_uid = _prepare_active_visit_with_tap(
         client, suffix="96004", card_uid="CARD-M6-004"
@@ -305,5 +351,5 @@ def test_resolve_unknown_card_returns_empty_payload(client):
     assert body["guest"] is None
     assert body["card"] is None
     assert body["lookup_outcome"] == "unknown_card"
-    assert body["recommended_action"] == "register_into_pool_if_inventory_flow_allows"
-    assert body["allowed_next_actions"] == ["register_into_pool_if_inventory_flow_allows"]
+    assert body["recommended_action"] == "issue_on_open_visit"
+    assert body["allowed_next_actions"] == ["issue_on_open_visit"]

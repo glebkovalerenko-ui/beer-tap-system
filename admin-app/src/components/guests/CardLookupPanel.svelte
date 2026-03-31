@@ -60,9 +60,11 @@
   $: hasVisitTarget = Boolean(result?.active_visit?.visit_id || result?.lost_card?.visit_id);
   $: primaryAction = actions.find((item) => item.id === selectedActionId && !item.disabled) || actions.find((item) => !item.disabled) || null;
   $: lookupOutcome = result?.lookup_outcome || 'unknown_card';
+  $: canRestoreLost = allowRestoreLost && lookupOutcome === 'lost_card';
+  $: showBlockedLostRecoveryHint = lookupOutcome === 'active_blocked_lost_card';
   $: statusText = {
     active_visit: 'Карта назначена активному визиту',
-    active_blocked_lost_card: 'Активный визит заблокирован до reissue или service-close',
+    active_blocked_lost_card: 'Активный визит заблокирован и ждёт recovery в Visits',
     available_pool_card: 'Физическая карта доступна в пуле и может быть выдана на новый визит',
     returned_to_pool_card: 'Карта подтверждённо возвращена в пул и готова к reuse',
     lost_card: 'Физическая карта помечена как lost и не может использоваться',
@@ -76,6 +78,9 @@
       : lookupOutcome === 'retired_card' || lookupOutcome === 'unknown_card'
         ? statusTone('warning')
         : statusTone();
+  $: if (lookupOutcome === 'unknown_card') {
+    statusText = 'Карта ещё не зарегистрирована, но будет добавлена в пул при открытии визита';
+  }
 </script>
 
 <section class="lookup-shell ui-card">
@@ -209,7 +214,7 @@
       {/if}
 
       <div class="lookup-actions">
-        {#if allowRestoreLost && result.is_lost}
+        {#if canRestoreLost}
           <button class="danger-btn" title={restoreLostDisabled ? (restoreLostReason || 'Действие сейчас недоступно') : ''} on:click={() => dispatch('restore-lost', { uid: result.card_uid || result.card?.uid })} disabled={loading || restoreLostDisabled}>
             Снять отметку потери
           </button>
@@ -224,6 +229,9 @@
           <button on:click={() => dispatch('open-new-visit', { guestId: result.guest.guest_id })}>{openNewVisitLabel}</button>
         {/if}
       </div>
+      {#if showBlockedLostRecoveryHint}
+        <p class="action-hint">Blocked-lost visit: open Visits for reissue, cancel lost, or service-close.</p>
+      {/if}
     </div>
   {/if}
 
@@ -321,6 +329,7 @@
   .scenario-chip.warning { border-color: #fdba74; background: #fff7ed; }
   .scenario-chip small { color: var(--text-secondary); }
   .lookup-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .action-hint { margin: 0; color: #8a5a00; font-weight: 600; }
   .error { color: #c61f35; margin: 0; }
   @media (max-width: 720px) {
     .summary-head { flex-direction: column; }

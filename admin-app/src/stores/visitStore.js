@@ -110,7 +110,7 @@ function createVisitStore() {
 
     openVisit: async ({ guestId, cardUid }) => {
       const token = withAuth();
-      if (!cardUid?.trim()) throw new Error('Для открытия визита требуется карта из пула.');
+      if (!cardUid?.trim()) throw new Error('Для открытия визита требуется карта.');
       update((s) => ({ ...s, loading: true, error: null }));
       try {
         const visit = await invoke('open_visit', { token, guestId, cardUid: cardUid.trim() });
@@ -231,6 +231,20 @@ function createVisitStore() {
         return response;
       } catch (error) {
         const message = toErrorMessage('visitStore.reportLostCard', error);
+        update((s) => ({ ...s, loading: false, error: message }));
+        throw new Error(message);
+      }
+    },
+
+    restoreLostCardForVisit: async ({ visitId, reason = null, comment = null }) => {
+      const token = withAuth();
+      update((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const visit = await invoke('restore_lost_card_for_visit', { token, visitId, reason, comment });
+        update((s) => ({ ...s, currentVisit: visit, loading: false }));
+        return visit;
+      } catch (error) {
+        const message = toErrorMessage('visitStore.restoreLostCardForVisit', error);
         update((s) => ({ ...s, loading: false, error: message }));
         throw new Error(message);
       }

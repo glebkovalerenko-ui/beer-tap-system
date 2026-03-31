@@ -202,6 +202,29 @@ def report_lost_card_from_visit(
     return response
 
 
+@router.post(
+    "/{visit_id}/restore-lost-card",
+    response_model=schemas.Visit,
+    summary="Cancel lost-card mark for blocked-lost active visit",
+)
+def restore_lost_card_for_visit(
+    visit_id: uuid.UUID,
+    payload: schemas.VisitRestoreLostCardRequest,
+    db: Session = Depends(get_db),
+    current_user: Annotated[dict, Depends(security.get_current_user)] = None,
+):
+    visit = visit_crud.restore_lost_card_for_visit(
+        db=db,
+        visit_id=visit_id,
+        reason=payload.reason,
+        comment=payload.comment,
+        actor_id=current_user["username"] if current_user else None,
+    )
+    operator_stream_hub.emit_invalidation(resource="session", entity_id=str(visit.visit_id), reason="visit_restore_lost_card")
+    operator_stream_hub.emit_invalidation(resource="today", entity_id=str(visit.visit_id), reason="visit_restore_lost_card")
+    return visit
+
+
 @router.post("/{visit_id}/force-unlock", response_model=schemas.Visit, summary="Force unlock active tap for visit")
 def force_unlock_visit(
     visit_id: uuid.UUID,

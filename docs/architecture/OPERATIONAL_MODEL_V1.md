@@ -91,7 +91,8 @@ This document focuses on runtime invariants. For the full system overview, start
 
 - Lost cards live in a dedicated registry.
 - Authorize for lost cards is hard-denied with `reason="lost_card"`.
-- Operator can report lost card from active visit or restore the card later.
+- Operator can report lost card from an active visit, then resolve it in the visit workspace by reissue, cancel-lost, or service-close.
+- Generic lost-card restore remains for ordinary inventory-lost cards and does not replace visit recovery.
 - NFC resolve endpoint provides a single operator lookup path.
 
 ## 6. FIFO keg recommendation

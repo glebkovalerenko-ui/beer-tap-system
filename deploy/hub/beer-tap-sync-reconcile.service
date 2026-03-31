@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile Syncthing checkout into Beer Tap backend deployment
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/cybeer/beer-tap-system/docker-compose.yml
+ConditionPathExists=/usr/local/bin/beer-tap-sync-reconcile.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/beer-tap-sync-reconcile.sh

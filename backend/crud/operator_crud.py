@@ -267,7 +267,7 @@ def _session_action_policies(
                 reason_code_required=True,
             ),
             allowed=is_active and not is_blocked_lost,
-            disabled_reason="Blocked-lost visits must be reissued or service-closed in the Visits workspace." if is_blocked_lost else "Session is already closed.",
+            disabled_reason="Blocked-lost visits must stay in the Visits recovery workspace until reissue, cancel-lost, or service-close." if is_blocked_lost else "Session is already closed.",
         ),
         force_unlock=_contextualize_policy(
             _action_policy(
@@ -277,7 +277,7 @@ def _session_action_policies(
                 reason_code_required=True,
             ),
             allowed=is_active and not is_blocked_lost,
-            disabled_reason="Blocked-lost visits stay in recovery mode until reissue or service close." if is_blocked_lost else "Only active sessions can be force-unlocked.",
+            disabled_reason="Blocked-lost visits stay in recovery mode until reissue, cancel-lost, or service close." if is_blocked_lost else "Only active sessions can be force-unlocked.",
         ),
         reconcile=_contextualize_policy(
             _action_policy(
@@ -287,7 +287,7 @@ def _session_action_policies(
                 reason_code_required=True,
             ),
             allowed=is_active and not is_blocked_lost,
-            disabled_reason="Blocked-lost visits stay in recovery mode until reissue or service close." if is_blocked_lost else "Manual reconcile is only available for active sessions.",
+            disabled_reason="Blocked-lost visits stay in recovery mode until reissue, cancel-lost, or service close." if is_blocked_lost else "Manual reconcile is only available for active sessions.",
         ),
         mark_lost_card=_contextualize_policy(
             _action_policy(
@@ -1123,8 +1123,8 @@ def lookup_operator_card_context(
         card_state_value = "Card is retired from inventory"
         card_state_tone = "critical"
     else:
-        card_state_value = "Card is not registered"
-        card_state_tone = "critical"
+        card_state_value = "Card will be auto-added to the pool on visit open"
+        card_state_tone = "warning"
 
     recent_events = _lookup_recent_events(
         guest=guest,

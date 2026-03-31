@@ -12,6 +12,7 @@
 
   import Today from './routes/Today.svelte';
   import Taps from './routes/Taps.svelte';
+  import Visits from './routes/Visits.svelte';
   import Sessions from './routes/Sessions.svelte';
   import Guests from './routes/Guests.svelte';
   import LostCards from './routes/LostCards.svelte';
@@ -36,7 +37,7 @@
     '/shift': Today,
     '/today': Today,
     '/taps': Taps,
-    '/visits': Sessions,
+    '/visits': Visits,
     '/sessions': Sessions,
     '/sessions/history': Sessions,
     '/guests': Guests,

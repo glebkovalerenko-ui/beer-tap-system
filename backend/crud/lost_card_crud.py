@@ -21,6 +21,32 @@ def get_lost_card_by_uid(db: Session, card_uid: str):
     )
 
 
+def _get_active_visit_by_card_uid(db: Session, card_uid: str):
+    normalized_uid = _normalize_card_uid(card_uid)
+    return (
+        db.query(models.Visit)
+        .filter(
+            func.lower(models.Visit.card_uid) == normalized_uid,
+            models.Visit.status == "active",
+        )
+        .first()
+    )
+
+
+def _serialize_lost_card(lost_card: models.LostCard, *, requires_visit_recovery: bool = False) -> dict:
+    return {
+        "id": lost_card.id,
+        "card_uid": lost_card.card_uid,
+        "reported_at": lost_card.reported_at,
+        "reported_by": lost_card.reported_by,
+        "reason": lost_card.reason,
+        "comment": lost_card.comment,
+        "visit_id": lost_card.visit_id,
+        "guest_id": lost_card.guest_id,
+        "requires_visit_recovery": requires_visit_recovery,
+    }
+
+
 def is_lost_card(db: Session, card_uid: str) -> bool:
     return get_lost_card_by_uid(db=db, card_uid=card_uid) is not None
 
@@ -96,25 +122,37 @@ def list_lost_cards(
     if reported_to:
         query = query.filter(models.LostCard.reported_at <= reported_to)
 
-    return query.order_by(models.LostCard.reported_at.desc()).all()
+    items = query.order_by(models.LostCard.reported_at.desc()).all()
+    normalized_uids = {item.card_uid.lower() for item in items if item.card_uid}
+    blocked_visit_uids = {
+        card_uid
+        for (card_uid,) in (
+            db.query(func.lower(models.Visit.card_uid))
+            .filter(
+                models.Visit.status == "active",
+                models.Visit.operational_status == "active_blocked_lost_card",
+                func.lower(models.Visit.card_uid).in_(normalized_uids),
+            )
+            .all()
+        )
+    } if normalized_uids else set()
+
+    return [
+        _serialize_lost_card(
+            item,
+            requires_visit_recovery=item.card_uid.lower() in blocked_visit_uids,
+        )
+        for item in items
+    ]
 
 
 def restore_lost_card(db: Session, card_uid: str):
     lost_card = get_lost_card_by_uid(db=db, card_uid=card_uid)
     if not lost_card:
         return None
-    active_visit = None
-    if lost_card.visit_id:
-        active_visit = (
-            db.query(models.Visit)
-            .filter(
-                models.Visit.visit_id == lost_card.visit_id,
-                models.Visit.status == "active",
-            )
-            .first()
-        )
+    active_visit = _get_active_visit_by_card_uid(db=db, card_uid=card_uid)
     if active_visit and active_visit.operational_status == "active_blocked_lost_card":
-        raise ValueError("Cannot restore a lost card while the related visit is still blocked; reissue or service-close the visit first.")
+        raise ValueError("Cannot restore a lost card from the lost-cards queue while the related visit is still blocked; open the visit recovery flow and reissue, cancel lost, or service-close it first.")
 
     card = (
         db.query(models.Card)

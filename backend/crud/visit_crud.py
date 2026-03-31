@@ -422,8 +422,22 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
 
     normalized_uid = _normalize_card_uid(card_uid)
     card = card_crud.get_card_by_uid(db, normalized_uid)
+    auto_registered = False
     if not card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found in inventory pool")
+        card = models.Card(
+            card_uid=normalized_uid,
+            status=card_crud.CARD_STATUS_AVAILABLE,
+            guest_id=None,
+        )
+        db.add(card)
+        try:
+            db.flush()
+            auto_registered = True
+        except IntegrityError:
+            db.rollback()
+            card = card_crud.get_card_by_uid(db, normalized_uid)
+            if not card:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card registration conflict, retry visit open")
 
     if card.status in {card_crud.CARD_STATUS_LOST, card_crud.CARD_STATUS_RETIRED}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Card is not issuable from state {card.status}")
@@ -434,7 +448,7 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
     if existing_card_visit:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
 
-    previous_card_status = card.status
+    previous_card_status = "not_registered" if auto_registered else card.status
 
     try:
         visit = models.Visit(
@@ -459,6 +473,7 @@ def open_visit(db: Session, guest_id: uuid.UUID, card_uid: str | None = None):
             previous_state={"card_status": previous_card_status},
             next_state={"visit_status": visit.status, "operational_status": visit.operational_status, "card_status": card.status},
             source_channel="operator_open_visit",
+            extra={"issue_source": "auto_registered" if auto_registered else "inventory_pool"},
         )
 
         db.commit()
@@ -941,6 +956,59 @@ def report_lost_card_from_visit(
     db.commit()
     db.refresh(visit)
     return visit, lost_card, created
+
+
+def restore_lost_card_for_visit(
+    db: Session,
+    *,
+    visit_id: uuid.UUID,
+    reason: str | None,
+    comment: str | None,
+    actor_id: str | None,
+):
+    visit = get_visit(db=db, visit_id=visit_id)
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    if visit.status != "active" or visit.operational_status != VISIT_OP_ACTIVE_BLOCKED_LOST:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a blocked-lost active visit can cancel the lost-card mark")
+    if not visit.card_uid:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Visit has no card assigned")
+
+    lost_card = lost_card_crud.get_lost_card_by_uid(db=db, card_uid=visit.card_uid)
+    if not lost_card:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Blocked-lost visit has no matching lost-card record")
+    if lost_card.visit_id and lost_card.visit_id != visit.visit_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lost-card record is linked to another visit")
+
+    card = card_crud.get_card_by_uid(db, visit.card_uid)
+    if not card:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Blocked-lost visit card is missing from inventory")
+    if card.status == card_crud.CARD_STATUS_RETIRED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Retired card cannot be restored to an active visit")
+
+    previous_card_status = card.status
+    previous_operational_status = visit.operational_status
+    card.status = card_crud.CARD_STATUS_ASSIGNED
+    card.guest_id = None
+    visit.operational_status = VISIT_OP_ACTIVE_ASSIGNED
+    db.delete(lost_card)
+
+    _add_visit_card_audit_event(
+        db,
+        actor_id=actor_id,
+        event_type="visit_card_lost_cancelled",
+        visit=visit,
+        card_uid=visit.card_uid,
+        previous_state={"operational_status": previous_operational_status, "card_status": previous_card_status, "lost_registry_present": True},
+        next_state={"operational_status": visit.operational_status, "card_status": card.status, "lost_registry_present": False},
+        source_channel="operator_restore_lost_card_for_visit",
+        reason_code=reason,
+        comment=comment,
+    )
+
+    db.commit()
+    db.refresh(visit)
+    return visit
 
 
 def force_unlock_visit(db: Session, visit_id: uuid.UUID, reason: str, comment: str | None, actor_id: str):

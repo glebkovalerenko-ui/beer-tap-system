@@ -376,6 +376,11 @@ class VisitReportLostCardRequest(BaseModel):
     comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Guest says card was lost outside bar"})
 
 
+class VisitRestoreLostCardRequest(BaseModel):
+    reason: Optional[str] = Field(default=None, json_schema_extra={'example': "card_recovered"})
+    comment: Optional[str] = Field(default=None, json_schema_extra={'example': "Lost mark removed after operator verification"})
+
+
 class Visit(BaseModel):
     visit_id: uuid.UUID
     guest_id: uuid.UUID
@@ -539,6 +544,7 @@ class LostCard(BaseModel):
     comment: Optional[str] = None
     visit_id: Optional[uuid.UUID] = None
     guest_id: Optional[uuid.UUID] = None
+    requires_visit_recovery: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 

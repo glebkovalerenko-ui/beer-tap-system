@@ -16,6 +16,15 @@ const visits = {
   description: 'Открывайте новые и текущие визиты, находите гостя и переходите к деталям, наливам и проблемам.',
 };
 
+const sessions = {
+  key: 'sessions',
+  label: 'Журнал визитов',
+  href: '#/sessions',
+  navDescription: 'История, журнал и детали визитов без операционных мутаций.',
+  title: 'Журнал визитов',
+  description: 'История и журнал визитов: хронология, детали, синхронизация и быстрые переходы в workspace.',
+};
+
 const guests = {
   key: 'guests',
   label: 'Гости',
@@ -110,7 +119,7 @@ export const ROUTE_COPY = Object.freeze({
   shift,
   today: shift,
   visits,
-  sessions: visits,
+  sessions,
   guests,
   cardsGuests: guests,
   taps,

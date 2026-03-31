@@ -121,7 +121,7 @@
       ]);
       pendingOpenGuest = null;
       isNfcModalOpen = false;
-      uiStore.notifySuccess('Визит открыт, карта выдана из пула.');
+      uiStore.notifySuccess('Визит открыт. Если карта была новой, система автоматически добавила её в пул.');
       navigateWithFocus({ target: 'visit', visitId: opened.visit_id, guestId: opened.guest_id, cardUid: opened.card_uid });
     } catch (error) {
       nfcError = normalizeError(error);

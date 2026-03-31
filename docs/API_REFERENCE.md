@@ -183,6 +183,7 @@ Expected top-level fields:
 - `POST /api/visits/{visit_id}/service-close`
 - `POST /api/visits/{visit_id}/force-unlock`
 - `POST /api/visits/{visit_id}/report-lost-card`
+- `POST /api/visits/{visit_id}/restore-lost-card`
 - `POST /api/visits/{visit_id}/reissue-card`
 - `POST /api/visits/{visit_id}/reconcile-pour`
 - `GET /api/visits/active`
@@ -194,8 +195,10 @@ Important visit rules:
 
 - one active visit per guest;
 - one active visit per card;
-- normal operator flow does not use standalone `assign-card`; active visits are opened with a pool card, and blocked-lost visits continue through `reissue-card`;
-- after `report-lost-card`, the visit enters `active_blocked_lost_card` and must be resolved by either `reissue-card` or `service-close`;
+- normal operator flow does not use standalone `assign-card`; active visits are opened by scanning a card, and if the UID is new it is auto-registered into the pool in the same operation;
+- after `report-lost-card`, the visit enters `active_blocked_lost_card` and must stay in the visit recovery flow until `restore-lost-card`, `reissue-card`, or `service-close`;
+- `open` accepts either an existing issuable pool card or a previously unknown UID, which is auto-registered and assigned in the same operation;
+- `restore-lost-card` keeps the same card on the same active visit, deletes the lost-card registry row, and returns the visit to `active_assigned`;
 - `reissue-card` accepts either an existing issuable pool card or a previously unknown UID, which is auto-registered and assigned in the same operation;
 - visit close fails with `409 pending_sync_exists_for_visit` while unresolved pending exists.
 
@@ -281,6 +284,8 @@ Operational meaning:
 Lost-card rule:
 
 - authorize for a lost card returns `403` with `detail.reason="lost_card"`.
+- `GET /api/lost-cards` adds `requires_visit_recovery`; when it is `true`, operators should open the visit workspace instead of using the queue restore action.
+- `POST /api/lost-cards/{card_uid}/restore` stays for ordinary inventory-lost cards; blocked active visits must use `POST /api/visits/{visit_id}/restore-lost-card`.
 
 ## 8. Kegs, taps, beverages, controllers
 

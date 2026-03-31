@@ -159,7 +159,7 @@ async function handleRestoreLost(event) {
     const visitId = getReissueTargetVisitId({ selectedVisit, selectedLookup });
     if (!visitId) return false;
     sessionStorage.setItem('visits.lookupVisitId', visitId);
-    window.location.hash = '/sessions';
+    window.location.hash = '/visits';
     return true;
   }
 
@@ -182,7 +182,7 @@ async function handleRestoreLost(event) {
   }
 
   async function handleOpenNewVisit(event) {
-    uiStore.notifyWarning('Открытие нового визита доступно только в flow выдачи карты на экране Sessions.');
+    uiStore.notifyWarning('Открытие нового визита доступно только в flow выдачи карты на экране Visits.');
   }
 
   function handleOpenTopUpModal() {

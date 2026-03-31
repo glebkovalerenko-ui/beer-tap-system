@@ -194,7 +194,7 @@ def _allowed_actions_for(outcome: str) -> tuple[str, list[str]]:
         LOOKUP_RETURNED: ("issue_on_open_visit", ["issue_on_open_visit"]),
         LOOKUP_LOST: ("open_related_visit_if_any", ["open_related_visit_if_any"]),
         LOOKUP_RETIRED: ("inventory_review", ["inventory_review"]),
-        LOOKUP_UNKNOWN: ("register_into_pool_if_inventory_flow_allows", ["register_into_pool_if_inventory_flow_allows"]),
+        LOOKUP_UNKNOWN: ("issue_on_open_visit", ["issue_on_open_visit"]),
     }
     return mapping[outcome]
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll Syncthing state and apply fresh Beer Tap backend snapshots
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=20s
+AccuracySec=5s
+Persistent=true
+Unit=beer-tap-sync-reconcile.service
+
+[Install]
+WantedBy=timers.target

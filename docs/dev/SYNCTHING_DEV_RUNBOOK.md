@@ -18,6 +18,8 @@ Use only:
 
 All backend Docker commands must run from that path so `./backend:/app` points at the synced code.
 
+Retire `/opt/beer-tap-system` on the hub. That stale second checkout is what causes the backend to drift away from the Syncthing-managed tree.
+
 ## Syncthing folder settings
 
 - folder path: repository root on both machines
@@ -49,6 +51,21 @@ cd /home/cybeer/beer-tap-system
 docker compose restart beer_backend_api
 ```
 
+## Hub auto-apply
+
+The hub should continuously run:
+
+- system service `beer-tap-system.service`
+- system timer `beer-tap-sync-reconcile.timer`
+
+The timer calls `beer-tap-sync-reconcile.sh`, waits for Syncthing folder `beer-tap-system-dev` to become `idle`, verifies there are no pull errors or receive-only drift, and then reapplies:
+
+```bash
+docker compose up -d --build postgres beer_backend_api
+```
+
+Install from the repo copy under `deploy/hub/`.
+
 ## Diagnostics
 
 ```bash
@@ -66,7 +83,7 @@ curl -fsS http://localhost:8000/api/system/status
 - backend code is bind-mounted from `/home/cybeer/beer-tap-system/backend`
 - backend media assets are stored in Docker volume `backend_media_assets` mounted at `/srv/beer-media-assets`, not inside the synced repo checkout
 - `uvicorn --reload` inside the container is the current backend auto-reload mechanism
-- if dependency or Dockerfile inputs change, run `docker compose up -d --build`
+- if dependency or Dockerfile inputs change, the hub reconcile timer should apply them automatically; manual fallback remains `docker compose up -d --build`
 - do not run `docker compose down -v` unless you intentionally want to destroy PostgreSQL data
 - if Linux shows local Syncthing drift, prefer `Revert Local Changes` because Linux is the receive-only side
 - if Windows is the source of truth, keep SyncTrayzor/Syncthing running on the workstation; a stopped Windows sender means Linux will stay on the last received snapshot

@@ -288,7 +288,7 @@
   }
 
   async function handleLookupOpenNewVisit() {
-    uiStore.notifyWarning('Новый визит открывается только через flow "выбрать гостя -> считать карту из пула".');
+    uiStore.notifyWarning('Новый визит открывается только через flow "выбрать гостя -> считать карту". Если карта новая, система сама добавит её в пул.');
   }
 
   async function handleUidRead(event) {
@@ -311,7 +311,7 @@
         openFlowVisible = false;
         pendingOpenGuest = null;
         isNFCModalOpen = false;
-        uiStore.notifySuccess('Визит открыт, карта выдана из пула.');
+        uiStore.notifySuccess('Визит открыт. Если карта была новой, система автоматически добавила её в пул.');
         return;
       }
       if (nfcMode === 'close') {
@@ -398,6 +398,38 @@
     }
   }
 
+  async function handleCancelLost() {
+    actionError = '';
+    if (!visit || !isBlockedLostVisit) return;
+    if (!requirePermission('cards_reissue_manage', 'Снятие отметки lost для активного визита доступно только ролям с перевыпуском и восстановлением карт.')) return;
+
+    const confirmed = await uiStore.confirm({
+      title: 'Снять отметку lost с активного визита',
+      message: `Вернуть карту ${visit.card_uid} в активный визит и отменить blocked-lost recovery?`,
+      confirmText: 'Снять отметку',
+      cancelText: 'Отмена',
+      danger: false,
+    });
+    if (!confirmed) return;
+
+    const rawComment = window.prompt('Комментарий к отмене lost (опционально)', '');
+    if (rawComment === null) return;
+
+    try {
+      const restored = await visitStore.restoreLostCardForVisit({
+        visitId: visit.visit_id,
+        reason: 'card_recovered',
+        comment: rawComment.trim() || null,
+      });
+      visitStore.setCurrentVisit(restored);
+      await refreshVisits();
+      await refreshCurrentLostStatus();
+      uiStore.notifySuccess('Отметка lost снята, визит снова активен с той же картой.');
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Не удалось снять отметку lost для визита';
+    }
+  }
+
   async function handleServiceClose() {
     actionError = '';
     if (!visit) return;
@@ -428,13 +460,13 @@
   </section>
 {:else}
   <section class="ui-card open-section">
-    <h1>Sessions</h1>
+    <h1>Визиты</h1>
     <button class="primary-open" on:click={startOpenFlow}>Открыть новый визит</button>
 
     {#if openFlowVisible}
       <div class="open-flow">
         <h2>Открытие визита</h2>
-        <p class="hint">Найдите гостя по ФИО или телефону, затем система попросит приложить карту из пула для открытия визита.</p>
+        <p class="hint">Найдите гостя по ФИО или телефону, затем приложите карту для открытия визита. Если карта новая, система автоматически добавит её в пул.</p>
         <input type="text" bind:value={guestQuery} placeholder="ФИО / телефон" />
 
         {#if guestQuery.trim() && openCandidates.length === 0}
@@ -525,7 +557,7 @@
         {#if isBlockedLostVisit}
           <div class="recovery-banner">
             <strong>Визит заблокирован из-за lost-карты</strong>
-            <p>После отметки lost этот визит можно только перевыпустить на новую карту или сервисно закрыть без возврата карты.</p>
+            <p>Здесь доступен полный recovery-flow: перевыпуск на новую карту, отмена lost для текущей карты или service-close без возврата карты.</p>
           </div>
         {/if}
 
@@ -546,8 +578,9 @@
           {#if isBlockedLostVisit}
             <div class="action-panel recovery-panel">
               <h3>Восстановление визита</h3>
-              <p class="hint">Это обязательный recovery-flow: доступны только перевыпуск или service-close.</p>
+              <p class="hint">Это обязательный recovery-flow: доступны перевыпуск, cancel lost и service-close.</p>
               <button on:click={handleReissueCard} disabled={$visitStore.loading || !canManageLostRecovery}>Считать новую карту и перевыпустить</button>
+              <button on:click={handleCancelLost} disabled={$visitStore.loading || !canManageLostRecovery}>Снять lost и оставить текущую карту</button>
               <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading || !canUseMaintenanceActions}>Service-close без возврата карты</button>
             </div>
           {:else}

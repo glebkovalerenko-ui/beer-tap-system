@@ -1,3 +1,6 @@
+import models
+
+
 def _login(client):
     response = client.post("/api/token", data={"username": "admin", "password": "fake_password"})
     assert response.status_code == 200
@@ -41,15 +44,20 @@ def _open_visit(client, headers, guest_id: str, card_uid: str):
     return response.json()
 
 
-def test_open_visit_requires_registered_pool_card_and_normal_close_returns_it(client):
+def test_open_visit_auto_registers_unknown_card_and_normal_close_returns_it(client):
     headers = _login(client)
     guest_1 = _create_guest(client, headers, suffix="81001")
     guest_2 = _create_guest(client, headers, suffix="81002")
-    card_uid = _register_card(client, headers, "CARD-M2-001")
+    card_uid = "CARD-M2-001"
 
     opened = _open_visit(client, headers, guest_1, card_uid)
     assert opened["card_uid"] == "card-m2-001"
     assert opened["operational_status"] == "active_assigned"
+
+    card_resp = client.get("/api/cards/", headers=headers)
+    assert card_resp.status_code == 200
+    issued_card = next(item for item in card_resp.json() if item["card_uid"] == "card-m2-001")
+    assert issued_card["status"] == "assigned_to_visit"
 
     close_resp = client.post(
         f"/api/visits/{opened['visit_id']}/close",
@@ -218,6 +226,79 @@ def test_blocked_lost_reissue_auto_registers_unknown_replacement_card(client):
     cards_by_uid = {item["card_uid"]: item for item in cards_resp.json()}
     assert cards_by_uid["card-m2-010-new"]["status"] == "assigned_to_visit"
     assert cards_by_uid["card-m2-010"]["status"] == "lost"
+
+
+def test_blocked_lost_restore_same_card_returns_visit_to_active_assigned(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81015")
+    card_uid = _register_card(client, headers, "CARD-M2-013")
+    visit = _open_visit(client, headers, guest_id, card_uid)
+
+    lost_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss", "comment": "Card found again at bar"},
+    )
+    assert lost_resp.status_code == 200
+    assert lost_resp.json()["visit"]["operational_status"] == "active_blocked_lost_card"
+
+    restore_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/restore-lost-card",
+        headers=headers,
+        json={"reason": "card_recovered", "comment": "Guest recovered the same card"},
+    )
+    assert restore_resp.status_code == 200
+    assert restore_resp.json()["card_uid"] == "card-m2-013"
+    assert restore_resp.json()["operational_status"] == "active_assigned"
+
+    cards_resp = client.get("/api/cards/", headers=headers)
+    assert cards_resp.status_code == 200
+    cards_by_uid = {item["card_uid"]: item for item in cards_resp.json()}
+    assert cards_by_uid["card-m2-013"]["status"] == "assigned_to_visit"
+
+    lost_list = client.get("/api/lost-cards", params={"uid": card_uid}, headers=headers)
+    assert lost_list.status_code == 200
+    assert lost_list.json() == []
+
+    close_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/close",
+        headers=headers,
+        json={"closed_reason": "guest_checkout", "returned_card_uid": card_uid},
+    )
+    assert close_resp.status_code == 200
+    assert close_resp.json()["operational_status"] == "closed_ok"
+
+
+def test_restore_lost_card_for_visit_rejects_non_blocked_or_missing_lost_record(client, db_session):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81016")
+    card_uid = _register_card(client, headers, "CARD-M2-014")
+    visit = _open_visit(client, headers, guest_id, card_uid)
+
+    not_blocked = client.post(
+        f"/api/visits/{visit['visit_id']}/restore-lost-card",
+        headers=headers,
+        json={"reason": "card_recovered", "comment": "Should fail"},
+    )
+    assert not_blocked.status_code == 409
+
+    lost_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss"},
+    )
+    assert lost_resp.status_code == 200
+
+    db_session.query(models.LostCard).filter(models.LostCard.card_uid == "card-m2-014").delete()
+    db_session.commit()
+
+    missing_row = client.post(
+        f"/api/visits/{visit['visit_id']}/restore-lost-card",
+        headers=headers,
+        json={"reason": "card_recovered", "comment": "Missing lost row"},
+    )
+    assert missing_row.status_code == 409
+    assert missing_row.json()["detail"] == "Blocked-lost visit has no matching lost-card record"
 
 
 def test_blocked_lost_reissue_rejects_lost_or_busy_replacement_card(client):

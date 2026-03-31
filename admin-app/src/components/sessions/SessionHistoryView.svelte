@@ -241,7 +241,7 @@
         focusResolved = true;
         return;
       }
-      throw new Error('Новый визит теперь открывается только с картой из пула на экране Sessions.');
+      throw new Error('Новый визит теперь открывается только со сканированием карты на экране Visits. Если карта новая, система сама добавит её в пул.');
     } catch (error) {
       launcherError = normalizeError(error);
       uiStore.notifyError(launcherError);
@@ -390,8 +390,8 @@
   <section class="ui-card visit-launcher">
     <div class="launcher-head">
       <div>
-        <h2>Открыть или продолжить визит</h2>
-        <p>Найдите гостя по имени, телефону или карте и откройте нужный визит прямо из рабочего экрана.</p>
+        <h2>Найти визит в журнале</h2>
+        <p>Найдите гостя по имени, телефону или карте, чтобы быстро открыть нужную запись журнала или перейти в активный визит.</p>
       </div>
       <button class="secondary" on:click={() => { launcherQuery = ''; launcherError = ''; }}>Очистить</button>
     </div>

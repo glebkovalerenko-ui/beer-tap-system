@@ -948,6 +948,20 @@ async fn report_lost_card_from_visit(
 }
 
 #[tauri::command]
+async fn restore_lost_card_for_visit(
+    token: String,
+    visit_id: String,
+    reason: Option<String>,
+    comment: Option<String>,
+) -> Result<api_client::Visit, AppError> {
+    ensure_permission(&token, "cards_reissue_manage").await?;
+    let payload = api_client::VisitRestoreLostCardPayload { reason, comment };
+    api_client::restore_lost_card_for_visit(&token, &visit_id, &payload)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 async fn list_lost_cards(
     token: String,
     uid: Option<String>,
@@ -1092,6 +1106,7 @@ fn main() {
             service_close_visit,
             reconcile_pour,
             report_lost_card_from_visit,
+            restore_lost_card_for_visit,
             list_lost_cards,
             restore_lost_card,
             resolve_card,

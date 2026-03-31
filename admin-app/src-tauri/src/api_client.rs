@@ -368,6 +368,12 @@ pub struct VisitReportLostCardPayload {
     pub comment: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VisitRestoreLostCardPayload {
+    pub reason: Option<String>,
+    pub comment: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LostCard {
     pub id: String,
@@ -378,6 +384,8 @@ pub struct LostCard {
     pub comment: Option<String>,
     pub visit_id: Option<String>,
     pub guest_id: Option<String>,
+    #[serde(default)]
+    pub requires_visit_recovery: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -1776,6 +1784,20 @@ pub async fn report_lost_card_from_visit(
             .json::<VisitReportLostCardResponse>()
             .await
             .map_err(|e| e.to_string())
+    } else {
+        Err(handle_api_error(response).await)
+    }
+}
+
+pub async fn restore_lost_card_for_visit(
+    token: &str,
+    visit_id: &str,
+    payload: &VisitRestoreLostCardPayload,
+) -> Result<Visit, String> {
+    let url = build_api_url(&format!("visits/{}/restore-lost-card", visit_id));
+    let response = send(CLIENT.post(&url).bearer_auth(token).json(payload), &url).await?;
+    if response.status().is_success() {
+        response.json::<Visit>().await.map_err(|e| e.to_string())
     } else {
         Err(handle_api_error(response).await)
     }

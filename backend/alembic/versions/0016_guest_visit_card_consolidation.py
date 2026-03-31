@@ -1,6 +1,6 @@
 """guest visit card consolidation
 
-Revision ID: 0016_guest_visit_card_consolidation
+Revision ID: 0016_guest_visit_card_cons
 Revises: 0015_incident_state_overlay
 Create Date: 2026-03-30 00:00:00
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0016_guest_visit_card_consolidation"
+revision: str = "0016_guest_visit_card_cons"
 down_revision: Union[str, Sequence[str], None] = "0015_incident_state_overlay"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -121,7 +121,7 @@ def upgrade() -> None:
                       )
                 ) THEN 'active_blocked_lost_card'
                 WHEN status = 'active' THEN 'active_assigned'
-                WHEN card_returned = 1 THEN 'closed_ok'
+                WHEN card_returned IS TRUE THEN 'closed_ok'
                 ELSE 'closed_missing_card'
             END
             """
@@ -132,7 +132,7 @@ def upgrade() -> None:
             """
             UPDATE visits
             SET returned_at = closed_at
-            WHERE card_returned = 1
+            WHERE card_returned IS TRUE
               AND closed_at IS NOT NULL
               AND returned_at IS NULL
             """
@@ -143,7 +143,7 @@ def upgrade() -> None:
             """
             UPDATE visits
             SET return_method = 'legacy_backfill'
-            WHERE card_returned = 1
+            WHERE card_returned IS TRUE
               AND return_method IS NULL
             """
         )

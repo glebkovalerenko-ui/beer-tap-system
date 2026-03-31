@@ -9,7 +9,7 @@ const routeCopyPath = resolve(repoRoot, 'src/lib/operator/routeCopy.js');
 
 const routeFiles = {
   'Смена': 'src/routes/Today.svelte',
-  'Визиты': 'src/routes/Sessions.svelte',
+  'Визиты': 'src/routes/Visits.svelte',
   'Гости': 'src/routes/Guests.svelte',
   'Краны': 'src/routes/TapsWorkspace.svelte',
   'Потерянные карты': 'src/routes/LostCards.svelte',
@@ -75,7 +75,7 @@ const checks = [
   {
     name: 'legacy alias визитов и гостей ведут в канонические operator screens',
     ok: [
-      "'/visits': Sessions",
+      "'/visits': Visits",
       "'/sessions': Sessions",
       "'/sessions/history': Sessions",
       "'/guests': Guests",

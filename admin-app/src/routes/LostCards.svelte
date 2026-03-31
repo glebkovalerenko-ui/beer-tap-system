@@ -43,9 +43,38 @@
     });
   }
 
+  function guideBlockedLostRecovery(lookup, fallbackUid = '') {
+    const visitId = lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id;
+    const cardUid = lookup?.card_uid || fallbackUid;
+    uiStore.notifyWarning('Blocked-lost visit: open Visits for reissue, cancel lost, or service-close. Opening visit recovery.');
+    if (visitId) {
+      navigateWithFocus({ target: 'visit', visitId, cardUid });
+    }
+  }
+
+  async function ensureRestorableLostCard(cardUid) {
+    const lookup = await lostCardStore.resolveCard(cardUid);
+    if (lookup?.lookup_outcome === 'active_blocked_lost_card') {
+      guideBlockedLostRecovery(lookup, cardUid);
+      return null;
+    }
+    return lookup;
+  }
+
   async function onRestore(item) {
     actionError = '';
     if (!requirePermission('cards_reissue_manage', 'Снять отметку потери можно только ролям с перевыпуском и восстановлением карт.')) return;
+    if (item.requires_visit_recovery) {
+      guideBlockedLostRecovery({ lost_card: item, card_uid: item.card_uid }, item.card_uid);
+      return;
+    }
+    try {
+      const lookup = await ensureRestorableLostCard(item.card_uid);
+      if (!lookup) return;
+    } catch (error) {
+      actionError = error?.message || error?.toString?.() || 'Failed to resolve card status';
+      return;
+    }
     const ok = await uiStore.confirm({
       title: 'Снять отметку потери',
       message: `Снять отметку для карты ${item.card_uid}?`,
@@ -90,6 +119,10 @@
     if (!requirePermission('cards_reissue_manage', 'Снять отметку потери можно только ролям с перевыпуском и восстановлением карт.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
+    if (cardLookupResult?.lookup_outcome === 'active_blocked_lost_card') {
+      guideBlockedLostRecovery(cardLookupResult, uid);
+      return;
+    }
     try {
       await lostCardStore.restoreLostCard(uid);
       await resolveByCardUid(uid);
@@ -167,9 +200,14 @@
             <div>Связанный визит: {item.visit_id || '—'}</div>
             <div>Причина: {item.reason || '—'}</div>
             <div>Комментарий: {item.comment || '—'}</div>
+            {#if item.requires_visit_recovery}
+              <div class="recovery-note">Эта карта блокирует активный визит. Восстановление выполняется только в разделе «Визиты».</div>
+            {/if}
             <div class="row-actions">
               {#if access.canManage}
-                <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>Снять отметку</button>
+                <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>
+                  {item.requires_visit_recovery ? 'Открыть recovery' : 'Снять отметку'}
+                </button>
               {/if}
               {#if item.visit_id}
                 <button class="secondary" on:click={() => navigateWithFocus({ target: 'visit', visitId: item.visit_id, cardUid: item.card_uid, guestId: item.guest_id })}>Открыть визит</button>
@@ -219,6 +257,7 @@
     font-weight: 700;
   }
   .hint { color: var(--text-secondary); }
+  .recovery-note { color: #8a5a00; font-weight: 600; }
   .error { color: #c61f35; }
   @media (max-width: 980px) {
     .filters {
