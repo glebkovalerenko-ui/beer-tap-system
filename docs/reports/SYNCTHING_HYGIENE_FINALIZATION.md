@@ -1,5 +1,7 @@
 # Syncthing Hygiene Finalization
 
+Update 2026-03-31: the follow-up push and live sync verification for the current project state are documented in [SYNCTHING_PROJECT_SYNC_VERIFICATION_2026-03-31.md](/c:/Users/CatNip420/Documents/Projects/beer-tap-system/docs/reports/SYNCTHING_PROJECT_SYNC_VERIFICATION_2026-03-31.md).
+
 ## 1. Problem
 
 After Syncthing restoration, two hygiene issues remained:
