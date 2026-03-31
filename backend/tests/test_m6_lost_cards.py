@@ -174,13 +174,6 @@ def test_restore_lost_card_requires_visit_resolution_before_reuse(client):
     assert restore_while_blocked.status_code == 409
 
     replacement_card_uid = "CARD-M6-003-REISSUE"
-    register_replacement = client.post(
-        "/api/cards/",
-        headers=headers,
-        json={"card_uid": replacement_card_uid},
-    )
-    assert register_replacement.status_code == 201
-
     reissue = client.post(
         f"/api/visits/{visit_id}/reissue-card",
         headers=headers,
@@ -193,6 +186,12 @@ def test_restore_lost_card_requires_visit_resolution_before_reuse(client):
     assert reissue.status_code == 200
     assert reissue.json()["card_uid"] == replacement_card_uid.lower()
     assert reissue.json()["operational_status"] == "active_assigned"
+
+    cards_resp = client.get("/api/cards/", headers=headers)
+    assert cards_resp.status_code == 200
+    cards_by_uid = {item["card_uid"]: item for item in cards_resp.json()}
+    assert cards_by_uid[replacement_card_uid.lower()]["status"] == "assigned_to_visit"
+    assert cards_by_uid[card_uid.lower()]["status"] == "lost"
 
     topup = client.post(
         f"/api/guests/{guest_id}/topup",

@@ -282,6 +282,17 @@
     });
   }
 
+  function openVisitWorkspace() {
+    if (!detail?.summary?.visit_id) return;
+    navigateWithFocus({
+      target: 'visit',
+      visitId: detail.summary.visit_id,
+      guestId: detail.summary.guest_id || null,
+      cardUid: detail.summary.card_uid || null,
+      tapId: detail.summary.primary_tap_id || null,
+    });
+  }
+
   function updatePeriodPreset(periodPreset) {
     filters = { ...filters, periodPreset, ...getPeriodBounds(periodPreset) };
   }
@@ -340,7 +351,8 @@
       reason: submission.values.reasonCode || 'security',
       comment: submission.values.comment || null,
     });
-    uiStore.notifySuccess('Карта помечена как потерянная.');
+    uiStore.notifySuccess('Карта помечена как потерянная. Продолжите восстановление визита в разделе «Визиты».');
+    openVisitWorkspace();
   }
 
   async function handleReconcile() {
@@ -492,8 +504,9 @@
       onForceUnlock={handleForceUnlock}
       onReconcileSession={handleReconcile}
       onMarkLostCard={handleMarkLostCard}
+      onOpenVisitWorkspace={openVisitWorkspace}
       onOpenGuest={() => openGuestContext(detail?.summary?.guest_id, detail?.summary?.card_uid)}
-      onOpenTap={() => openTapContext(detail?.summary?.tap_id)}
+      onOpenTap={() => openTapContext(detail?.summary?.primary_tap_id)}
       onOpenPours={openVisitPours}
       onCloseDetail={closeDetail}
     />

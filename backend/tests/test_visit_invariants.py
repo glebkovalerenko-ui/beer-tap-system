@@ -191,6 +191,69 @@ def test_lost_card_blocks_normal_close_until_reissue_or_service_close(client):
     assert reissue_resp.json()["operational_status"] == "active_assigned"
 
 
+def test_blocked_lost_reissue_auto_registers_unknown_replacement_card(client):
+    headers = _login(client)
+    guest_id = _create_guest(client, headers, suffix="81012")
+    old_card_uid = _register_card(client, headers, "CARD-M2-010")
+    visit = _open_visit(client, headers, guest_id, old_card_uid)
+
+    lost_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss", "comment": "Lost on the way out"},
+    )
+    assert lost_resp.status_code == 200
+
+    reissue_resp = client.post(
+        f"/api/visits/{visit['visit_id']}/reissue-card",
+        headers=headers,
+        json={"card_uid": "CARD-M2-010-NEW", "reason": "lost_card_reissue", "comment": "Replacement issued immediately"},
+    )
+    assert reissue_resp.status_code == 200
+    assert reissue_resp.json()["card_uid"] == "card-m2-010-new"
+    assert reissue_resp.json()["operational_status"] == "active_assigned"
+
+    cards_resp = client.get("/api/cards/", headers=headers)
+    assert cards_resp.status_code == 200
+    cards_by_uid = {item["card_uid"]: item for item in cards_resp.json()}
+    assert cards_by_uid["card-m2-010-new"]["status"] == "assigned_to_visit"
+    assert cards_by_uid["card-m2-010"]["status"] == "lost"
+
+
+def test_blocked_lost_reissue_rejects_lost_or_busy_replacement_card(client):
+    headers = _login(client)
+    guest_a = _create_guest(client, headers, suffix="81013")
+    guest_b = _create_guest(client, headers, suffix="81014")
+    lost_card_uid = _register_card(client, headers, "CARD-M2-011")
+    busy_card_uid = _register_card(client, headers, "CARD-M2-012")
+
+    visit_a = _open_visit(client, headers, guest_a, lost_card_uid)
+    _open_visit(client, headers, guest_b, busy_card_uid)
+
+    lost_resp = client.post(
+        f"/api/visits/{visit_a['visit_id']}/report-lost-card",
+        headers=headers,
+        json={"reason": "guest_reported_loss"},
+    )
+    assert lost_resp.status_code == 200
+
+    lost_reuse_resp = client.post(
+        f"/api/visits/{visit_a['visit_id']}/reissue-card",
+        headers=headers,
+        json={"card_uid": lost_card_uid, "reason": "lost_card_reissue", "comment": None},
+    )
+    assert lost_reuse_resp.status_code == 409
+    assert "lost" in lost_reuse_resp.json()["detail"]
+
+    busy_reuse_resp = client.post(
+        f"/api/visits/{visit_a['visit_id']}/reissue-card",
+        headers=headers,
+        json={"card_uid": busy_card_uid, "reason": "lost_card_reissue", "comment": None},
+    )
+    assert busy_reuse_resp.status_code == 409
+    assert busy_reuse_resp.json()["detail"] == "Card already used by another active visit"
+
+
 def test_service_close_missing_card_keeps_visit_closed_missing_and_card_lost(client):
     headers = _login(client)
     guest_id = _create_guest(client, headers, suffix="81011")

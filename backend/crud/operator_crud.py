@@ -257,6 +257,7 @@ def _session_action_policies(
 ) -> schemas.OperatorSessionActionPolicySet:
     is_active = summary.is_active
     has_card = bool(summary.card_uid)
+    is_blocked_lost = is_active and summary.operational_status == "active_blocked_lost_card"
     return schemas.OperatorSessionActionPolicySet(
         close=_contextualize_policy(
             _action_policy(
@@ -265,8 +266,8 @@ def _session_action_policies(
                 confirm_required=True,
                 reason_code_required=True,
             ),
-            allowed=is_active,
-            disabled_reason="Session is already closed.",
+            allowed=is_active and not is_blocked_lost,
+            disabled_reason="Blocked-lost visits must be reissued or service-closed in the Visits workspace." if is_blocked_lost else "Session is already closed.",
         ),
         force_unlock=_contextualize_policy(
             _action_policy(
@@ -275,8 +276,8 @@ def _session_action_policies(
                 confirm_required=True,
                 reason_code_required=True,
             ),
-            allowed=is_active,
-            disabled_reason="Only active sessions can be force-unlocked.",
+            allowed=is_active and not is_blocked_lost,
+            disabled_reason="Blocked-lost visits stay in recovery mode until reissue or service close." if is_blocked_lost else "Only active sessions can be force-unlocked.",
         ),
         reconcile=_contextualize_policy(
             _action_policy(
@@ -285,18 +286,18 @@ def _session_action_policies(
                 confirm_required=True,
                 reason_code_required=True,
             ),
-            allowed=is_active,
-            disabled_reason="Manual reconcile is only available for active sessions.",
+            allowed=is_active and not is_blocked_lost,
+            disabled_reason="Blocked-lost visits stay in recovery mode until reissue or service close." if is_blocked_lost else "Manual reconcile is only available for active sessions.",
         ),
         mark_lost_card=_contextualize_policy(
             _action_policy(
                 current_user,
-                permission="cards_block_manage",
+                permission="cards_reissue_manage",
                 confirm_required=True,
                 reason_code_required=True,
             ),
-            allowed=is_active and has_card,
-            disabled_reason="Active card context is required to mark a card as lost.",
+            allowed=is_active and has_card and not is_blocked_lost,
+            disabled_reason="This visit is already in the blocked-lost recovery flow." if is_blocked_lost else "Active card context is required to mark a card as lost.",
         ),
     )
 

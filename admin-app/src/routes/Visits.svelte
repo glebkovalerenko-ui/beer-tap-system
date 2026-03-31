@@ -46,6 +46,9 @@
   $: lockActive = visit?.active_tap_id !== null && visit?.active_tap_id !== undefined;
   $: lockAgeSeconds = visit?.lock_set_at ? Math.max(0, Math.floor((Date.now() - new Date(visit.lock_set_at).getTime()) / 1000)) : 0;
   $: suggestManualReconcile = lockAgeSeconds >= 60;
+  $: isBlockedLostVisit = visit?.operational_status === 'active_blocked_lost_card';
+  $: canManageLostRecovery = Boolean($roleStore.permissions.cards_reissue_manage);
+  $: canUseMaintenanceActions = Boolean($roleStore.permissions.maintenance_actions);
 
   function requirePermission(permissionKey, message) {
     if ($roleStore.permissions[permissionKey]) {
@@ -227,6 +230,7 @@
 
   function handleReissueCard() {
     if (!visit) return;
+    if (!requirePermission('cards_reissue_manage', 'Lost/перевыпуск доступен только ролям с правом на перевыпуск карт.')) return;
     nfcMode = 'reissue';
     nfcError = '';
     isNFCModalOpen = true;
@@ -254,7 +258,7 @@
   }
 
   async function handleLookupRestoreLost() {
-    if (!requirePermission('cards_manage', 'Снятие отметки LostCard доступно только ролям с управлением картами.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Снятие отметки LostCard доступно только ролям с перевыпуском и восстановлением карт.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
     try {
@@ -363,7 +367,7 @@
   async function handleReportLostCard() {
     actionError = '';
     if (!visit || !visit.card_uid) return;
-    if (!requirePermission('cards_manage', 'Отметка потерянной карты доступна только ролям с управлением картами.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Отметка потерянной карты доступна только ролям с перевыпуском и восстановлением карт.')) return;
 
     const confirmed = await uiStore.confirm({
       title: 'Отметить карту потерянной',
@@ -397,7 +401,7 @@
   async function handleServiceClose() {
     actionError = '';
     if (!visit) return;
-    if (!requirePermission('cards_manage', 'Service close визита без возврата карты доступен только сервисному оператору.')) return;
+    if (!requirePermission('maintenance_actions', 'Service close визита без возврата карты доступен только сервисному уровню.')) return;
     const rawComment = window.prompt('Комментарий к service-close (опционально)', '');
     if (rawComment === null) return;
     try {
@@ -472,7 +476,7 @@
         result={cardLookupResult}
         error={actionError}
         loading={$lostCardStore.loading || $visitStore.loading}
-        allowRestoreLost={$roleStore.permissions.cards_manage}
+        allowRestoreLost={canManageLostRecovery}
         allowOpenVisit={hasLookupVisitTarget()}
         allowOpenGuest={false}
         allowOpenNewVisit={false}
@@ -518,6 +522,13 @@
           {/if}
         </div>
 
+        {#if isBlockedLostVisit}
+          <div class="recovery-banner">
+            <strong>Визит заблокирован из-за lost-карты</strong>
+            <p>После отметки lost этот визит можно только перевыпустить на новую карту или сервисно закрыть без возврата карты.</p>
+          </div>
+        {/if}
+
         <div class="lock-state" class:locked={lockActive} class:free={!lockActive}>
           {#if lockActive}
             <strong>Блокировка на кране в„–{visit.active_tap_id}</strong>
@@ -532,37 +543,40 @@
         </div>
 
         <div class="actions-grid">
-          <div class="action-panel">
-            <h3>Принудительно снять блокировку</h3>
-            <input type="text" bind:value={forceUnlockReason} placeholder="Причина (обязательно)" />
-            <textarea bind:value={forceUnlockComment} rows="2" placeholder="Комментарий (опционально)"></textarea>
-            <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive || !$roleStore.permissions.maintenance_actions}>Принудительно снять блокировку</button>
-            <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive || !$roleStore.permissions.maintenance_actions}>Ручная сверка / разблокировать</button>
-          </div>
+          {#if isBlockedLostVisit}
+            <div class="action-panel recovery-panel">
+              <h3>Восстановление визита</h3>
+              <p class="hint">Это обязательный recovery-flow: доступны только перевыпуск или service-close.</p>
+              <button on:click={handleReissueCard} disabled={$visitStore.loading || !canManageLostRecovery}>Считать новую карту и перевыпустить</button>
+              <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading || !canUseMaintenanceActions}>Service-close без возврата карты</button>
+            </div>
+          {:else}
+            <div class="action-panel">
+              <h3>Принудительно снять блокировку</h3>
+              <input type="text" bind:value={forceUnlockReason} placeholder="Причина (обязательно)" />
+              <textarea bind:value={forceUnlockComment} rows="2" placeholder="Комментарий (опционально)"></textarea>
+              <button on:click={handleForceUnlock} disabled={$visitStore.loading || !lockActive || !canUseMaintenanceActions}>Принудительно снять блокировку</button>
+              <button on:click={() => (reconcileOpen = true)} disabled={$visitStore.loading || !lockActive || !canUseMaintenanceActions}>Ручная сверка / разблокировать</button>
+            </div>
 
-          <div class="action-panel">
-            <h3>Закрыть визит</h3>
-            <input type="text" bind:value={closeReason} placeholder="Причина закрытия" />
-            <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active' || visit.operational_status !== 'active_assigned'}>Считать карту и закрыть визит</button>
-            {#if visit.operational_status === 'active_blocked_lost_card'}
-              <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading}>Service-close без возврата карты</button>
-            {/if}
-          </div>
+            <div class="action-panel">
+              <h3>Закрыть визит</h3>
+              <input type="text" bind:value={closeReason} placeholder="Причина закрытия" />
+              <button on:click={handleCloseVisit} disabled={$visitStore.loading || visit.status !== 'active' || visit.operational_status !== 'active_assigned'}>Считать карту и закрыть визит</button>
+            </div>
 
-          <div class="action-panel">
-            <h3>Операции</h3>
-            <button
-              class="danger-btn"
-              on:click={handleReportLostCard}
-              disabled={$visitStore.loading || isCurrentCardLost || !$roleStore.permissions.cards_manage || visit.operational_status !== 'active_assigned'}
-            >
-              Отметить карту потерянной
-            </button>
-            {#if visit.operational_status === 'active_blocked_lost_card'}
-              <button on:click={handleReissueCard} disabled={$visitStore.loading}>Считать новую карту и перевыпустить</button>
-            {/if}
-            <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>Пополнить баланс</button>
-          </div>
+            <div class="action-panel">
+              <h3>Операции</h3>
+              <button
+                class="danger-btn"
+                on:click={handleReportLostCard}
+                disabled={$visitStore.loading || isCurrentCardLost || !canManageLostRecovery || visit.operational_status !== 'active_assigned'}
+              >
+                Отметить карту потерянной
+              </button>
+              <button on:click={handleOpenTopUpModal} disabled={$visitStore.loading}>Пополнить баланс</button>
+            </div>
+          {/if}
         </div>
 
         {#if actionError || $visitStore.error}
@@ -652,6 +666,16 @@
   .lock-state { border-radius: 10px; padding: 0.75rem 1rem; border: 1px solid var(--border-soft); }
   .lock-state.locked { background: #fff3cd; border-color: #f0ad4e; color: #8a5a00; }
   .lock-state.free { background: #e9f7ef; border-color: #7bc697; color: #1f6b3d; }
+  .recovery-banner {
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    border: 1px solid #f0ad4e;
+    background: #fff3cd;
+    color: #8a5a00;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .recovery-banner p { margin: 0; }
 
   .actions-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .action-panel {
@@ -661,6 +685,10 @@
     padding: 0.75rem;
     display: grid;
     gap: 0.5rem;
+  }
+  .recovery-panel {
+    border-color: #f0ad4e;
+    background: #fffaf0;
   }
   .action-panel h3 { margin: 0; }
 

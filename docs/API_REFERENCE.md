@@ -179,10 +179,11 @@ Expected top-level fields:
 ### Visits
 
 - `POST /api/visits/open`
-- `POST /api/visits/{visit_id}/assign-card`
 - `POST /api/visits/{visit_id}/close`
+- `POST /api/visits/{visit_id}/service-close`
 - `POST /api/visits/{visit_id}/force-unlock`
 - `POST /api/visits/{visit_id}/report-lost-card`
+- `POST /api/visits/{visit_id}/reissue-card`
 - `POST /api/visits/{visit_id}/reconcile-pour`
 - `GET /api/visits/active`
 - `GET /api/visits/active/by-card/{card_uid}`
@@ -193,6 +194,9 @@ Important visit rules:
 
 - one active visit per guest;
 - one active visit per card;
+- normal operator flow does not use standalone `assign-card`; active visits are opened with a pool card, and blocked-lost visits continue through `reissue-card`;
+- after `report-lost-card`, the visit enters `active_blocked_lost_card` and must be resolved by either `reissue-card` or `service-close`;
+- `reissue-card` accepts either an existing issuable pool card or a previously unknown UID, which is auto-registered and assigned in the same operation;
 - visit close fails with `409 pending_sync_exists_for_visit` while unresolved pending exists.
 
 ## 6. Pour authorize and controller sync

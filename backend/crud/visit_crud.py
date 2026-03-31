@@ -821,7 +821,8 @@ def _build_session_history_item(db: Session, visit: models.Visit, include_narrat
 
     payload = dict(
         visit_id=visit.visit_id, guest_id=visit.guest_id, guest_full_name=full_name, phone_number=guest.phone_number if guest else None,
-        card_uid=visit.card_uid, visit_status=visit.status, operator_status=operator_status, completion_source=completion_source,
+        card_uid=visit.card_uid, visit_status=visit.status, operational_status=visit.operational_status,
+        operator_status=operator_status, completion_source=completion_source,
         sync_state=sync_state, primary_tap_id=primary_tap_id, taps=sorted(tap_ids), incident_count=len(incident_actions),
         has_incident=bool(incident_actions), has_unsynced=has_unsynced, contains_tail_pour=contains_tail_pour,
         contains_non_sale_flow=contains_non_sale_flow, opened_at=visit.opened_at, closed_at=visit.closed_at, last_event_at=last_event_at,
@@ -1077,13 +1078,35 @@ def reissue_card_for_visit(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
 
     card = card_crud.get_card_by_uid(db, normalized_uid)
+    auto_registered = False
     if not card:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Replacement card not found in inventory pool")
+        card = models.Card(
+            card_uid=normalized_uid,
+            status=card_crud.CARD_STATUS_AVAILABLE,
+            guest_id=None,
+        )
+        db.add(card)
+        try:
+            db.flush()
+            auto_registered = True
+        except IntegrityError:
+            db.rollback()
+            visit = get_visit(db, visit_id=visit_id)
+            if not visit:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+            if visit.status != "active" or visit.operational_status != VISIT_OP_ACTIVE_BLOCKED_LOST:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a blocked-lost active visit can be reissued")
+            existing_card_visit = get_active_visit_by_card_uid(db=db, card_uid=normalized_uid)
+            if existing_card_visit and existing_card_visit.visit_id != visit.visit_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card already used by another active visit")
+            card = card_crud.get_card_by_uid(db, normalized_uid)
+            if not card:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Replacement card registration conflict, retry reissue")
     if card.status not in {card_crud.CARD_STATUS_AVAILABLE, card_crud.CARD_STATUS_RETURNED}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Replacement card is not issuable from state {card.status}")
 
     previous_card_uid = visit.card_uid
-    previous_card_status = card.status
+    previous_card_status = "not_registered" if auto_registered else card.status
     visit.card_uid = normalized_uid
     visit.operational_status = VISIT_OP_ACTIVE_ASSIGNED
     card.status = card_crud.CARD_STATUS_ASSIGNED
@@ -1100,6 +1123,7 @@ def reissue_card_for_visit(
         source_channel="operator_reissue_card_for_visit",
         reason_code=reason,
         comment=comment,
+        extra={"replacement_source": "auto_registered" if auto_registered else "inventory_pool"},
     )
 
     db.commit()

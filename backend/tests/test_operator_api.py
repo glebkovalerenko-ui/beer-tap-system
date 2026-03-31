@@ -359,6 +359,30 @@ def test_operator_sessions_return_projection_filters_and_detail(client, db_sessi
     assert any(item["kind"] == "sync_result" for item in detail_payload["narrative"])
 
 
+def test_operator_sessions_disable_mutations_for_blocked_lost_visit(client, db_session):
+    _seed_operator_fixture(db_session)
+    visit = db_session.query(models.Visit).filter(models.Visit.status == "active").first()
+    card = db_session.query(models.Card).filter(models.Card.card_uid == visit.card_uid).first()
+    assert visit is not None
+    assert card is not None
+
+    visit.operational_status = "active_blocked_lost_card"
+    card.status = "lost"
+    db_session.commit()
+
+    headers = _auth_headers(client, "shift_lead")
+    detail_response = client.get(f"/api/operator/sessions/{visit.visit_id}", headers=headers)
+    assert detail_response.status_code == 200
+
+    detail_payload = detail_response.json()
+    assert detail_payload["summary"]["operational_status"] == "active_blocked_lost_card"
+    assert detail_payload["safe_actions"]["close"]["allowed"] is False
+    assert detail_payload["safe_actions"]["force_unlock"]["allowed"] is False
+    assert detail_payload["safe_actions"]["reconcile"]["allowed"] is False
+    assert detail_payload["safe_actions"]["mark_lost_card"]["allowed"] is False
+    assert detail_payload["safe_actions"]["mark_lost_card"]["disabled_reason"] == "This visit is already in the blocked-lost recovery flow."
+
+
 def test_operator_pours_return_unified_journal_filters_and_detail(client, db_session):
     _seed_operator_fixture(db_session)
     flow, _ = _seed_operator_pour_extras(db_session)

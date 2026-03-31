@@ -663,6 +663,7 @@ class SessionHistoryListItem(BaseModel):
     phone_number: Optional[str] = None
     card_uid: Optional[str] = None
     visit_status: str
+    operational_status: str
     operator_status: str
     completion_source: Optional[str] = None
     sync_state: str

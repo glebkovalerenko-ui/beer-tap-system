@@ -15,10 +15,12 @@
   export let onForceUnlock = () => {};
   export let onReconcileSession = () => {};
   export let onMarkLostCard = () => {};
+  export let onOpenVisitWorkspace = () => {};
   export let onOpenGuest = () => {};
   export let onOpenTap = () => {};
   export let onOpenPours = () => {};
   export let onCloseDetail = () => {};
+  $: isBlockedLost = detail?.summary?.operational_status === 'active_blocked_lost_card';
 
   $: syncSummaryItems = detail ? [
     {
@@ -41,12 +43,14 @@
     },
   ] : [];
 
-  $: actionButtons = detail ? [
-    { key: 'close', label: 'Закрыть визит', policy: detail.safe_actions?.close, handler: onCloseSession, tone: 'danger' },
-    { key: 'force_unlock', label: 'Снять блокировку', policy: detail.safe_actions?.force_unlock, handler: onForceUnlock, tone: 'neutral' },
-    { key: 'reconcile', label: 'Ручная сверка', policy: detail.safe_actions?.reconcile, handler: onReconcileSession, tone: 'neutral' },
-    { key: 'mark_lost_card', label: 'Отметить карту потерянной', policy: detail.safe_actions?.mark_lost_card, handler: onMarkLostCard, tone: 'danger' },
-  ] : [];
+  $: actionButtons = detail ? (isBlockedLost
+    ? []
+    : [
+      { key: 'close', label: 'Закрыть визит', policy: detail.safe_actions?.close, handler: onCloseSession, tone: 'danger' },
+      { key: 'force_unlock', label: 'Снять блокировку', policy: detail.safe_actions?.force_unlock, handler: onForceUnlock, tone: 'neutral' },
+      { key: 'reconcile', label: 'Ручная сверка', policy: detail.safe_actions?.reconcile, handler: onReconcileSession, tone: 'neutral' },
+      { key: 'mark_lost_card', label: 'Отметить карту потерянной', policy: detail.safe_actions?.mark_lost_card, handler: onMarkLostCard, tone: 'danger' },
+    ]) : [];
 </script>
 
 <aside class="ui-card drawer" class:drawer-open={detail}>
@@ -67,19 +71,23 @@
           <span class="muted">{readOnlyReason}</span>
         {/if}
       </div>
-      <div class="action-grid">
-        {#each actionButtons as action}
-          <button
-            class="action-button"
-            data-tone={action.tone}
-            disabled={Boolean(getActionDisabledReason(action.policy)) || actionLoading}
-            title={getActionDisabledReason(action.policy)}
-            on:click={action.handler}
-          >
-            {action.label}
-          </button>
-        {/each}
-      </div>
+      {#if actionButtons.length > 0}
+        <div class="action-grid">
+          {#each actionButtons as action}
+            <button
+              class="action-button"
+              data-tone={action.tone}
+              disabled={Boolean(getActionDisabledReason(action.policy)) || actionLoading}
+              title={getActionDisabledReason(action.policy)}
+              on:click={action.handler}
+            >
+              {action.label}
+            </button>
+          {/each}
+        </div>
+      {:else if isBlockedLost}
+        <p class="muted recovery-hint">Для blocked-lost визита доступны только перевыпуск или service-close в разделе «Визиты».</p>
+      {/if}
       {#if actionError}
         <p class="action-error">{actionError}</p>
       {/if}
@@ -90,8 +98,9 @@
         <h3>Быстрые переходы</h3>
       </div>
       <div class="shortcut-grid">
+        <button class="action-button" type="button" on:click={onOpenVisitWorkspace} disabled={!detail.summary.visit_id}>Открыть визит</button>
         <button class="action-button" type="button" on:click={onOpenGuest} disabled={!detail.summary.guest_id && !detail.summary.card_uid}>Открыть гостя</button>
-        <button class="action-button" type="button" on:click={onOpenTap} disabled={!detail.summary.tap_id}>Открыть кран</button>
+        <button class="action-button" type="button" on:click={onOpenTap} disabled={!detail.summary.primary_tap_id}>Открыть кран</button>
         <button class="action-button" type="button" on:click={onOpenPours} disabled={!detail.summary.visit_id}>Открыть наливы визита</button>
       </div>
     </section>
@@ -230,7 +239,7 @@
   .section-inline-head h3,
   .action-error { margin: 0; }
   .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .shortcut-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .shortcut-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .action-button {
     border-radius: 12px;
     border: 1px solid #cbd5e1;
@@ -248,6 +257,9 @@
   }
   .action-error {
     color: var(--state-critical-text, #9f1239);
+  }
+  .recovery-hint {
+    margin: 0;
   }
   @media (max-width: 820px) {
     .action-grid,
