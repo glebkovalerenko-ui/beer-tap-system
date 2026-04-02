@@ -1,16 +1,17 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
+import { normalizeUserFacingBackendText } from '../lib/copyNormalization.js';
 import { logError, normalizeError } from '../lib/errorUtils.js';
 import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
 const POLL_INTERVAL_MS = 10000;
 
 const DEFAULT_MUTATION_CAPABILITIES = Object.freeze({
-  claim: { enabled: false, reason: 'Endpoint временно отключён.' },
-  escalate: { enabled: false, reason: 'Endpoint временно отключён.' },
-  close: { enabled: false, reason: 'Endpoint временно отключён.' },
-  note: { enabled: false, reason: 'Endpoint временно отключён.' },
+  claim: { enabled: false, reason: 'Действие временно недоступно.' },
+  escalate: { enabled: false, reason: 'Действие временно недоступно.' },
+  close: { enabled: false, reason: 'Действие временно недоступно.' },
+  note: { enabled: false, reason: 'Действие временно недоступно.' },
 });
 
 const ACTION_TO_CAPABILITY_KEY = Object.freeze({
@@ -26,7 +27,7 @@ function toErrorMessage(context, error) {
 }
 
 function createIncidentStore() {
-  const defaultReadOnlyReason = 'Incident mutation endpoints недоступны.';
+  const defaultReadOnlyReason = 'Действия по инцидентам временно недоступны.';
   const initialState = {
     items: [],
     loading: false,
@@ -73,7 +74,7 @@ function createIncidentStore() {
       if (candidate && typeof enabled === 'boolean') {
         capabilities[key] = {
           enabled,
-          reason: enabled ? null : (candidate.disabled_reason || candidate.reason || defaultReadOnlyReason),
+          reason: enabled ? null : normalizeUserFacingBackendText(candidate.disabled_reason || candidate.reason || defaultReadOnlyReason, candidate.disabled_reason || candidate.reason || defaultReadOnlyReason),
         };
       }
     }

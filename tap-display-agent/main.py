@@ -67,7 +67,7 @@ else:
               <head>
                 <meta charset="utf-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1" />
-                <title>Tap Display</title>
+                <title>Экран крана</title>
                 <style>
                   body { margin: 0; font-family: sans-serif; background: #111827; color: #f3f4f6; display: grid; place-items: center; min-height: 100vh; }
                   main { max-width: 32rem; padding: 2rem; text-align: center; }
@@ -75,8 +75,8 @@ else:
               </head>
               <body>
                 <main>
-                  <h1>Display client build not found</h1>
-                  <p>Build <code>tap-display-client</code> and restart <code>tap-display-agent</code>.</p>
+                  <h1>Сборка клиентского экрана не найдена</h1>
+                  <p>Соберите <code>tap-display-client</code> и перезапустите <code>tap-display-agent</code>.</p>
                 </main>
               </body>
             </html>

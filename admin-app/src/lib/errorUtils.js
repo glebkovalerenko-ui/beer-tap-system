@@ -1,13 +1,23 @@
 const DEFAULT_ERROR_MESSAGE = 'Неизвестная ошибка';
+/** @type {Array<[RegExp, string]>} */
 const ERROR_MESSAGE_MAP = [
   [/^Not authenticated$/i, 'Требуется повторный вход в систему'],
   [/^Authentication token not found\.?$/i, 'Требуется повторный вход в систему'],
+  [/^Could not validate credentials\.?$/i, 'Требуется повторный вход в систему'],
+  [/^Incorrect username or password$/i, 'Неверное имя пользователя или пароль'],
   [/^Shift already open$/i, 'Смена уже открыта'],
   [/^Shift is already closed$/i, 'Смена уже закрыта'],
   [/^Login failed$/i, 'Не удалось выполнить вход'],
   [/^Unauthorized$/i, 'Доступ запрещён. Требуется повторный вход'],
   [/^API request failed$/i, 'Не удалось выполнить запрос к серверу'],
   [/^request failed for /i, 'Не удалось выполнить запрос к серверу'],
+  [/^Guest not found$/i, 'Гость не найден'],
+  [/^Visit not found$/i, 'Визит не найден'],
+  [/^Card not found$/i, 'Карта не найдена'],
+  [/^Card not found or not assigned to this guest$/i, 'Карта не найдена или не привязана к этому гостю'],
+  [/^Only active visit can report lost card$/i, 'Отметить потерю карты можно только у активного визита'],
+  [/^Cannot restore a lost card from the lost-cards queue while the related visit is still blocked; open the visit recovery flow and reissue, cancel lost, or service-close it first\.$/i, 'Нельзя снять отметку потери из очереди потерянных карт, пока связанный визит заблокирован. Откройте раздел «Визиты» и выполните перевыпуск, снятие отметки потери или сервисное закрытие.'],
+  [/^Value must be 'true' or 'false'$/i, "Значение должно быть 'true' или 'false'"],
   [/active_visits_exist/i, 'Есть активные визиты'],
   [/pending_sync_pours_exist/i, 'Есть несинхронизированные наливы'],
   [/processing_sync/i, 'Идёт синхронизация налива. Дождитесь завершения'],
@@ -21,10 +31,12 @@ const ERROR_MESSAGE_MAP = [
   [/HTTP 5\d\d/i, 'Ошибка сервера. Повторите попытку позже'],
 ];
 
+/** @param {unknown} value */
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+/** @param {unknown} value */
 function safeStringify(value) {
   try {
     const serialized = JSON.stringify(value);
@@ -37,6 +49,7 @@ function safeStringify(value) {
   }
 }
 
+/** @param {unknown} value */
 function parseJsonIfPossible(value) {
   if (!isNonEmptyString(value)) return null;
   const trimmed = value.trim();
@@ -49,6 +62,7 @@ function parseJsonIfPossible(value) {
   }
 }
 
+/** @param {unknown} error */
 function extractStatusAndEndpoint(error) {
   if (!error || typeof error !== 'object') return '';
 
@@ -60,6 +74,7 @@ function extractStatusAndEndpoint(error) {
   return [statusPart, endpointPart].filter(Boolean).join(' ').trim();
 }
 
+/** @param {unknown} message */
 function translateOperatorMessage(message) {
   const text = isNonEmptyString(message) ? message.trim() : '';
   if (!text) return '';
@@ -73,6 +88,7 @@ function translateOperatorMessage(message) {
   return text;
 }
 
+/** @param {unknown} error */
 function fromObject(error) {
   if (!error || typeof error !== 'object') return '';
 
@@ -111,6 +127,7 @@ function fromObject(error) {
   return '';
 }
 
+/** @param {unknown} error @param {string} [fallback=DEFAULT_ERROR_MESSAGE] */
 export function normalizeError(error, fallback = DEFAULT_ERROR_MESSAGE) {
   if (isNonEmptyString(error)) {
     const parsed = parseJsonIfPossible(error);
@@ -140,10 +157,12 @@ export function normalizeError(error, fallback = DEFAULT_ERROR_MESSAGE) {
   return fallback;
 }
 
+/** @param {unknown} error @param {string} [fallback=DEFAULT_ERROR_MESSAGE] */
 export function normalizeErrorMessage(error, fallback = DEFAULT_ERROR_MESSAGE) {
   return normalizeError(error, fallback);
 }
 
+/** @param {string} context @param {unknown} error @param {string} [fallback=DEFAULT_ERROR_MESSAGE] */
 export function logError(context, error, fallback = DEFAULT_ERROR_MESSAGE) {
   const normalized = normalizeError(error, fallback);
   const prefix = context ? `[${context}] ` : '';

@@ -62,6 +62,12 @@ const SHIFT_REPORT_STATUS_LABELS = {
   mismatch: 'С расхождением',
 };
 
+const PRICE_DISPLAY_MODE_LABELS = {
+  per_100ml: '₽ / 100 мл',
+  per_liter: '₽ / л',
+  auto: 'Авто',
+};
+
 function normalizeNumber(value) {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : 0;
@@ -157,6 +163,11 @@ export function formatKegStatus(status) {
 
 export function formatShiftReportMetricLabel(metric) {
   return SHIFT_REPORT_STATUS_LABELS[metric] || metric || '-';
+}
+
+export function formatPriceDisplayMode(mode, fallback = '-') {
+  const normalized = typeof mode === 'string' ? mode.trim() : '';
+  return PRICE_DISPLAY_MODE_LABELS[normalized] || fallback;
 }
 
 const DEFAULT_TAP_DISPLAY_COPY = {
@@ -274,7 +285,7 @@ export function buildTapGuestDisplaySnapshot(tap, displayConfig = null) {
       display_disabled: 'Экран отключён для гостей',
       beverage_spotlight: 'Гость видит карточку напитка',
       pouring: 'Гость видит активный налив',
-      fallback_empty: 'Гость видит fallback для пустого крана',
+      fallback_empty: 'Гость видит экран пустого крана',
       syncing: 'Гость видит бренд до подтверждения синхронизации',
       maintenance: 'Гость видит сервисный экран',
     }[scenario] || 'Сценарий уточняется',

@@ -1,5 +1,6 @@
 <script>
   import MediaAssetPicker from "../display/MediaAssetPicker.svelte";
+  import { formatPriceDisplayMode } from "../../lib/formatters.js";
   import { beverageStore } from "../../stores/beverageStore.js";
   import { uiStore } from "../../stores/uiStore.js";
   import { normalizeError } from "../../lib/errorUtils.js";
@@ -128,7 +129,7 @@
       if (selectedBeverageId) {
         const updated = await beverageStore.updateBeverage(selectedBeverageId, payload);
         selectBeverage(updated);
-        uiStore.notifySuccess(`Tap Display для напитка «${updated.name}» обновлен.`);
+        uiStore.notifySuccess(`Карточка напитка «${updated.name}» для экрана крана обновлена.`);
       } else {
         const created = await beverageStore.createBeverage(payload);
         if (created) {
@@ -149,7 +150,7 @@
   <div class="manager-toolbar">
     <div>
       <h3>Справочник напитков</h3>
-      <p>Выберите напиток, чтобы настроить его карточку для Tap Display.</p>
+      <p>Выберите напиток, чтобы настроить его карточку для экрана крана.</p>
     </div>
     <button type="button" class="secondary-action" on:click={startCreateMode} disabled={!canManage}>
       Новый напиток
@@ -177,7 +178,7 @@
                 </span>
               </div>
               <div class="beverage-meta">
-                <span class="type">{beverage.price_display_mode_default || "per_100ml"}</span>
+                <span class="type">{formatPriceDisplayMode(beverage.price_display_mode_default || "per_100ml")}</span>
                 <span class="price">{beverage.sell_price_per_liter} ₽/л</span>
               </div>
             </button>
@@ -199,7 +200,7 @@
           {#if selectedBeverage}
             Здесь редактируется общая карточка напитка, которую затем используют назначенные краны.
           {:else}
-            Создайте карточку напитка и сразу заполните поля, которые увидит гость на Tap Display.
+            Создайте карточку напитка и сразу заполните поля, которые увидит гость на экране крана.
           {/if}
         </p>
       </div>
@@ -238,7 +239,7 @@
 
         <label>
           <span>Пивоварня</span>
-          <small>Служебная информация для оператора и fallback-подпись на экране.</small>
+          <small>Служебная информация для оператора и резервная подпись на экране.</small>
           <input
             type="text"
             placeholder="Например, Балтика"
@@ -273,7 +274,7 @@
 
         <label>
           <span>Цена за литр</span>
-          <small>Основа для расчета гостевой цены на Tap Display.</small>
+          <small>Основа для расчета гостевой цены на экране крана.</small>
           <input
             type="text"
             placeholder="Например, 450.00"
@@ -288,7 +289,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>Контент Tap Display</legend>
+      <legend>Контент экрана крана</legend>
       <div class="form-grid">
         <label class="wide">
           <span>Короткое описание</span>
@@ -348,7 +349,7 @@
         <div class="wide media-grid">
           <MediaAssetPicker
             kind="background"
-            title="Фон Tap Display"
+            title="Фон экрана крана"
             description="Большое фоновое изображение для основного экрана напитка."
             selectedAssetId={formData.background_asset_id}
             disabled={$beverageStore.loading || !canManage}

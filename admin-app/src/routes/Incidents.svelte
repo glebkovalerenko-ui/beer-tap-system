@@ -4,6 +4,7 @@
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import IncidentList from '../components/incidents/IncidentList.svelte';
   import { getActionPlan, navigateWithFocus } from '../lib/actionRouting.js';
+  import { humanizeIncidentType } from '../lib/copyNormalization.js';
   import { formatDateTimeRu } from '../lib/formatters.js';
   import { buildEnrichedIncidents, buildFilterOptions, filterIncidents, groupIncidentsByStatus } from '../lib/incidentsViewModel.js';
   import { buildOperatorActionRequest } from '../lib/operator/actionDialogModel.js';
@@ -76,7 +77,7 @@
 
   function titleCase(value) {
     if (!value) return '—';
-    const text = String(value).replaceAll('_', ' ');
+    const text = String(value).replaceAll(/[-_]/g, ' ');
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
@@ -283,7 +284,7 @@
           <span>Тип</span>
           <select bind:value={filters.type}>
             <option value="all">Все</option>
-            {#each filterOptions.types as type}<option value={type}>{titleCase(type)}</option>{/each}
+            {#each filterOptions.types as type}<option value={type}>{humanizeIncidentType(type)}</option>{/each}
           </select>
         </label>
         <label>
@@ -340,8 +341,8 @@
           <div class="detail-head">
             <div>
               <div class="eyebrow">{INCIDENT_COPY.detailsPanel}</div>
-              <h2>#{selectedIncident.incident_id}</h2>
-              <p>{selectedIncident.typeLabel} · {selectedIncident.uiSeverityLabel} · {selectedIncident.agingCueLabel}</p>
+              <h2>{selectedIncident.typeLabel}</h2>
+              <p>Инцидент #{selectedIncident.incident_id} · {selectedIncident.uiSeverityLabel} · {selectedIncident.agingCueLabel}</p>
             </div>
             <div class={`priority-badge ${selectedIncident.uiSeverity}`}>{selectedIncident.uiSeverityLabel}</div>
           </div>

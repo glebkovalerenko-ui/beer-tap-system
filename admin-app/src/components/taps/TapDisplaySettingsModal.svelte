@@ -3,7 +3,7 @@
 
   import MediaAssetPicker from '../display/MediaAssetPicker.svelte';
   import { normalizeError } from '../../lib/errorUtils.js';
-  import { formatTapStatus } from '../../lib/formatters.js';
+  import { formatPriceDisplayMode, formatTapStatus } from '../../lib/formatters.js';
   import { tapStore } from '../../stores/tapStore.js';
   import { uiStore } from '../../stores/uiStore.js';
 
@@ -62,18 +62,6 @@
 
   function getAccentPreviewColor() {
     return isHexColor(formData.override_accent_color) ? formData.override_accent_color : effectiveAccentColor;
-  }
-
-  function formatPriceModeLabel(mode) {
-    if (mode === 'per_liter') {
-      return '₽ / л';
-    }
-
-    if (mode === 'per_100ml') {
-      return '₽ / 100 мл';
-    }
-
-    return 'Наследуется';
   }
 
   function mapConfigToForm(config) {
@@ -192,14 +180,14 @@
       <label class="toggle-row">
         <input type="checkbox" bind:checked={formData.enabled} disabled={saving} />
         <div>
-          <span>Показывать Tap Display для этого крана</span>
+          <span>Показывать гостевой экран для этого крана</span>
           <small>Если отключить экран, кран будет показываться как временно недоступный.</small>
         </div>
       </label>
     </fieldset>
 
     <fieldset>
-      <legend>Fallback для пустого или недоступного крана</legend>
+      <legend>Экран для пустого или недоступного крана</legend>
       <div class="form-grid">
         <label>
           <span>Заголовок</span>
@@ -287,7 +275,7 @@
         <div class="wide">
           <MediaAssetPicker
             kind="background"
-            title="Фон Tap Display"
+            title="Фон экрана крана"
             description="Можно задать отдельный фон только для этого крана. Если оставить пустым, будет использоваться фон напитка."
             selectedAssetId={formData.override_background_asset_id}
             disabled={saving}
@@ -306,10 +294,10 @@
     <div class="visibility-card">
       <h4>Что увидит оператор</h4>
       <p>
-        <strong>Обычный экран:</strong> {beverage?.name || 'Напиток не назначен'} · {formatPriceModeLabel(effectivePriceMode)}
+        <strong>Основной экран:</strong> {beverage?.name || 'Напиток не назначен'} · {formatPriceDisplayMode(effectivePriceMode, 'По напитку')}
       </p>
       <p>
-        <strong>Fallback:</strong> {formData.fallback_title || DEFAULT_FALLBACK_TITLE}
+        <strong>Пустой или недоступный кран:</strong> {formData.fallback_title || DEFAULT_FALLBACK_TITLE}
       </p>
       <p>
         <strong>Обслуживание:</strong> {formData.maintenance_title || DEFAULT_MAINTENANCE_TITLE}

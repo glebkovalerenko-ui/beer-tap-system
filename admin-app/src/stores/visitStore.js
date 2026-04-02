@@ -155,7 +155,7 @@ function createVisitStore() {
       const token = withAuth();
       update((s) => ({ ...s, loading: true, error: null }));
       try {
-        if (!returnedCardUid?.trim()) throw new Error('Для normal close нужно отсканировать возвращённую карту.');
+        if (!returnedCardUid?.trim()) throw new Error('Для обычного закрытия нужно отсканировать возвращённую карту.');
         const closedVisit = await invoke('close_visit', {
           token,
           visitId,

@@ -2,6 +2,7 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { sessionStore } from './sessionStore.js';
+import { normalizeSystemActionableStep, normalizeUserFacingBackendText } from '../lib/copyNormalization.js';
 import { logError, normalizeError } from '../lib/errorUtils';
 import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
 
@@ -17,10 +18,14 @@ function findSubsystem(subsystems, names) {
 function normalizeSubsystemHealth(item, fallbackLabel) {
   return {
     name: item?.name || fallbackLabel.toLowerCase(),
-    label: item?.label || fallbackLabel,
+    label: fallbackLabel,
     state: item?.state || 'unknown',
-    detail: item?.detail || item?.state || 'Нет данных',
-    devices: item?.devices || [],
+    detail: normalizeUserFacingBackendText(item?.detail || item?.state || 'Нет данных', item?.detail || item?.state || 'Нет данных'),
+    devices: (item?.devices || []).map((device) => ({
+      ...device,
+      label: normalizeUserFacingBackendText(device?.label || '', device?.label || ''),
+      detail: normalizeUserFacingBackendText(device?.detail || '', device?.detail || ''),
+    })),
   };
 }
 
@@ -34,8 +39,8 @@ function summarizeDevices(devices = [], fallbackLabel = 'устройств') {
 function deriveHealthSummary(summary, error = null) {
   const subsystems = summary?.subsystems || [];
   const backend = error
-    ? { name: 'backend', label: 'Бэкенд', state: 'critical', detail: error, devices: [] }
-    : normalizeSubsystemHealth(findSubsystem(subsystems, ['backend', 'api', 'server']), 'Бэкенд');
+    ? { name: 'backend', label: 'Центральный контур', state: 'critical', detail: error, devices: [] }
+    : normalizeSubsystemHealth(findSubsystem(subsystems, ['backend', 'api', 'server']), 'Центральный контур');
   const controllers = normalizeSubsystemHealth(findSubsystem(subsystems, ['controller', 'controllers']), 'Контроллеры');
   const displays = normalizeSubsystemHealth(findSubsystem(subsystems, ['display-agent', 'display_agent', 'display', 'displays']), 'Экраны');
   const readers = normalizeSubsystemHealth(findSubsystem(subsystems, ['reader', 'readers', 'nfc', 'nfc-reader', 'nfc_reader']), 'Считыватели');
@@ -50,7 +55,7 @@ function deriveHealthSummary(summary, error = null) {
       : 'ok';
 
   const primaryPills = [
-    { key: 'backend', label: 'Бэкенд', state: backend.state, detail: backend.detail },
+    { key: 'backend', label: 'Центральный контур', state: backend.state, detail: backend.detail },
     { key: 'controllers', label: 'Контроллеры', state: controllers.state, detail: controllers.detail },
     { key: 'displays', label: 'Экраны', state: displays.state, detail: displays.detail },
     { key: 'readers', label: 'Считыватели', state: readers.state, detail: readers.detail },
@@ -138,11 +143,11 @@ const createSystemStore = () => {
     subsystems: summary?.subsystems || [],
     health: deriveHealthSummary(summary),
     mode: summary?.mode || 'online',
-    reason: summary?.reason || null,
+    reason: normalizeUserFacingBackendText(summary?.reason || null, null),
     queueSummary: summary?.queue_summary || null,
     staleSummary: summary?.stale_summary || null,
     blockedActions: summary?.blocked_actions || {},
-    actionableNextSteps: summary?.actionable_next_steps || [],
+    actionableNextSteps: (summary?.actionable_next_steps || []).map((step) => normalizeSystemActionableStep(step)),
     loading: false,
     isLoading: false,
     lastFetchedAt: Date.now(),

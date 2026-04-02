@@ -21,7 +21,7 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: true,
     requiresComment: false,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Блокировка и разблокировка крана доступны только ролям с taps_control.',
+    deniedReason: 'Блокировка и разблокировка крана доступны только ролям с правом управления кранами.',
   },
   close_incident: {
     label: 'Закрыть инцидент',
@@ -30,7 +30,7 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: true,
     requiresComment: true,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Закрытие инцидента доступно только роли с incidents_manage.',
+    deniedReason: 'Закрытие инцидента доступно только ролям с правом управления инцидентами.',
   },
   escalate_incident: {
     label: 'Эскалировать инцидент',
@@ -39,7 +39,7 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: true,
     requiresComment: true,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Эскалация инцидента доступна только роли с incidents_manage.',
+    deniedReason: 'Эскалация инцидента доступна только ролям с правом управления инцидентами.',
   },
   mark_lost_reissue: {
     label: 'Потерянная карта / перевыпуск',
@@ -48,7 +48,7 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: true,
     requiresComment: false,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Lost/перевыпуск доступен только ролям с cards_reissue_manage.',
+    deniedReason: 'Работа с потерянной картой и перевыпуск доступны только ролям с правом перевыпуска карт.',
   },
   block_unblock_card: {
     label: 'Заблокировать или разблокировать карту',
@@ -57,7 +57,7 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: false,
     requiresComment: false,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Блокировка карты доступна только ролям с cards_block_manage.',
+    deniedReason: 'Блокировка карты доступна только ролям с правом блокировки карт.',
   },
   keg_connect_disconnect: {
     label: 'Подключить или отключить кегу',
@@ -66,16 +66,16 @@ export const CRITICAL_ACTION_MATRIX = {
     requiresTwoStep: true,
     requiresComment: false,
     uiVisibility: 'show_disabled',
-    deniedReason: 'Подключать/отключать кеги могут только роли с taps_control.',
+    deniedReason: 'Подключать и отключать кеги могут только роли с правом управления кранами.',
   },
   display_override: {
-    label: 'Override экрана крана',
+    label: 'Переопределение экрана крана',
     permission: 'display_override',
     roles: ['engineer_owner'],
     requiresTwoStep: false,
     requiresComment: false,
     uiVisibility: 'hidden',
-    deniedReason: 'Управление guest display доступно только инженеру/владельцу.',
+    deniedReason: 'Управление гостевым экраном доступно только инженеру или владельцу.',
   },
   maintenance_toggle: {
     label: 'Сервисный режим крана',
@@ -130,6 +130,6 @@ export function buildCriticalActionRows() {
     requiredRole: spec.roles.map((role) => ROLE_LABELS[role] || role).join(' / '),
     requiresTwoStep: spec.requiresTwoStep,
     requiresComment: spec.requiresComment,
-    uiVisibility: spec.uiVisibility === 'hidden' ? 'Скрыто при отсутствии прав' : 'Показывается disabled + reason',
+    uiVisibility: spec.uiVisibility === 'hidden' ? 'Скрыто при отсутствии прав' : 'Показывается как недоступное с пояснением',
   }));
 }

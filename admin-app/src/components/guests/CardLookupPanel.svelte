@@ -64,12 +64,12 @@
   $: showBlockedLostRecoveryHint = lookupOutcome === 'active_blocked_lost_card';
   $: statusText = {
     active_visit: 'Карта назначена активному визиту',
-    active_blocked_lost_card: 'Активный визит заблокирован и ждёт recovery в Visits',
+    active_blocked_lost_card: 'Активный визит заблокирован и ждёт восстановления в разделе «Визиты»',
     available_pool_card: 'Физическая карта доступна в пуле и может быть выдана на новый визит',
-    returned_to_pool_card: 'Карта подтверждённо возвращена в пул и готова к reuse',
-    lost_card: 'Физическая карта помечена как lost и не может использоваться',
+    returned_to_pool_card: 'Карта подтверждённо возвращена в пул и готова к повторной выдаче',
+    lost_card: 'Физическая карта помечена как потерянная и не может использоваться',
     retired_card: 'Карта выведена из эксплуатации',
-    unknown_card: 'Карта не зарегистрирована в inventory pool',
+    unknown_card: 'Карта не зарегистрирована в пуле карт',
   }[lookupOutcome] || 'Статус карты уточняется';
   $: statusClass = lookupOutcome === 'lost_card'
     ? statusTone('danger')
@@ -230,7 +230,7 @@
         {/if}
       </div>
       {#if showBlockedLostRecoveryHint}
-        <p class="action-hint">Blocked-lost visit: open Visits for reissue, cancel lost, or service-close.</p>
+        <p class="action-hint">Визит заблокирован из-за потерянной карты. Откройте раздел «Визиты», чтобы восстановить работу с ним.</p>
       {/if}
     </div>
   {/if}

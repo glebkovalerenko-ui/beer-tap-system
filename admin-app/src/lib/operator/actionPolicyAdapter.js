@@ -25,7 +25,7 @@ export function normalizeOperatorActionPolicy(candidate = null, overrides = {}) 
       source.disabled_reason
       || source.reason
       || overrides.disabled_reason
-      || (secondApprovalRequired ? 'Requires second approval in a different workflow.' : 'Action is unavailable.')
+      || (secondApprovalRequired ? 'Требуется второе согласование в другом рабочем сценарии.' : 'Действие недоступно.')
     );
 
   return {

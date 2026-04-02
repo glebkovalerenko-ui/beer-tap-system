@@ -99,18 +99,18 @@ export const SHELL_COPY = {
   guestContext: 'Контекст гостя',
   logout: 'Выйти',
   syncClean: 'Синхронизация: чисто',
-  syncUnsynced: (count) => `Синхронизация: ${count} несинхр.`,
+  syncUnsynced: (count) => `Синхронизация: ${count} ждут подтверждения`,
   syncOfflineQueue: (count) => `Очередь синхронизации: ${count} вне связи`,
-  syncUnsyncedTitle: 'Есть локальные наливы, ожидающие синхронизации с бэкендом.',
+  syncUnsyncedTitle: 'Есть локальные наливы, ожидающие синхронизации с системой.',
   syncOfflineTitle: 'Есть устройства с локальными или офлайн-проблемами, влияющими на оперативную синхронизацию.',
   syncCleanTitle: 'Несинхронизированных наливов и офлайн-хвостов не обнаружено.',
 };
 
 export const TAP_SCREENS_COPY = {
-  guestFacingOverrideLoadError: 'Не удалось загрузить override гостевого экрана.',
+  guestFacingOverrideLoadError: 'Не удалось загрузить настройки гостевого экрана.',
   managementOnlySettings: 'Настройки экрана доступны только управленческим и инженерным ролям.',
   introText: 'Ниже видно, какой сценарий, брендинг и текущее состояние сейчас видит гость на каждом экране крана.',
-  sectionHint: 'Карточка собирает сводку из состояния крана, override экрана и полей напитка без открытия модального окна.',
+  sectionHint: 'Карточка собирает сводку из состояния крана, настроек экрана и полей напитка без открытия модального окна.',
   tapLabel: 'Кран',
   previewAria: (name) => `Гостевой предпросмотр: ${name}`,
   displayEnabled: 'Экран крана включён',
@@ -121,5 +121,5 @@ export const TAP_SCREENS_COPY = {
   controller: 'Контроллер',
   operatorNote: 'Комментарий оператора',
   operatorSummary: 'Сводка для оператора',
-  overrideSummaryUnavailable: 'Сводка override недоступна',
+  overrideSummaryUnavailable: 'Сводка настроек экрана недоступна',
 };

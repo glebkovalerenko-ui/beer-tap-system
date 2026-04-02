@@ -65,7 +65,7 @@ const ACTION_MAP = {
     primaryCta: ACTION_LABELS.checkSync,
     secondaryCta: { target: 'incident', label: ACTION_LABELS.incident },
     recommendedOwnerState: 'Ответственный по смене',
-    recommendedActionState: 'Проверить sync и эскалировать при задержке',
+    recommendedActionState: 'Проверить синхронизацию и эскалировать при задержке',
   },
   incident: {
     primaryTarget: 'incident',

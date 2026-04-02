@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import GuardedActionButton from '../common/GuardedActionButton.svelte';
-  import { formatDateTimeRu, formatRubAmount, formatVolumeRu } from '../../lib/formatters.js';
+  import { formatDateTimeRu, formatPriceDisplayMode, formatRubAmount, formatTapStatus, formatVolumeRu } from '../../lib/formatters.js';
   import { getCriticalActionGuard } from '../../lib/criticalActionMatrix.js';
   import { TAP_COPY } from '../../lib/operatorLabels.js';
   import { buildTapQuickActions } from '../../lib/operator/tapQuickActions.js';
@@ -30,12 +30,12 @@
   ];
   $: liveStateRows = [
     { label: 'Подключение', value: operations.heartbeat?.isStale ? TAP_COPY.connectivityOffline : TAP_COPY.connectivityOnline, note: operations.liveStatus || null },
-    { label: TAP_COPY.reader, value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.state || null },
+    { label: TAP_COPY.reader, value: operations.readerStatus?.label || 'Нет данных', note: operations.readerStatus?.detail || null },
     { label: 'Клапан', value: valveStatusLabel(tap, operations, currentPour), note: null },
     { label: 'Поток', value: currentPour.isActive ? 'Идёт налив' : 'Поток не зафиксирован', note: currentPour.volumeMl ? formatVolumeRu(currentPour.volumeMl) : null },
     { label: TAP_COPY.screen, value: operations.displayStatus?.label || 'Нет данных', note: displaySummary },
     { label: 'Последний сигнал', value: operations.heartbeat?.at ? formatDateTimeRu(operations.heartbeat.at) : 'Нет данных', note: operations.heartbeat?.minutesAgo != null ? `${operations.heartbeat.minutesAgo} мин назад` : 'Источник не передал свежий сигнал' },
-    { label: 'Синхронизация', value: operations.syncState?.label || 'Нет данных', note: tap?.status || null },
+    { label: 'Синхронизация', value: operations.syncState?.label || 'Нет данных', note: tap?.status ? formatTapStatus(tap.status) : null },
     { label: TAP_COPY.activeSessionCard, value: activeVisitCardLabel(session), note: session?.guestName || null },
   ];
   $: beveragePrice = beverage.sell_price_per_liter ?? tap?.sell_price_per_liter ?? null;
@@ -47,7 +47,7 @@
     { label: 'Название напитка', value: operations.beverageName || beverage.name || 'Напиток не назначен', note: beverage.display_brand_name || null },
     { label: 'Стиль', value: operations.beverageStyle || beverage.style || '—', note: beverage.brewery || null },
     { label: 'ABV', value: formatAbv(beverage.abv), note: null },
-    { label: 'Цена', value: beveragePrice ? formatRubAmount(beveragePrice) : '—', note: beverage.price_display_mode_default || null },
+    { label: 'Цена', value: beveragePrice ? formatRubAmount(beveragePrice) : '—', note: formatPriceDisplayMode(beverage.price_display_mode_default, null) },
     { label: 'Остаток', value: operations.remainingVolumeMl != null ? formatVolumeRu(operations.remainingVolumeMl) : '—', note: operations.remainingPercent != null ? `${operations.remainingPercent}% от полной кеги` : null },
     { label: 'Дата подключения кеги', value: keg?.tapped_at ? formatDateTimeRu(keg.tapped_at) : 'Кега не подключена', note: keg?.created_at ? `Создана ${formatDateTimeRu(keg.created_at)}` : null },
     { label: 'Сводка контента экрана', value: displaySummary, note: null },
@@ -143,11 +143,12 @@
 
   function buildDisplaySummary(tapView, drink, ops) {
     const parts = [];
+    const priceModeLabel = formatPriceDisplayMode(drink?.price_display_mode_default, '');
     if (tapView?.display_enabled === false) parts.push('экран отключён');
     else parts.push(ops?.displayStatus?.label || 'экран без статуса');
     if (drink?.display_brand_name) parts.push(`бренд: ${drink.display_brand_name}`);
     if (drink?.description_short) parts.push(drink.description_short);
-    if (drink?.price_display_mode_default) parts.push(`режим цены: ${drink.price_display_mode_default}`);
+    if (priceModeLabel) parts.push(`режим цены: ${priceModeLabel}`);
     return parts.filter(Boolean).join(' · ') || 'Нет описания контента экрана';
   }
 

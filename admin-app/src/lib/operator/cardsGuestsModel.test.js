@@ -68,7 +68,7 @@ test('buildCardsGuestsViewModel maps backend action policies into action guards'
   assert.equal(model.actionGuards.topUp.reason, 'Shift is closed.');
   assert.equal(model.actionGuards.toggleBlock.disabled, false);
   assert.equal(model.actionGuards.markLost.disabled, true);
-  assert.match(model.actionGuards.markLost.reason || '', /second approval/i);
+  assert.match(model.actionGuards.markLost.reason || '', /второе согласование/i);
   assert.equal(model.actionGuards.openHistory.disabled, true);
   assert.equal(model.actionGuards.openHistory.reason, 'History sync is pending.');
   assert.equal(model.quickActions.find((item) => item.id === 'top-up')?.disabled, true);

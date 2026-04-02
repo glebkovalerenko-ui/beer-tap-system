@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 
+import { normalizeUserFacingBackendText } from '../lib/copyNormalization.js';
 import { displayAdminGetJson, displayAdminPutJson } from '../lib/displayAdminApi.js';
 import { logError, normalizeError } from '../lib/errorUtils.js';
 import { notifyForbiddenIfNeeded } from '../lib/forbidden.js';
@@ -82,14 +83,14 @@ export const TAP_OPERATOR_STATE_META = Object.freeze({
     key: TAP_OPERATOR_STATES.SYNCING,
     label: 'Синхронизация',
     shortLabel: 'Синхронизация',
-    eyebrow: 'Ожидание backend',
+    eyebrow: 'Ожидание подтверждения системы',
     icon: '↻',
     tone: 'sync',
     layout: 'steady',
     badgeStyle: 'pill',
     iconShape: 'orbit',
     containerStyle: 'sync',
-    headline: 'Локальные данные ещё не подтверждены backend',
+    headline: 'Локальные данные ещё не подтверждены системой',
   },
   [TAP_OPERATOR_STATES.NO_KEG]: {
     key: TAP_OPERATOR_STATES.NO_KEG,
@@ -172,14 +173,14 @@ function deriveOperatorState(rawTap, activeSession, recentEvents) {
     return {
       state: TAP_OPERATOR_STATES.NO_KEG,
       reason: 'Кега не назначена, продажа недоступна, пока линию не подключат.',
-      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+      telemetry: isHeartbeatStale ? `Сигнал от устройства не обновлялся ${staleHeartbeat} мин.` : null,
     };
   }
 
   if (tap.sync_state === 'syncing' || tap.status === 'processing_sync') {
     return {
       state: TAP_OPERATOR_STATES.SYNCING,
-      reason: 'Кран ждёт подтверждения локальных данных от backend.',
+      reason: 'Кран ждёт подтверждения локальных данных от системы.',
       telemetry: activeSession ? 'Есть локальный активный визит.' : null,
     };
   }
@@ -200,15 +201,15 @@ function deriveOperatorState(rawTap, activeSession, recentEvents) {
         : tap.status === 'cleaning'
           ? 'Кран находится в промывке.'
           : 'Линия помечена как пустая и временно снята с продажи.',
-      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+      telemetry: isHeartbeatStale ? `Сигнал от устройства не обновлялся ${staleHeartbeat} мин.` : null,
     };
   }
 
   if (problemEvent || isHeartbeatStale) {
     return {
       state: TAP_OPERATOR_STATES.NEEDS_HELP,
-      reason: problemEvent ? reasonFromEvent(problemEvent) : 'Устройство давно не присылало heartbeat, оператору нужна проверка линии.',
-      telemetry: isHeartbeatStale ? `Heartbeat не обновлялся ${staleHeartbeat} мин.` : null,
+      reason: problemEvent ? reasonFromEvent(problemEvent) : 'Устройство давно не присылало свежий сигнал, оператору нужна проверка линии.',
+      telemetry: isHeartbeatStale ? `Сигнал от устройства не обновлялся ${staleHeartbeat} мин.` : null,
     };
   }
 
@@ -241,14 +242,14 @@ function buildSubsystemStatus(rawValue, fallbackState, fallbackLabel) {
   if (rawValue && typeof rawValue === 'object') {
     return {
       state: rawValue.state || rawValue.status || fallbackState,
-      label: rawValue.label || rawValue.detail || fallbackLabel,
-      detail: rawValue.detail || rawValue.message || null,
+      label: normalizeUserFacingBackendText(rawValue.label || rawValue.detail || fallbackLabel, fallbackLabel),
+      detail: normalizeUserFacingBackendText(rawValue.detail || rawValue.message || null, null),
     };
   }
 
   return {
     state: rawValue || fallbackState,
-    label: fallbackLabel,
+    label: normalizeUserFacingBackendText(fallbackLabel, fallbackLabel),
     detail: null,
   };
 }
@@ -412,7 +413,7 @@ function deriveTapAttentionItems(tapView) {
       kind: 'stale_heartbeat',
       severity: 'warning',
       title: tapLabel,
-      description: `Нет heartbeat ${tapView.operations.heartbeat.minutesAgo} мин`,
+      description: `Нет свежего сигнала ${tapView.operations.heartbeat.minutesAgo} мин`,
       actionLabel: 'Открыть кран',
       href: '#/taps',
     });
@@ -542,7 +543,7 @@ function buildTapView(rawTap, context = {}) {
       remainingPercent,
       controllerStatus: buildSubsystemStatus(rawTap.controller_status, productState === 'needs_help' ? 'warning' : 'ok', rawTap.controller_status_label || 'Контроллер отвечает'),
       displayStatus: buildSubsystemStatus(rawTap.display_status, rawTap.display_enabled === false ? 'warning' : 'ok', rawTap.display_status_label || (rawTap.display_enabled === false ? 'Экран выключен' : 'Экран на связи')),
-      readerStatus: buildSubsystemStatus(rawTap.reader_status, activeSession ? 'busy' : 'ok', rawTap.reader_status_label || (activeSession?.card_uid ? `Карта ${activeSession.card_uid}` : 'Ридер готов')),
+      readerStatus: buildSubsystemStatus(rawTap.reader_status, activeSession ? 'busy' : 'ok', rawTap.reader_status_label || (activeSession?.card_uid ? `Карта ${activeSession.card_uid}` : 'Считыватель готов')),
       activeSessionSummary: normalizeActiveSessionSummary(activeSession),
       heartbeat: {
         at: heartbeatAt,
@@ -551,7 +552,7 @@ function buildTapView(rawTap, context = {}) {
       },
       syncState: {
         code: syncState,
-        label: syncState === 'syncing' ? 'Ожидает синхронизацию с backend' : syncState === 'live' ? 'Локальный визит активен' : 'Синхронизирован',
+        label: syncState === 'syncing' ? 'Ожидает синхронизации с системой' : syncState === 'live' ? 'Локальный визит активен' : 'Синхронизирован',
       },
       currentPour: {
         volumeMl: currentPourVolumeMl,
@@ -560,7 +561,10 @@ function buildTapView(rawTap, context = {}) {
       },
       recentEvents,
       operatorHistory: buildOperatorHistory(recentEvents, activeSession),
-      liveStatus: rawTap.live_status || (activeSession ? 'Визит открыт, контроллер видит линию.' : rawTap.display_enabled === false ? 'Экран отключён, но кран управляется локально.' : 'Телеметрия поступает в штатном режиме.'),
+      liveStatus: normalizeUserFacingBackendText(
+        rawTap.live_status,
+        activeSession ? 'Визит открыт, контроллер видит линию.' : rawTap.display_enabled === false ? 'Экран отключён, но кран управляется локально.' : 'Телеметрия поступает в штатном режиме.',
+      ),
     },
   };
 

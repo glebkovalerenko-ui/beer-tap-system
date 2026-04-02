@@ -230,7 +230,7 @@
 
   function handleReissueCard() {
     if (!visit) return;
-    if (!requirePermission('cards_reissue_manage', 'Lost/перевыпуск доступен только ролям с правом на перевыпуск карт.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Работа с потерянной картой и перевыпуск доступны только ролям с правом на перевыпуск карт.')) return;
     nfcMode = 'reissue';
     nfcError = '';
     isNFCModalOpen = true;
@@ -258,7 +258,7 @@
   }
 
   async function handleLookupRestoreLost() {
-    if (!requirePermission('cards_reissue_manage', 'Снятие отметки LostCard доступно только ролям с перевыпуском и восстановлением карт.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Снятие отметки потерянной карты доступно только ролям с перевыпуском и восстановлением карт.')) return;
     const uid = cardLookupResult?.card?.uid || cardLookupResult?.card_uid;
     if (!uid) return;
     try {
@@ -288,7 +288,7 @@
   }
 
   async function handleLookupOpenNewVisit() {
-    uiStore.notifyWarning('Новый визит открывается только через flow "выбрать гостя -> считать карту". Если карта новая, система сама добавит её в пул.');
+    uiStore.notifyWarning('Новый визит открывается только по сценарию «выберите гостя и затем считайте карту». Если карта новая, система сама добавит её в пул.');
   }
 
   async function handleUidRead(event) {
@@ -340,7 +340,7 @@
         uiStore.notifySuccess('Новая карта назначена активному визиту.');
         return;
       }
-      throw new Error('Неизвестный NFC flow.');
+      throw new Error('Неизвестный NFC-сценарий.');
     } catch (error) {
       nfcError = error?.message || error?.toString?.() || 'Не удалось выполнить NFC-действие';
     }
@@ -401,18 +401,18 @@
   async function handleCancelLost() {
     actionError = '';
     if (!visit || !isBlockedLostVisit) return;
-    if (!requirePermission('cards_reissue_manage', 'Снятие отметки lost для активного визита доступно только ролям с перевыпуском и восстановлением карт.')) return;
+    if (!requirePermission('cards_reissue_manage', 'Снятие отметки потерянной карты для активного визита доступно только ролям с перевыпуском и восстановлением карт.')) return;
 
     const confirmed = await uiStore.confirm({
-      title: 'Снять отметку lost с активного визита',
-      message: `Вернуть карту ${visit.card_uid} в активный визит и отменить blocked-lost recovery?`,
+      title: 'Снять отметку потери с активного визита',
+      message: `Вернуть карту ${visit.card_uid} в активный визит и отменить сценарий восстановления?`,
       confirmText: 'Снять отметку',
       cancelText: 'Отмена',
       danger: false,
     });
     if (!confirmed) return;
 
-    const rawComment = window.prompt('Комментарий к отмене lost (опционально)', '');
+    const rawComment = window.prompt('Комментарий к снятию отметки потери (опционально)', '');
     if (rawComment === null) return;
 
     try {
@@ -424,17 +424,17 @@
       visitStore.setCurrentVisit(restored);
       await refreshVisits();
       await refreshCurrentLostStatus();
-      uiStore.notifySuccess('Отметка lost снята, визит снова активен с той же картой.');
+      uiStore.notifySuccess('Отметка потери снята, визит снова активен с той же картой.');
     } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Не удалось снять отметку lost для визита';
+      actionError = error?.message || error?.toString?.() || 'Не удалось снять отметку потери для визита';
     }
   }
 
   async function handleServiceClose() {
     actionError = '';
     if (!visit) return;
-    if (!requirePermission('maintenance_actions', 'Service close визита без возврата карты доступен только сервисному уровню.')) return;
-    const rawComment = window.prompt('Комментарий к service-close (опционально)', '');
+    if (!requirePermission('maintenance_actions', 'Сервисное закрытие визита без возврата карты доступно только сервисному уровню.')) return;
+    const rawComment = window.prompt('Комментарий к сервисному закрытию (опционально)', '');
     if (rawComment === null) return;
     try {
       const closed = await visitStore.serviceCloseVisit({
@@ -504,7 +504,7 @@
 
       <CardLookupPanel
         title="Результат поиска по карте"
-        description="Единый lookup для operator flow в сессиях, потерянных картах и карточке гостя."
+        description="Единая проверка карты для сессий, потерянных карт и карточки гостя."
         result={cardLookupResult}
         error={actionError}
         loading={$lostCardStore.loading || $visitStore.loading}
@@ -556,14 +556,14 @@
 
         {#if isBlockedLostVisit}
           <div class="recovery-banner">
-            <strong>Визит заблокирован из-за lost-карты</strong>
-            <p>Здесь доступен полный recovery-flow: перевыпуск на новую карту, отмена lost для текущей карты или service-close без возврата карты.</p>
+            <strong>Визит заблокирован из-за потерянной карты</strong>
+            <p>Здесь доступен полный сценарий восстановления: перевыпуск на новую карту, снятие отметки потери с текущей карты или сервисное закрытие без возврата карты.</p>
           </div>
         {/if}
 
         <div class="lock-state" class:locked={lockActive} class:free={!lockActive}>
           {#if lockActive}
-            <strong>Блокировка на кране в„–{visit.active_tap_id}</strong>
+            <strong>Блокировка на кране №{visit.active_tap_id}</strong>
             {#if visit.lock_set_at}
               <div>Блокировка установлена: {formatDateTimeRu(visit.lock_set_at)}</div>
               <div>Возраст блокировки: около {Math.floor(lockAgeSeconds / 60)} мин</div>
@@ -578,10 +578,10 @@
           {#if isBlockedLostVisit}
             <div class="action-panel recovery-panel">
               <h3>Восстановление визита</h3>
-              <p class="hint">Это обязательный recovery-flow: доступны перевыпуск, cancel lost и service-close.</p>
+              <p class="hint">Это обязательный сценарий восстановления: доступны перевыпуск, снятие отметки потери и сервисное закрытие.</p>
               <button on:click={handleReissueCard} disabled={$visitStore.loading || !canManageLostRecovery}>Считать новую карту и перевыпустить</button>
-              <button on:click={handleCancelLost} disabled={$visitStore.loading || !canManageLostRecovery}>Снять lost и оставить текущую карту</button>
-              <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading || !canUseMaintenanceActions}>Service-close без возврата карты</button>
+              <button on:click={handleCancelLost} disabled={$visitStore.loading || !canManageLostRecovery}>Снять отметку потери и оставить текущую карту</button>
+              <button class="secondary" on:click={handleServiceClose} disabled={$visitStore.loading || !canUseMaintenanceActions}>Сервисно закрыть без возврата карты</button>
             </div>
           {:else}
             <div class="action-panel">

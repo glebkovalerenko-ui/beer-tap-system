@@ -2,6 +2,8 @@
  * @typedef {'new'|'in_progress'|'closed'} IncidentStatus
  */
 
+import { humanizeIncidentSource, humanizeIncidentType } from './copyNormalization.js';
+
 /**
  * @typedef {{
  *  incident_id: string|number,
@@ -83,7 +85,7 @@ function incidentAgeMinutes(item) {
 /** @param {string|number|null|undefined} value */
 function titleCase(value) {
   if (!value) return '—';
-  const text = String(value).replaceAll('_', ' ');
+  const text = String(value).replaceAll(/[-_]/g, ' ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
@@ -179,7 +181,7 @@ function buildNarrative(incident, tapMatch, sessionMatch, accountability) {
       : 'ждёт назначения ответственного и первого действия.';
 
   return [
-    `${titleCase(incident.type)} на ${tapLabel} ${happened}`,
+    `${humanizeIncidentType(incident.type)} на ${tapLabel} ${happened}`,
     accountability.owner
       ? `Ответственный: ${accountability.owner}. Последний зафиксированный шаг: ${accountability.lastActionLabel}.`
       : 'Ответственный пока не назначен. Назначьте владельца кейса перед дальнейшим разбором.',
@@ -417,8 +419,8 @@ export function buildEnrichedIncidents({ incidents, taps, activeVisits, systemSt
       sessionMatch,
       sessionHref: '#/visits',
       systemHref: '#/system',
-      sourceLabel: incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов',
-      typeLabel: titleCase(incident.type),
+      sourceLabel: humanizeIncidentSource(incident.source || tapMatch?.operations?.controllerStatus?.label || 'система инцидентов'),
+      typeLabel: humanizeIncidentType(incident.type),
       priorityLabel: priorityLabels[String(incident.priority)] || titleCase(incident.priority),
       statusLabel: statusLabels[String(incident.status)] || titleCase(incident.status),
       operatorInitials: initials(accountability.owner),

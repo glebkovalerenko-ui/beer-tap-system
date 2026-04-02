@@ -26,6 +26,7 @@
 - `docs/admin-app/11-operator-action-safety-result.md`: implemented result of the shared operator safety layer, policy-driven risky actions, and additive audit/action-policy contracts.
 - `docs/admin-app/10-operator-hardening-phase-3-result.md`: implemented result of operator sessions, realtime/degraded mode, and system-health hardening in the Admin App.
 - `docs/admin-app/09-operator-projections-phase-2-result.md`: implemented result of the operator projection layer for `Today`, `Taps`, and `Cards & Guests`.
+- `docs/reports/RUS_LOCALIZATION_ACTIVE_SURFACES_2026-04-02.md`: closure report for Russian localization of active operator surfaces, runtime copy normalization, and tap-display user-facing fallbacks.
 - `docs/reports/RUS_LOCALIZATION_PHASE1_IMPLEMENTATION.md`: report for Phase 1 Russian display-layer localization.
 - `docs/reports/SYNCTHING_BACKEND_DESYNC_RCA_AND_FIX_2026-03-25.md`: RCA and fix for stale hub backend, stopped Windows sender, and runtime-media drift in Syncthing.
 - `docs/reports/STAGE_COMPLETION_VERDICT_PRE_NEXT_PHASE.md`: closing verdict before the next implementation phase.

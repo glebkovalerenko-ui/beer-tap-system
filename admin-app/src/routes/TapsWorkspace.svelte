@@ -141,7 +141,7 @@
     const allowedByPermission = permissionKey ? Boolean(permissions[permissionKey]) : true;
     const deniedMessage = options.deniedMessage || (permissionKey === 'maintenance_actions'
       ? 'Сервисные действия по крану доступны только старшему смены и инженеру.'
-      : 'Управление краном доступно только ролям с правом taps_control.');
+      : 'Управление краном доступно только ролям с доступом к управлению кранами.');
 
     const policy = options.policy || {
       allowed: allowedByPermission,

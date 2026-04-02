@@ -86,7 +86,7 @@
           {/each}
         </div>
       {:else if isBlockedLost}
-        <p class="muted recovery-hint">Для blocked-lost визита откройте раздел «Визиты»: там доступны перевыпуск, cancel lost и service-close.</p>
+        <p class="muted recovery-hint">Для визита с потерянной картой откройте раздел «Визиты»: там доступны перевыпуск, снятие отметки потери и сервисное закрытие.</p>
       {/if}
       {#if actionError}
         <p class="action-error">{actionError}</p>

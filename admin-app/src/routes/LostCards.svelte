@@ -46,7 +46,7 @@
   function guideBlockedLostRecovery(lookup, fallbackUid = '') {
     const visitId = lookup?.active_visit?.visit_id || lookup?.lost_card?.visit_id;
     const cardUid = lookup?.card_uid || fallbackUid;
-    uiStore.notifyWarning('Blocked-lost visit: open Visits for reissue, cancel lost, or service-close. Opening visit recovery.');
+    uiStore.notifyWarning('Визит заблокирован из-за потерянной карты. Откройте раздел «Визиты», чтобы перевыпустить карту, снять отметку потери или сервисно закрыть визит.');
     if (visitId) {
       navigateWithFocus({ target: 'visit', visitId, cardUid });
     }
@@ -72,7 +72,7 @@
       const lookup = await ensureRestorableLostCard(item.card_uid);
       if (!lookup) return;
     } catch (error) {
-      actionError = error?.message || error?.toString?.() || 'Failed to resolve card status';
+      actionError = error?.message || error?.toString?.() || 'Не удалось проверить статус карты';
       return;
     }
     const ok = await uiStore.confirm({
@@ -139,7 +139,7 @@
   }
 
   async function handleLookupOpenNewVisit() {
-    uiStore.notifyWarning('Новый визит открывается только из normal flow выдачи карты на экране визитов.');
+    uiStore.notifyWarning('Новый визит открывается только по обычному сценарию выдачи карты на экране визитов.');
   }
 
   onMount(async () => {
@@ -206,7 +206,7 @@
             <div class="row-actions">
               {#if access.canManage}
                 <button on:click={() => onRestore(item)} disabled={$lostCardStore.loading}>
-                  {item.requires_visit_recovery ? 'Открыть recovery' : 'Снять отметку'}
+                  {item.requires_visit_recovery ? 'Открыть восстановление' : 'Снять отметку'}
                 </button>
               {/if}
               {#if item.visit_id}

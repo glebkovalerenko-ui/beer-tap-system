@@ -109,7 +109,7 @@
   async function handleUidRead(event) {
     nfcError = '';
     if (!pendingOpenGuest?.guest_id) {
-      nfcError = 'Этот NFC scan path используется для открытия визита с выдачей карты.';
+      nfcError = 'Этот NFC-сценарий используется для открытия визита с выдачей карты.';
       return;
     }
     try {

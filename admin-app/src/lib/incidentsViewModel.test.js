@@ -124,3 +124,23 @@ test('groupIncidentsByStatus keeps open incidents ahead of closed ones', () => {
   assert.equal(grouped[0].items[0].incident_id, 201);
   assert.equal(grouped[2].items[0].entryKind, 'event');
 });
+
+test('buildEnrichedIncidents humanizes incident type and source labels for active UI', () => {
+  const items = buildEnrichedIncidents({
+    ...BASE_ARGS,
+    incidents: [{
+      incident_id: 'flow-closed-valve:1:173831149',
+      tap: '7',
+      type: 'flow-closed-valve',
+      source: 'display_agent',
+      priority: 'high',
+      severity: 'S2',
+      status: 'new',
+      created_at: '2026-03-26T10:00:00.000Z',
+    }],
+  });
+
+  assert.equal(items[0].typeLabel, 'Поток при закрытом клапане');
+  assert.equal(items[0].sourceLabel, 'Экран');
+  assert.match(items[0].summary, /Поток при закрытом клапане/);
+});

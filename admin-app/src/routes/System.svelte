@@ -3,6 +3,7 @@
 
   import DataFreshnessChip from '../components/common/DataFreshnessChip.svelte';
   import SystemHealthSummary from '../components/system/SystemHealthSummary.svelte';
+  import { formatSystemBlockedActionLabel, normalizeUserFacingBackendText } from '../lib/copyNormalization.js';
   import { resolveActionBlockState } from '../lib/operator/actionPolicyAdapter.js';
   import { ROUTE_COPY } from '../lib/operator/routeCopy.js';
   import { operatorConnectionStore } from '../stores/operatorConnectionStore.js';
@@ -23,17 +24,13 @@
 
   const READ_ONLY_FALLBACK = 'Данные устарели или центральный контур недоступен. Рискованные действия останутся заблокированы, пока не вернётся свежая сводка.';
 
-  function formatBlockedActionKey(value) {
-    if (!value) return 'Неизвестное действие';
-    const text = String(value).replaceAll('_', ' ');
-    return text.charAt(0).toUpperCase() + text.slice(1);
-  }
-
   function formatModeLabel(value) {
     const key = String(value || '').trim().toLowerCase();
     if (!key || key === 'online') return 'Онлайн';
     if (key === 'offline') return 'Офлайн';
     if (key === 'degraded') return 'С деградацией';
+    if (key === 'backend_degraded') return 'Частично доступно';
+    if (key === 'controller_only') return 'Только локальные устройства';
     if (key === 'read_only' || key === 'readonly') return 'Только просмотр';
     if (key === 'demo') return 'Демо';
     return value;
@@ -59,11 +56,13 @@
     );
     return {
       key,
-      label: formatBlockedActionKey(key),
+      label: formatSystemBlockedActionLabel(key),
       available: !state.disabled,
-      reason: state.reason || (state.disabled
+      reason: normalizeUserFacingBackendText(state.reason || (state.disabled
         ? 'Дождитесь свежей сводки по системе перед выполнением этого действия.'
-        : 'Действие доступно в текущем состоянии системы.'),
+        : 'Действие доступно в текущем состоянии системы.'), state.reason || (state.disabled
+        ? 'Дождитесь свежей сводки по системе перед выполнением этого действия.'
+        : 'Действие доступно в текущем состоянии системы.')),
     };
   });
 

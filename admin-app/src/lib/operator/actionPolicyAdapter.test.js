@@ -14,7 +14,7 @@ test('normalizeOperatorActionPolicy blocks second approval flows in the current 
   assert.equal(policy.rawAllowed, true);
   assert.equal(policy.confirmRequired, true);
   assert.equal(policy.secondApprovalRequired, true);
-  assert.match(policy.disabledReason || '', /second approval/i);
+  assert.match(policy.disabledReason || '', /второе согласование/i);
 });
 
 test('normalizeOperatorActionPolicy supports legacy enabled and reason code flags', () => {

@@ -362,7 +362,7 @@
 </script>
 
 <svelte:head>
-  <title>Tap Display</title>
+  <title>Экран крана</title>
 </svelte:head>
 
 <main class={`screen ${ui?.kind ?? "service"} ${ui?.tone ?? "neutral"}`} style={uiStyle}>
