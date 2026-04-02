@@ -165,7 +165,7 @@
       </div>
       <div class="summary-card">
         <span class="label">Текущий режим цены</span>
-        <strong>{formatPriceModeLabel(effectivePriceMode)}</strong>
+        <strong>{formatPriceDisplayMode(effectivePriceMode)}</strong>
       </div>
       <div class="summary-card">
         <span class="label">Акцент</span>
