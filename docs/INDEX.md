@@ -2,10 +2,11 @@
 
 ## Start here
 
-1. `README.md`
-2. `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
-3. `docs/architecture/OPERATIONAL_MODEL_V1.md`
-4. `docs/API_REFERENCE.md`
+1. [`PROJECT_STATUS.md`](../PROJECT_STATUS.md)
+2. `README.md`
+3. `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
+4. `docs/architecture/OPERATIONAL_MODEL_V1.md`
+5. `docs/API_REFERENCE.md`
 
 ## Core system docs
 
