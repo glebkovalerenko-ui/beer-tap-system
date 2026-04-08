@@ -6,8 +6,8 @@
   import { normalizeErrorMessage } from '../lib/errorUtils';
   import { sessionStore } from '../stores/sessionStore.js';
 
-  let username = 'admin';
-  let password = 'fake_password';
+  let username = '';
+  let password = '';
   let error = '';
   let isLoading = false;
   /** @type {import('../components/system/ServerSettingsModal.svelte').default | undefined} */

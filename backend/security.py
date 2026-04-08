@@ -1,48 +1,48 @@
-# backend/security.py
-
 from datetime import datetime, timedelta, timezone
-import os
 import logging
-from jose import JWTError, jwt
+import os
 from typing import Annotated, Any
+
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from fastapi import Depends, HTTPException, status, Request, BackgroundTasks
+from fastapi import BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-# --- ИЗМЕНЕНИЕ: импортируем SessionLocal для создания сессий в фоне ---
-from database import get_db, SessionLocal
-from crud import audit_crud
-import schemas
 
-# --- НАСТРОЙКИ (без изменений) ---
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-in-production")
+from crud import audit_crud
+from database import SessionLocal, get_db
+
+
+logger = logging.getLogger(__name__)
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+DEV_ONLY_SECRET_KEY = "dev-only-secret-key-change-in-production"
+PLACEHOLDER_PREFIXES = ("replace-with", "change-me")
 
-if SECRET_KEY == "dev-only-secret-key-change-in-production":
-    logging.warning("SECRET_KEY is not set. Using development fallback value; do not use in production.")
 
-# --- ВРЕМЕННАЯ БАЗА ДАННЫХ ПОЛЬЗОВАТЕЛЕЙ (без изменений) ---
-FAKE_USERS_DB = {
+class SecurityConfigurationError(RuntimeError):
+    pass
+
+
+BOOTSTRAP_USERS = {
     "admin": {
         "username": "admin",
         "full_name": "Admin User",
-        "hashed_password": "fake_password",
         "role": "engineer_owner",
     },
     "shift_lead": {
         "username": "shift_lead",
         "full_name": "Shift Lead User",
-        "hashed_password": "fake_password",
         "role": "shift_lead",
     },
     "operator": {
         "username": "operator",
         "full_name": "Operator User",
-        "hashed_password": "fake_password",
         "role": "operator",
     },
 }
+
 
 ROLE_PERMISSIONS = {
     "operator": {
@@ -91,21 +91,29 @@ ROLE_PERMISSIONS = {
     },
 }
 
-# --- ОСНОВНАЯ ЛОГИКА (без изменений) ---
-# Изменение параметра auto_error для OAuth2PasswordBearer
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token", auto_error=False)
 
-def get_user(username: str):
-    if username in FAKE_USERS_DB:
-        return FAKE_USERS_DB[username]
-    return None
 
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+def _normalize_token(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = value.strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
+
+def _looks_like_placeholder(value: str | None) -> bool:
+    normalized = _normalize_token(value).lower()
+    if not normalized:
+        return True
+    return any(normalized.startswith(prefix) for prefix in PLACEHOLDER_PREFIXES)
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    fallback = "true" if default else "false"
+    return os.getenv(name, fallback).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _permissions_for_role(role: str | None) -> set[str]:
@@ -113,64 +121,124 @@ def _permissions_for_role(role: str | None) -> set[str]:
         return set()
     return set(ROLE_PERMISSIONS.get(role, set()))
 
-def _normalize_token(value: str | None) -> str:
-    if value is None:
-        return ""
-    normalized = value.strip()
-    # Частая проблема: токен передается в кавычках из env/systemd/docker.
-    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
-        normalized = normalized[1:-1].strip()
-    return normalized
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    fallback = "true" if default else "false"
-    return os.getenv(name, fallback).strip().lower() in {"1", "true", "yes", "on"}
+def is_bootstrap_auth_enabled() -> bool:
+    return _env_flag("ENABLE_BOOTSTRAP_AUTH", default=False)
+
+
+def _get_bootstrap_auth_password() -> str:
+    password = _normalize_token(os.getenv("BOOTSTRAP_AUTH_PASSWORD", ""))
+    if _looks_like_placeholder(password):
+        return ""
+    return password
+
+
+def ensure_bootstrap_auth_available() -> None:
+    if not is_bootstrap_auth_enabled():
+        raise SecurityConfigurationError(
+            "Bootstrap auth is disabled. Set ENABLE_BOOTSTRAP_AUTH=true for local development or controlled pilot use."
+        )
+    if not _get_bootstrap_auth_password():
+        raise SecurityConfigurationError(
+            "ENABLE_BOOTSTRAP_AUTH=true requires BOOTSTRAP_AUTH_PASSWORD to be set to a non-placeholder value."
+        )
+
+
+def get_user(username: str):
+    template = BOOTSTRAP_USERS.get(username)
+    if template is None:
+        return None
+
+    user = dict(template)
+    password = _get_bootstrap_auth_password()
+    if password:
+        user["hashed_password"] = password
+    return user
+
+
+def _get_secret_key() -> str:
+    configured = _normalize_token(os.getenv("SECRET_KEY", ""))
+    if configured and configured != DEV_ONLY_SECRET_KEY and not _looks_like_placeholder(configured):
+        return configured
+
+    if _env_flag("ALLOW_INSECURE_DEV_SECRET_KEY", default=False):
+        logger.warning(
+            "Using insecure development SECRET_KEY fallback because ALLOW_INSECURE_DEV_SECRET_KEY=true. Do not use this in pilot."
+        )
+        return DEV_ONLY_SECRET_KEY
+
+    raise SecurityConfigurationError(
+        "SECRET_KEY must be set to a non-placeholder value. Set ALLOW_INSECURE_DEV_SECRET_KEY=true only for local development."
+    )
+
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
+    return encoded_jwt
+
 
 def _get_env_token_set(*, primary_name: str, multi_name: str) -> set[str]:
     keys: set[str] = set()
 
     primary = _normalize_token(os.getenv(primary_name, ""))
-    if primary:
+    if primary and not _looks_like_placeholder(primary):
         keys.add(primary)
 
     multi = _normalize_token(os.getenv(multi_name, ""))
     if multi:
         for raw in multi.split(","):
             token = _normalize_token(raw)
-            if token:
+            if token and not _looks_like_placeholder(token):
                 keys.add(token)
 
     return keys
 
-def _get_internal_api_keys() -> set[str]:
-    """
-    Возвращает набор допустимых internal API токенов.
 
-    Поддерживает:
-    - INTERNAL_API_KEY (основной ключ)
-    - INTERNAL_API_KEYS (список ключей через запятую для безопасной ротации)
-    - INTERNAL_TOKEN (legacy-переменная для совместимости с rpi-controller)
-    """
+def _get_internal_api_keys() -> set[str]:
     keys = _get_env_token_set(primary_name="INTERNAL_API_KEY", multi_name="INTERNAL_API_KEYS")
 
     legacy = _normalize_token(os.getenv("INTERNAL_TOKEN", ""))
-    if legacy:
+    if legacy and not _looks_like_placeholder(legacy):
         keys.add(legacy)
 
-    # Для разработки/демо можно всегда держать legacy-ключ совместимости.
-    if _env_flag("ALLOW_LEGACY_DEMO_INTERNAL_TOKEN", default=True):
-        keys.add("demo-secret-key")
-
-    # Fallback, если никаких ключей не задано.
-    if not keys:
+    if _env_flag("ALLOW_LEGACY_DEMO_INTERNAL_TOKEN", default=False):
         keys.add("demo-secret-key")
 
     return keys
 
+
 def _get_display_api_keys() -> set[str]:
     return _get_env_token_set(primary_name="DISPLAY_API_KEY", multi_name="DISPLAY_API_KEYS")
 
-# --- Функция-обертка для фоновой задачи ---
+
+def validate_security_configuration() -> None:
+    _get_secret_key()
+    if is_bootstrap_auth_enabled():
+        ensure_bootstrap_auth_available()
+
+    internal_keys = _get_internal_api_keys()
+    display_keys = _get_display_api_keys()
+
+    if not internal_keys:
+        logger.warning(
+            "INTERNAL_API_KEY/INTERNAL_API_KEYS/INTERNAL_TOKEN are not configured. Internal controller routes will reject token-authenticated requests."
+        )
+    if not display_keys:
+        logger.warning(
+            "DISPLAY_API_KEY/DISPLAY_API_KEYS are not configured. Display-agent read routes will reject display-token requests."
+        )
+
+    logger.info(
+        "Security configuration loaded: bootstrap_auth=%s internal_tokens=%s display_tokens=%s",
+        "enabled" if is_bootstrap_auth_enabled() else "disabled",
+        len(internal_keys),
+        len(display_keys),
+    )
+
+
 def audit_log_task_wrapper(
     actor_id: str,
     action: str,
@@ -178,11 +246,7 @@ def audit_log_task_wrapper(
     target_id: str | None = None,
     details: dict[str, Any] | None = None,
 ):
-    """
-    Эта обертка создает свою собственную сессию БД, выполняет логирование
-    и закрывает сессию.
-    """
-    db = SessionLocal() # Создаем новую, независимую сессию
+    db = SessionLocal()
     try:
         audit_crud.create_audit_log_entry(
             db=db,
@@ -203,6 +267,7 @@ def _credentials_exception() -> HTTPException:
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+
 def _authenticate_bearer_user(token: str | None) -> dict:
     credentials_exception = _credentials_exception()
 
@@ -210,7 +275,7 @@ def _authenticate_bearer_user(token: str | None) -> dict:
         raise credentials_exception
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -236,6 +301,7 @@ def _authenticate_bearer_user(token: str | None) -> dict:
         "permissions": sorted(permission_set),
     }
 
+
 def _maybe_schedule_audit_log(
     *,
     request: Request,
@@ -247,8 +313,9 @@ def _maybe_schedule_audit_log(
         background_tasks.add_task(
             audit_log_task_wrapper,
             actor_id=actor_id,
-            action=action
+            action=action,
         )
+
 
 def _authenticate_named_token(
     *,
@@ -265,14 +332,15 @@ def _authenticate_named_token(
     if received_token in allowed_tokens:
         return {"username": actor_id}
 
-    logging.warning(warning_message, request.url.path)
+    logger.warning(warning_message, request.url.path)
     raise _credentials_exception()
+
 
 async def get_current_user(
     request: Request,
     background_tasks: BackgroundTasks,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     user = _authenticate_bearer_user(token)
     _maybe_schedule_audit_log(
@@ -282,16 +350,24 @@ async def get_current_user(
     )
     return user
 
+
 async def get_internal_service_user(
     request: Request,
     background_tasks: BackgroundTasks,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
+    internal_keys = _get_internal_api_keys()
+    if request.headers.get("x-internal-token") and not internal_keys:
+        logger.warning(
+            "Internal token presented for path %s, but INTERNAL_API_KEY/INTERNAL_API_KEYS/INTERNAL_TOKEN are not configured.",
+            request.url.path,
+        )
+
     internal_principal = _authenticate_named_token(
         request=request,
         header_name="x-internal-token",
-        allowed_tokens=_get_internal_api_keys(),
+        allowed_tokens=internal_keys,
         actor_id="internal_rpi",
         warning_message="Internal token rejected for path %s. Check INTERNAL_API_KEY/INTERNAL_TOKEN alignment.",
     )
@@ -299,15 +375,16 @@ async def get_internal_service_user(
         return internal_principal
     return await get_current_user(request, background_tasks, token, db)
 
+
 async def get_display_reader(
     request: Request,
     background_tasks: BackgroundTasks,
     token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     display_keys = _get_display_api_keys()
     if request.headers.get("x-display-token") and not display_keys:
-        logging.warning(
+        logger.warning(
             "Display token presented for path %s, but DISPLAY_API_KEY/DISPLAY_API_KEYS are not configured.",
             request.url.path,
         )

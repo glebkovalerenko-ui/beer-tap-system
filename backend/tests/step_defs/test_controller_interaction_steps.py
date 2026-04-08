@@ -1,6 +1,7 @@
 # backend/tests/step_defs/test_controller_interaction_steps.py
 
 from pytest_bdd import scenarios, when, parsers, given, then
+import os
 import uuid, models, json
 from sqlalchemy.orm import Session
 from models import SystemState, Guest, Card, Beverage, Keg, Tap, Pour, Visit
@@ -10,6 +11,10 @@ from datetime import datetime, date, timezone, timedelta
 
 # Этот файл связывает controller_interaction.feature с нашим тестовым фреймворком.
 scenarios('../features/controller_interaction.feature')
+
+
+def _controller_headers() -> dict[str, str]:
+    return {"X-Internal-Token": os.getenv("INTERNAL_API_KEY", "demo-secret-key")}
 
 # --- When шаги ---
 
@@ -29,7 +34,7 @@ def register_new_controller(client, context: dict, field: str):
     context['controller_id'] = controller_id
     
     print(f"\n[WHEN] Отправка POST-запроса на /api/controllers/register с ID: {controller_id}")
-    response = client.post("/api/controllers/register", json=payload)
+    response = client.post("/api/controllers/register", headers=_controller_headers(), json=payload)
     context['response'] = response
 
 @given(parsers.parse('Контроллер "{controller_id}" уже существует'))
@@ -65,7 +70,7 @@ def reregister_controller(client, controller_id: str, context: dict):
     }
     
     print(f"[WHEN] Отправка POST-запроса на /api/controllers/register для '{controller_id}' с новым IP '{new_ip}'.")
-    response = client.post("/api/controllers/register", json=payload)
+    response = client.post("/api/controllers/register", headers=_controller_headers(), json=payload)
     context['response'] = response
 
 @then(parsers.parse('Запись контроллера "{controller_id}" в БД должна быть обновлена'))
@@ -211,7 +216,7 @@ def send_valid_pour_request(client, context: dict):
     
     print(f"[WHEN] Отправка запроса на налив: {full_payload}")
     # Эндпоинт для синхронизации, скорее всего, /api/sync/pours, а не /api/sync/pours/
-    response = client.post("/api/sync/pours", json=full_payload)
+    response = client.post("/api/sync/pours", headers=_controller_headers(), json=full_payload)
     context['response'] = response
 
 @then(parsers.parse('API должен вернуть 200 OK со статусом "{status}"'))
@@ -313,7 +318,7 @@ def resend_duplicate_pour(client, context: dict):
     full_payload = {"pours": [payload_item]}
     
     print(f"[WHEN] Повторная отправка запроса на налив с tx_id: {context['duplicate_tx_id']}")
-    response = client.post("/api/sync/pours", json=full_payload)
+    response = client.post("/api/sync/pours", headers=_controller_headers(), json=full_payload)
     context['response'] = response
 
 @then(parsers.parse('API должен вернуть 200 OK со статусом "{status}" и reason "{reason}"'))
@@ -411,7 +416,7 @@ def send_pour_with_insufficient_funds(client, context: dict):
     full_payload = {"pours": [payload_item]}
     
     print(f"[WHEN] Отправка запроса на налив, который гость не может себе позволить.")
-    response = client.post("/api/sync/pours", json=full_payload)
+    response = client.post("/api/sync/pours", headers=_controller_headers(), json=full_payload)
     context['response'] = response
 
 @given('Кран имеет статус "locked"')
@@ -456,7 +461,7 @@ def when_controller_sends_pour_from_this_tap(client, context: dict):
     full_payload = {"pours": [payload_item]}
     
     print(f"[WHEN] Отправка запроса на налив с заблокированного крана {context['tap_id']}.")
-    response = client.post("/api/sync/pours", json=full_payload)
+    response = client.post("/api/sync/pours", headers=_controller_headers(), json=full_payload)
     context['response'] = response
 
 @given("Остаток в кеге равен объему налива")
@@ -506,7 +511,7 @@ def when_controller_sends_insufficient_funds_pour(client, context: dict):
     full_payload = {"pours": [payload_item]}
     
     print(f"[WHEN] Отправка запроса на налив, который гость не может себе позволить.")
-    response = client.post("/api/sync/pours", json=full_payload)
+    response = client.post("/api/sync/pours", headers=_controller_headers(), json=full_payload)
     context['response'] = response
 
 @then('Статус кеги и крана должен измениться на "empty"')

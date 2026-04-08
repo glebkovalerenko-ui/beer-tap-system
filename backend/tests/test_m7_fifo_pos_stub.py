@@ -15,6 +15,10 @@ def _auth_headers(client):
     return headers
 
 
+def _internal_headers():
+    return {"X-Internal-Token": "demo-secret-key"}
+
+
 def _seed_guest_visit_and_tap(client, headers, suffix: str):
     guest_resp = client.post(
         "/api/guests/",
@@ -259,11 +263,11 @@ def test_pos_stub_emits_topup_refund_and_final_pour_without_duplicates(client, d
             }
         ]
     }
-    sync_resp = client.post("/api/sync/pours", json=sync_payload)
+    sync_resp = client.post("/api/sync/pours", headers=_internal_headers(), json=sync_payload)
     assert sync_resp.status_code == 200
     assert _count_audit(db_session, "pos_stub_pour_notified") == 1
 
-    duplicate_sync_resp = client.post("/api/sync/pours", json=sync_payload)
+    duplicate_sync_resp = client.post("/api/sync/pours", headers=_internal_headers(), json=sync_payload)
     assert duplicate_sync_resp.status_code == 200
     assert _count_audit(db_session, "pos_stub_pour_notified") == 1
 
@@ -304,6 +308,7 @@ def test_pos_stub_does_not_duplicate_after_manual_reconcile_and_late_sync(client
 
     late_sync_resp = client.post(
         "/api/sync/pours",
+        headers=_internal_headers(),
         json={
             "pours": [
                 {

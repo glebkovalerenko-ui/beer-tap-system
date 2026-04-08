@@ -8,6 +8,7 @@
 Этот документ фиксирует текущую реальность репозитория и помогает быстро выровняться по состоянию проекта. Это не маркетинговая страница, не полный продуктовый spec и не обещание production readiness.
 
 Для честной рамки первого внедрения и pilot conversations читайте [PILOT_SCOPE.md](PILOT_SCOPE.md).
+Для минимального auth/secrets baseline в controlled pilot читайте [SECURITY_BASELINE.md](SECURITY_BASELINE.md).
 
 Если источники расходятся, приоритет такой: текущий код -> текущие конфиги и deploy-артефакты -> текущие entrypoint-документы -> недавние verification/readiness reports -> исторические документы.
 
@@ -65,7 +66,7 @@ Beer Tap System в текущем репозитории - это система
 
 ## 7. Known limitations and non-marketing-ready areas
 
-- Auth/security частично hardened, но не production-grade: есть fallback `SECRET_KEY`, fake user store, dev-style CORS и legacy demo token path.
+- Auth/security теперь доведён до controlled-pilot baseline, но не production-grade: explicit `SECRET_KEY`, explicit internal/display tokens, opt-in bootstrap auth и env-based CORS без enterprise IAM story.
 - Документация всё ещё фрагментирована. Старые стадии, старые имена сущностей и промежуточные решения местами остаются в репозитории.
 - Терминология `Visit` / `Session` очищена не полностью; для current truth важнее код и текущие API, чем старые словесные формулировки.
 - Pi/display deployment pilot-grade: есть working path и deploy artifacts, но нет fleet management, remote watchdog или полноценной эксплуатационной телеметрии для множества устройств.

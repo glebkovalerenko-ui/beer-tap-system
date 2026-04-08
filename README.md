@@ -2,6 +2,7 @@
 
 For the current repository truth and maturity snapshot, read [PROJECT_STATUS.md](PROJECT_STATUS.md) first.
 For a constrained first-deployment framing, read [PILOT_SCOPE.md](PILOT_SCOPE.md).
+For the minimal controlled-pilot auth/secrets contract, read [SECURITY_BASELINE.md](SECURITY_BASELINE.md).
 
 Beer Tap System is a self-pour bar platform for a single location. The current frozen stage covers M1-M7: visit-centric operations, controller/backend sync, shift discipline, lost-card handling, FIFO keg recommendation, and a POS-ready stub seam. Real POS or r_keeper integration is not part of this stage.
 
@@ -40,6 +41,12 @@ This repository is optimized around that split. The backend is expected to run f
 ```bash
 cd /home/cybeer/beer-tap-system
 cp .env.example .env
+# edit .env before first start:
+# - SECRET_KEY
+# - INTERNAL_API_KEY / INTERNAL_TOKEN
+# - DISPLAY_API_KEY if the display path is deployed
+# - BOOTSTRAP_AUTH_PASSWORD if bootstrap login is enabled
+# - CORS_ALLOWED_ORIGINS for the admin-app web origin(s)
 docker compose up -d --build
 docker compose exec -T beer_backend_api python -m alembic current
 curl -fsS http://localhost:8000/

@@ -1,60 +1,95 @@
-# backend/main.py
-
-# --- ИЗМЕНЕНИЕ: Добавляем централизованную конфигурацию логирования в самом начале ---
 import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    force=True, # Перезаписывает любую существующую конфигурацию (важно для Uvicorn)
-)
-# --- КОНЕЦ ИЗМЕНЕНИЯ ---
-
-# --- Стандартные и внешние импорты ---
-from typing import List, Annotated
+import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordRequestForm
+from typing import Annotated
 
-# --- Локальные импорты ---
-import models, schemas, security
-from database import DATABASE_URL, engine, get_db
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
+import schemas
+import security
+from api import (
+    audit,
+    beverages,
+    cards,
+    controllers,
+    display,
+    guests,
+    incidents,
+    kegs,
+    lost_cards,
+    operator,
+    pours,
+    reports,
+    shifts,
+    system,
+    taps,
+    visits,
+)
 from crud import pour_crud
+from database import DATABASE_URL, engine, get_db
 from operator_stream import operator_stream_hub
 from runtime_diagnostics import get_alembic_revision, get_db_identity, get_request_id
 from startup_checks import verify_database_ready
 
-# --- Импорты для новых роутеров API ---
-from api import guests, cards, taps, kegs, beverages, controllers, system, audit, pours, visits, shifts, lost_cards, reports, display, incidents, operator
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    force=True,
+)
+
+
+def _cors_allowed_origins() -> list[str]:
+    raw_value = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+    if raw_value:
+        parsed = []
+        for item in raw_value.split(","):
+            origin = item.strip().rstrip("/")
+            if not origin:
+                continue
+            if origin == "*":
+                logging.warning("CORS_ALLOWED_ORIGINS=* enables wildcard CORS. Do not use this in pilot.")
+                return ["*"]
+            parsed.append(origin)
+        if parsed:
+            return parsed
+
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    security.validate_security_configuration()
     verify_database_ready(engine, DATABASE_URL)
     logging.info("Application startup complete.")
     yield
     logging.info("Application shutdown.")
 
-# --- Инициализация FastAPI приложения ---
+
 app = FastAPI(
     title="Beer Tap System API",
-    description="API для управления системой автоматизации пивных кранов",
+    description="API for Beer Tap System",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=False
+    redirect_slashes=False,
 )
 
-# --- Middleware ---
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Для разработки разрешаем все источники.
-    allow_credentials=True,
+    allow_origins=_cors_allowed_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Подключение модульных роутеров ---
+
 app.include_router(guests.router, prefix="/api")
 app.include_router(cards.router, prefix="/api")
 app.include_router(taps.router, prefix="/api")
@@ -73,21 +108,22 @@ app.include_router(display.router, prefix="/api")
 app.include_router(operator.router, prefix="/api")
 
 
-# --- Системные и служебные эндпоинты, оставшиеся в main.py ---
 @app.get("/", tags=["System"])
 def read_root():
-    """ Корневой эндпоинт для проверки статуса API. """
     return {"Status": "Beer Tap System Backend is running!"}
+
 
 @app.post("/api/token", tags=["System"])
 async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-    """ Эндпоинт для аутентификации и получения JWT-токена. """
+    try:
+        security.ensure_bootstrap_auth_available()
+    except security.SecurityConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
     user = security.get_user(form_data.username)
-    if not user or form_data.password != user["hashed_password"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect username or password"
-        )
-    
+    if not user or form_data.password != user.get("hashed_password"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect username or password")
+
     role = user.get("role", "operator")
     access_token = security.create_access_token(
         data={
@@ -110,14 +146,15 @@ async def get_me(
         "permissions": current_user.get("permissions", []),
     }
 
+
 @app.post("/api/sync/pours", response_model=schemas.SyncResponse, tags=["Controllers"])
 @app.post("/api/sync/pours/", response_model=schemas.SyncResponse, tags=["Controllers"])
-def sync_pours(sync_data: schemas.SyncRequest, request: Request, db: Session = Depends(get_db)):
-    """
-    Эндпоинт для получения пакета данных о наливах от RPi контроллеров.
-    Для каждой записи выполняет полную валидацию и атомарно обновляет состояние.
-    Вся пачка обрабатывается в рамках одной транзакции БД.
-    """
+def sync_pours(
+    sync_data: schemas.SyncRequest,
+    request: Request,
+    current_user: Annotated[dict, Depends(security.get_internal_service_user)] = None,
+    db: Session = Depends(get_db),
+):
     response_results = []
     logger = logging.getLogger("m4.runtime.sync")
     request_id = get_request_id(request)
@@ -125,11 +162,12 @@ def sync_pours(sync_data: schemas.SyncRequest, request: Request, db: Session = D
     alembic_revision = get_alembic_revision(db)
 
     logger.info(
-        "sync_pours_start request_id=%s db_identity=%s alembic_revision=%s batch_size=%s",
+        "sync_pours_start request_id=%s db_identity=%s alembic_revision=%s batch_size=%s actor=%s",
         request_id,
         db_identity,
         alembic_revision,
         len(sync_data.pours),
+        (current_user or {}).get("username", "unknown"),
     )
 
     try:
@@ -209,19 +247,19 @@ def sync_pours(sync_data: schemas.SyncRequest, request: Request, db: Session = D
     except HTTPException:
         db.rollback()
         raise
-    except Exception as e:
+    except Exception as exc:
         db.rollback()
         logger.error(
             "sync_pours_failed request_id=%s db_identity=%s alembic_revision=%s error=%s",
             request_id,
             db_identity,
             alembic_revision,
-            e,
+            exc,
             exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to commit pours batch: {str(e)}"
+            detail=f"Failed to commit pours batch: {str(exc)}",
         )
 
     return schemas.SyncResponse(results=response_results)

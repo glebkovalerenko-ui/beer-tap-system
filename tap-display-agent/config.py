@@ -8,6 +8,7 @@ DEFAULT_DEVICE_ENV_PATH = "/etc/beer-tap/device.env"
 DEFAULT_RUNTIME_PATH = "/run/beer-tap/display-runtime.json"
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parent / "cache"
 DEFAULT_CLIENT_DIST_DIR = Path(__file__).resolve().parent.parent / "tap-display-client" / "dist"
+PLACEHOLDER_PREFIXES = ("replace-with", "change-me")
 
 
 def _load_device_env_file(path: str) -> dict[str, str]:
@@ -38,6 +39,13 @@ def _normalize_token(value: str | None) -> str:
     return normalized
 
 
+def _looks_like_placeholder(value: str | None) -> bool:
+    normalized = _normalize_token(value).lower()
+    if not normalized:
+        return True
+    return any(normalized.startswith(prefix) for prefix in PLACEHOLDER_PREFIXES)
+
+
 @dataclass(slots=True)
 class AgentConfig:
     tap_id: int
@@ -64,7 +72,7 @@ class AgentConfig:
             return device_env.get(name, default)
 
         display_token = _normalize_token(get_value("DISPLAY_API_KEY", ""))
-        if not display_token:
+        if _looks_like_placeholder(display_token):
             raise ValueError("DISPLAY_API_KEY must be configured for tap-display-agent.")
 
         return cls(

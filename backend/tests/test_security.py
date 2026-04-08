@@ -23,6 +23,26 @@ def test_internal_token_is_rejected_on_admin_routes(client):
     assert response.status_code == 401
 
 
+def test_sync_pours_requires_internal_auth(client):
+    response = client.post('/api/sync/pours', json={'pours': []})
+    assert response.status_code == 401
+
+
+def test_controller_register_requires_internal_auth(client):
+    response = client.post(
+        '/api/controllers/register',
+        json={'controller_id': 'ctl-auth-check', 'ip_address': '192.168.1.10', 'firmware_version': '1.0.0'},
+    )
+    assert response.status_code == 401
+
+
+def test_login_is_disabled_when_bootstrap_auth_is_disabled(client, monkeypatch):
+    monkeypatch.setenv('ENABLE_BOOTSTRAP_AUTH', 'false')
+    response = client.post('/api/token', data={'username': 'admin', 'password': 'fake_password'})
+    assert response.status_code == 503
+    assert 'Bootstrap auth is disabled' in response.json()['detail']
+
+
 def test_internal_token_with_quotes_is_accepted_on_internal_route(client, monkeypatch):
     monkeypatch.setenv('INTERNAL_API_KEY', '"demo-secret-key"')
     response = client.post('/api/controllers/flow-events', headers={'X-Internal-Token': 'demo-secret-key'}, json=_flow_event_payload())

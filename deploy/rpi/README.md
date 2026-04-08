@@ -32,8 +32,9 @@ Install flow:
 2. Copy `device.env.example` to `/etc/beer-tap/device.env` and set:
    - `TAP_ID`
    - `SERVER_URL` (`http://192.168.0.110:8000` for the current pilot)
-   - `INTERNAL_TOKEN` for controller/internal traffic
-   - `DISPLAY_API_KEY` for tap-display-agent read-only snapshot/media access
+   - `INTERNAL_TOKEN` for controller/internal traffic; it must match hub `INTERNAL_API_KEY` (or one of `INTERNAL_API_KEYS`)
+   - `DISPLAY_API_KEY` for tap-display-agent read-only snapshot/media access; it must match backend `DISPLAY_API_KEY` (or one of `DISPLAY_API_KEYS`)
+   - do not leave placeholder or demo token values in pilot
 3. Provision runtime environments outside the synced repo path:
    - `chmod 755 /home/cybeer/beer-tap-system/deploy/rpi/provision-runtime-venvs.sh`
    - `sudo /home/cybeer/beer-tap-system/deploy/rpi/provision-runtime-venvs.sh`
@@ -87,6 +88,7 @@ Minimum pilot bring-up checks on the Pi:
 Hardening notes in this MVP package:
 
 - `tap-display-agent` now requires `DISPLAY_API_KEY` and uses `X-Display-Token` instead of the broad internal-token path.
+- `rpi-controller` now requires explicit `INTERNAL_TOKEN`/`INTERNAL_API_KEY` config and no longer falls back to `demo-secret-key`.
 - The kiosk launcher waits for the local agent health endpoint before opening Chromium.
 - The kiosk launcher prefers `chromium`, falls back to `chromium-browser`, and forces a predictable Wayland session env (`XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `XDG_SESSION_TYPE`) for the pilot Pi.
 - The kiosk launcher reapplies portrait rotation through `wlr-randr` before opening Chromium.
@@ -95,4 +97,5 @@ Hardening notes in this MVP package:
 - Chromium is relaunched by the launcher script if it exits.
 - The pilot Pi uses `labwc` session autostart rather than relying on `~/.config/autostart/*.desktop`, because the explicit `labwc` hook was the reliable path during real-device bring-up.
 - Pi systemd services must not depend on virtual environments inside the Syncthing-managed repo path. The live service contract is the external runtime root under `/home/cybeer/.local/share/beer-tap/venvs`.
+- See `SECURITY_BASELINE.md` in the repo root for the controlled-pilot auth/secrets contract.
 - This is still pilot-grade deployment: there is no fleet management, remote watchdog, or screenshot telemetry in this package.

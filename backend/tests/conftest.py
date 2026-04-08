@@ -12,6 +12,11 @@ from httpx import Response
 from pytest_bdd import given, when, then, parsers
 import models
 
+os.environ["SECRET_KEY"] = "test-suite-secret-key"
+os.environ["INTERNAL_API_KEY"] = "demo-secret-key"
+os.environ["ENABLE_BOOTSTRAP_AUTH"] = "true"
+os.environ["BOOTSTRAP_AUTH_PASSWORD"] = "fake_password"
+
 # Импортируем ключевые компоненты нашего приложения
 import main
 import security

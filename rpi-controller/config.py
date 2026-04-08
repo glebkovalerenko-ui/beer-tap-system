@@ -5,6 +5,7 @@ from pathlib import Path
 DEFAULT_SERVER_URL = "http://cybeer-hub:8000"
 DEFAULT_DEVICE_ENV_PATH = "/etc/beer-tap/device.env"
 DEFAULT_DISPLAY_RUNTIME_PATH = "/run/beer-tap/display-runtime.json"
+PLACEHOLDER_PREFIXES = ("replace-with", "change-me")
 
 
 def normalize_server_url(value: str | None) -> str:
@@ -19,6 +20,13 @@ def normalize_token(value: str | None) -> str:
     if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {'"', "'"}:
         normalized = normalized[1:-1].strip()
     return normalized
+
+
+def _looks_like_placeholder(value: str | None) -> bool:
+    normalized = normalize_token(value).lower()
+    if not normalized:
+        return True
+    return any(normalized.startswith(prefix) for prefix in PLACEHOLDER_PREFIXES)
 
 
 def _load_device_env_file(path: str) -> dict[str, str]:
@@ -70,6 +78,9 @@ DISPLAY_RUNTIME_PATH = _get_setting("DISPLAY_RUNTIME_PATH", DEFAULT_DISPLAY_RUNT
 INTERNAL_TOKEN = normalize_token(
     _get_setting(
         "INTERNAL_TOKEN",
-        _get_setting("INTERNAL_API_KEY", "demo-secret-key"),
+        _get_setting("INTERNAL_API_KEY", ""),
     )
 )
+
+if _looks_like_placeholder(INTERNAL_TOKEN):
+    raise RuntimeError("INTERNAL_TOKEN (or INTERNAL_API_KEY) must be configured for rpi-controller.")

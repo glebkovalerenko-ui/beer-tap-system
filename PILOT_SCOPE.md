@@ -8,6 +8,7 @@
 Этот документ нужен для pre-sales, pilot discussions и первых внедрений. Он фиксирует честную рабочую границу между тем, что в текущем репозитории уже можно обсуждать как controlled first pilot, и тем, что пока рано обещать.
 
 Это не коммерческое предложение, не договор, не обещание mass-rollout readiness и не полный эксплуатационный регламент.
+Минимальный controlled-pilot auth/secrets contract зафиксирован в [SECURITY_BASELINE.md](SECURITY_BASELINE.md).
 
 ## 1. Pilot framing
 
@@ -165,7 +166,7 @@ Exception flows, которые полезно проверить хотя бы 
 Ключевые риски первого пилота в текущем состоянии:
 
 - documentation mismatch risk: в репозитории ещё есть legacy wording и терминологическая инерция (`Visit` vs `Session`, старые формулировки про cardless flow);
-- auth/security maturity risk: fake user store, fallback `SECRET_KEY`, wildcard CORS и legacy demo token path делают текущую модель пригодной только для controlled pilot, а не для production-grade эксплуатации;
+- auth/security maturity risk: even after the controlled-pilot baseline, the project still relies on bootstrap local users, manual token coordination and non-enterprise auth boundaries, so this remains pilot-only rather than production-grade;
 - semi-manual deployment risk: hub, workstation и Pi зависят от корректного совпадения URL, токенов, env и install steps;
 - Syncthing/backend desync risk: текущий engineering update path чувствителен к single-writer discipline и может оставить hub на устаревшем working tree, если workflow нарушен;
 - Pi/display recovery risk: kiosk path существенно улучшен, но остаётся session-based, а финальная visual truth на физическом экране всё ещё требует человеческой проверки;
