@@ -3,10 +3,11 @@
 ## Start here
 
 1. [`PROJECT_STATUS.md`](../PROJECT_STATUS.md)
-2. `README.md`
-3. `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
-4. `docs/architecture/OPERATIONAL_MODEL_V1.md`
-5. `docs/API_REFERENCE.md`
+2. [`PILOT_RUNBOOK.md`](../PILOT_RUNBOOK.md)
+3. `README.md`
+4. `docs/architecture/SYSTEM_ARCHITECTURE_V1.md`
+5. `docs/architecture/OPERATIONAL_MODEL_V1.md`
+6. `docs/API_REFERENCE.md`
 
 ## Core system docs
 

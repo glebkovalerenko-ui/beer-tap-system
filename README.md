@@ -3,6 +3,7 @@
 For the current repository truth and maturity snapshot, read [PROJECT_STATUS.md](PROJECT_STATUS.md) first.
 For a constrained first-deployment framing, read [PILOT_SCOPE.md](PILOT_SCOPE.md).
 For the minimal controlled-pilot auth/secrets contract, read [SECURITY_BASELINE.md](SECURITY_BASELINE.md).
+For the step-by-step bring-up path of the current pilot contour, read [PILOT_RUNBOOK.md](PILOT_RUNBOOK.md).
 
 Beer Tap System is a self-pour bar platform for a single location. The current frozen stage covers M1-M7: visit-centric operations, controller/backend sync, shift discipline, lost-card handling, FIFO keg recommendation, and a POS-ready stub seam. Real POS or r_keeper integration is not part of this stage.
 
